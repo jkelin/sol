@@ -5,13 +5,16 @@ import {
   component,
   configureRouteRuntime,
   instantiate,
+  resolveRoute,
   renderComponent,
   runtimeEffect,
   template,
   type Block,
+  type Component,
   type NavigateOptions,
   type RouteConfig,
   type RouteDefinition,
+  type RouteValues,
 } from "./runtime.ts";
 
 export interface Router {
@@ -19,7 +22,8 @@ export interface Router {
   readonly search: string;
   readonly hash: string;
   readonly searchParams: URLSearchParams;
-  readonly params: Readonly<Record<string, string>>;
+  readonly params: Readonly<Record<string, string | number>>;
+  readonly query: Readonly<Record<string, string | number | undefined>>;
   readonly route: RouteConfig | null;
   navigate(path: string, options?: NavigateOptions): void;
 }
@@ -29,9 +33,11 @@ interface RouterState {
   search: string;
   hash: string;
   searchParams: URLSearchParams;
-  params: Readonly<Record<string, string>>;
+  values: RouteValues | null;
   route: RouteConfig | null;
   pattern: string | null;
+  status: "ready" | "pending" | "error";
+  error: unknown;
 }
 
 interface RouteMatch {
@@ -40,25 +46,18 @@ interface RouteMatch {
 }
 
 function readLocation(): RouterState {
-  if (typeof window === "undefined") {
-    return {
-      pathname: "/",
-      search: "",
-      hash: "",
-      searchParams: new URLSearchParams(),
-      params: Object.freeze({}),
-      route: null,
-      pattern: null,
-    };
-  }
+  const location = typeof window === "undefined" ? null : window.location;
+  const search = location?.search ?? "";
   return {
-    pathname: window.location.pathname,
-    search: window.location.search,
-    hash: window.location.hash,
-    searchParams: new URLSearchParams(window.location.search),
-    params: Object.freeze({}),
+    pathname: location?.pathname ?? "/",
+    search,
+    hash: location?.hash ?? "",
+    searchParams: new URLSearchParams(search),
+    values: null,
     route: null,
     pattern: null,
+    status: "ready",
+    error: undefined,
   };
 }
 
@@ -108,18 +107,74 @@ function matchRoute(pathname: string): RouteMatch | null {
   return null;
 }
 
-function matchLocation(location: RouterState): RouterState {
-  const match = matchRoute(location.pathname);
+function rawQuery(searchParams: URLSearchParams): Readonly<Record<string, string>> {
+  return Object.freeze(Object.fromEntries(searchParams));
+}
+
+function unmatchedState(location: RouterState): RouterState {
   return {
     ...location,
-    params: match?.params ?? Object.freeze({}),
-    route: match?.definition.config ?? null,
-    pattern: match?.definition.compiled.pattern ?? null,
+    values: null,
+    route: null,
+    pattern: null,
+    status: "ready",
+    error: undefined,
   };
 }
 
+function resolvedState(location: RouterState, match: RouteMatch, values: RouteValues): RouterState {
+  return {
+    ...location,
+    values,
+    route: match.definition.config,
+    pattern: match.definition.compiled.pattern,
+    status: "ready",
+    error: undefined,
+  };
+}
+
+let resolutionId = 0;
+
 function synchronizeLocation(): void {
-  state.value = matchLocation(readLocation());
+  const currentResolution = ++resolutionId;
+  const location = readLocation();
+  const match = matchRoute(location.pathname);
+  if (!match) {
+    state.value = unmatchedState(location);
+    return;
+  }
+
+  let result;
+  try {
+    result = resolveRoute(match.definition, {
+      params: match.params,
+      query: rawQuery(location.searchParams),
+    });
+  } catch (error) {
+    state.value = { ...unmatchedState(location), status: "error", error };
+    return;
+  }
+
+  if (!(result && typeof result === "object" && "then" in result)) {
+    state.value = result.matched
+      ? resolvedState(location, match, result.values)
+      : unmatchedState(location);
+    return;
+  }
+
+  state.value = { ...unmatchedState(location), status: "pending" };
+  void Promise.resolve(result).then(
+    (resolution) => {
+      if (currentResolution !== resolutionId) return;
+      state.value = resolution.matched
+        ? resolvedState(location, match, resolution.values)
+        : unmatchedState(location);
+    },
+    (error: unknown) => {
+      if (currentResolution !== resolutionId) return;
+      state.value = { ...unmatchedState(location), status: "error", error };
+    },
+  );
 }
 
 synchronizeLocation();
@@ -161,7 +216,10 @@ export const router: Router = Object.freeze({
     return state.value.searchParams;
   },
   get params() {
-    return state.value.params;
+    return state.value.values?.params ?? Object.freeze({});
+  },
+  get query() {
+    return state.value.values?.query ?? Object.freeze({});
   },
   get route() {
     return state.value.route;
@@ -170,12 +228,12 @@ export const router: Router = Object.freeze({
 });
 
 configureRouteRuntime({
-  getParams(definition) {
+  getValues(definition) {
     const current = state.value;
-    if (current.pattern !== definition.compiled.pattern) {
-      throw new Error("Cannot read params from an inactive route");
+    if (current.pattern !== definition.compiled.pattern || !current.values) {
+      throw new Error("Cannot read values from an inactive route");
     }
-    return current.params;
+    return current.values;
   },
   getPathname() {
     return state.value.pathname;
@@ -221,23 +279,32 @@ function listenForNavigation(): () => void {
 
 const routeTemplate = template("<!--ff:s:0--><!--ff:e:0-->");
 
-export const Route = component(() => {
+export const Route = component((props: Readonly<{ pending?: Component }>) => {
   const view = instantiate(routeTemplate);
   const cleanups: Array<() => void> = [];
   let active: Block | undefined;
   let outgoing: Block | undefined;
   let activeDefinition: RouteDefinition | undefined;
-  let activePathname: string | undefined;
   let initialized = false;
+  let activeLocation: string | undefined;
+  let activeStatus: RouterState["status"] | undefined;
 
   cleanups.push(listenForNavigation());
   cleanups.push(
     runtimeEffect(() => {
       const location = state.value;
-      const match = matchRoute(location.pathname);
-      if (activeDefinition === match?.definition && activePathname === location.pathname) return;
+      if (location.status === "error") throw location.error;
+      const match = location.pattern ? matchRoute(location.pathname) : null;
+      const locationKey = `${location.pathname}${location.search}`;
+      if (
+        activeDefinition === match?.definition &&
+        activeLocation === locationKey &&
+        activeStatus === location.status
+      )
+        return;
       activeDefinition = match?.definition;
-      activePathname = location.pathname;
+      activeLocation = locationKey;
+      activeStatus = location.status;
       outgoing?.dispose();
       outgoing = undefined;
       if (active) {
@@ -250,7 +317,14 @@ export const Route = component(() => {
           });
         }
       }
-      active = match ? renderComponent(match.definition.component) : undefined;
+      active =
+        location.status === "pending"
+          ? props.pending
+            ? renderComponent(props.pending)
+            : undefined
+          : match
+            ? renderComponent(match.definition.component)
+            : undefined;
       active?.mount(view.regions[0]!.end.parentNode!, view.regions[0]!.end);
       if (initialized) active?.enter();
       initialized = true;

@@ -17,10 +17,13 @@ import {
   configureRouteRuntime,
   instantiate,
   list,
+  link,
   mount,
   isRouteDefinition,
   route,
   renderComponent,
+  resolveRoute,
+  routeHref,
   runtimeEffect,
   normalizeClass,
   template,
@@ -622,6 +625,18 @@ describe("reactivity", () => {
     expect(state.value.model.value).toBe(7);
   });
 
+  test("preserves frozen object identity and proxy invariants", () => {
+    const nested = Object.freeze({ value: 1 });
+    const frozen = Object.freeze({ nested });
+    const frozenArray = Object.freeze([nested]);
+    const state = $signal({ frozen, frozenArray });
+
+    expect(state.value.frozen).toBe(frozen);
+    expect(state.value.frozen.nested).toBe(nested);
+    expect(state.value.frozenArray).toBe(frozenArray);
+    expect(state.value.frozenArray[0]).toBe(nested);
+  });
+
   test("treats assigning a cached proxy back to its property as a no-op", () => {
     const state = $signal({ child: { value: 1 } });
     const observations: number[] = [];
@@ -695,9 +710,9 @@ describe("compiled DOM runtime", () => {
     let pathname = "/blog/first";
     const navigations: Array<{ path: string; replace: boolean | undefined }> = [];
     configureRouteRuntime({
-      getParams(definition) {
+      getValues(definition) {
         if (definition !== active) throw new Error("inactive");
-        return { id: "first" };
+        return { params: { id: "first" }, query: {} };
       },
       getPathname: () => pathname,
       isActive: (definition) => definition === active,
@@ -711,10 +726,10 @@ describe("compiled DOM runtime", () => {
     expect(detail.isActivePrefix).toBe(true);
     expect(todo.isActive).toBe(false);
     expect(todo.isActivePrefix).toBe(false);
-    detail.navigate({ id: "hello world" }, { replace: true });
+    detail.navigate({ params: { id: "hello world" } }, { replace: true });
     expect(navigations).toEqual([{ path: "/blog/hello%20world", replace: true }]);
     expect(() => detail.navigate({} as never)).toThrow("Missing route parameter id");
-    expect(() => detail.navigate({ id: "one", extra: "two" } as never)).toThrow(
+    expect(() => detail.navigate({ params: { id: "one", extra: "two" } } as never)).toThrow(
       "Unknown route parameter extra",
     );
 
@@ -722,8 +737,159 @@ describe("compiled DOM runtime", () => {
     pathname = "/";
     expect(() => detail.params.id).toThrow("inactive");
     expect(detail.isActive).toBe(false);
-    todo.navigate({ replace: true });
+    todo.navigate({}, { replace: true });
     expect(navigations.at(-1)).toEqual({ path: "/", replace: true });
+  });
+
+  test("validates and serializes parsed route values", async () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const detail = route(
+      {
+        path: "/blog/:id",
+        schema: ({ params, query }) => ({
+          params: { id: Number(params.id) },
+          query: { page: query.page ? Number(query.page) : undefined, filter: query.filter },
+        }),
+      },
+      Empty,
+      {
+        pattern: "^/blog/([^/]+)$",
+        parameterNames: ["id"],
+        specificity: [1, 0],
+      },
+    );
+
+    const resolution = await resolveRoute(detail, {
+      params: { id: "42" },
+      query: { page: "3", filter: "recent" },
+    });
+    expect(resolution).toEqual({
+      matched: true,
+      values: { params: { id: 42 }, query: { page: 3, filter: "recent" } },
+    });
+    expect(
+      routeHref(detail, {
+        params: { id: 42 },
+        query: { page: 3, filter: undefined },
+      }),
+    ).toBe("/blog/42?page=3");
+    expect(() => routeHref(detail, { params: { id: 42 }, query: { page: true } })).toThrow(
+      "must be a string, number, or undefined",
+    );
+    expect(() => routeHref(detail, { params: { id: 42 }, extra: true })).toThrow(
+      "unknown property extra",
+    );
+  });
+
+  test("treats schema issues as no match and preserves unexpected failures", async () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const compiled = {
+      pattern: "^/entry/([^/]+)$",
+      parameterNames: ["id"],
+      specificity: [1, 0],
+    };
+    const invalid = route(
+      {
+        path: "/entry/:id",
+        schema: async (): Promise<{ params: { id: string }; query: {} }> => {
+          throw { issues: [{ message: "Invalid id", path: ["params", "id"] }] };
+        },
+      },
+      Empty,
+      compiled,
+    );
+    const broken = route(
+      {
+        path: "/entry/:id",
+        schema: (): { params: { id: string }; query: {} } => {
+          throw new Error("parser failed");
+        },
+      },
+      Empty,
+      compiled,
+    );
+
+    expect(await resolveRoute(invalid, { params: { id: "bad" }, query: {} })).toEqual({
+      matched: false,
+    });
+    expect(() => resolveRoute(broken, { params: { id: "bad" }, query: {} })).toThrow(
+      "parser failed",
+    );
+  });
+
+  test("decorates Link anchors and preserves cancelled or modified clicks", () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const detail = route({ path: "/blog/:id" }, Empty, {
+      pattern: "^/blog/([^/]+)$",
+      parameterNames: ["id"],
+      specificity: [1, 0],
+    });
+    const navigations: string[] = [];
+    configureRouteRuntime({
+      getValues: () => ({ params: { id: "first" }, query: {} }),
+      getPathname: () => "/",
+      isActive: () => false,
+      navigate: (path) => navigations.push(path),
+    });
+    const anchor = document.createElement("a");
+    const cleanups: Array<() => void> = [];
+    let cancelNext = false;
+    anchor.addEventListener("click", (event) => {
+      if (cancelNext) event.preventDefault();
+    });
+    link(
+      anchor,
+      () => detail,
+      () => ({ params: { id: "hello world" } }),
+      () => false,
+      cleanups,
+    );
+
+    expect(anchor.getAttribute("href")).toBe("/blog/hello%20world");
+    anchor.dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        cancelable: true,
+      }) as unknown as Event,
+    );
+    anchor.dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        ctrlKey: true,
+        cancelable: true,
+      }) as unknown as Event,
+    );
+    cancelNext = true;
+    anchor.dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        cancelable: true,
+      }) as unknown as Event,
+    );
+    cancelNext = false;
+    anchor.target = "_blank";
+    anchor.dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        cancelable: true,
+      }) as unknown as Event,
+    );
+    anchor.removeAttribute("target");
+    anchor.setAttribute("download", "entry.txt");
+    anchor.dispatchEvent(
+      new window.MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        cancelable: true,
+      }) as unknown as Event,
+    );
+
+    expect(navigations).toEqual(["/blog/hello%20world"]);
+    for (const cleanup of cleanups.toReversed()) cleanup();
   });
 
   test("updates normalized DOM classes reactively", () => {

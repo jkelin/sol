@@ -204,6 +204,24 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   await expect(page.getByRole("link", { name: /The compiler keeps the map/ })).toBeVisible();
   await page.screenshot({ path: "test-results/blog-new-desktop.png", fullPage: true });
 
+  await page.getByRole("link", { name: /The compiler keeps the map/ }).click();
+  await expect(page.getByTestId("route-pending")).toBeVisible();
+  await expect(page).toHaveURL(/\/blog\/1\?from=index$/);
+  await expect.poll(() => pageErrors).toEqual([]);
+  await expect(page.getByTestId("route-query-source")).toHaveText("Opened from index");
+  await page.goBack();
+  await expect(page).toHaveURL(/\/blog\/new$/);
+
+  await page.locator('a[href^="/blog/1?"]').evaluate((anchor) => {
+    (anchor as HTMLAnchorElement).click();
+    document.querySelector<HTMLAnchorElement>('a[href="/"]')!.click();
+  });
+  await expect(page).toHaveURL(/\/$/);
+  await page.waitForTimeout(50);
+  await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
+  await page.getByRole("link", { name: "New entry", exact: true }).click();
+  await expect(page).toHaveURL(/\/blog\/new$/);
+
   await page.getByRole("button", { name: "File entry" }).click();
   await expect(page.getByText("Give the entry a name.")).toBeVisible();
   await expect(page.getByText("Add some content before filing.")).toBeVisible();
@@ -214,7 +232,8 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
     .fill("Static route declarations can still drive a responsive browser history.");
   await page.getByRole("button", { name: "File entry" }).click();
 
-  await expect(page).toHaveURL(/\/blog\/3$/);
+  await expect(page.getByTestId("route-pending")).toBeVisible();
+  await expect(page).toHaveURL(/\/blog\/3\?from=new$/);
   expect(pageErrors).toEqual([]);
   await expect(page.getByRole("heading", { name: "Routes written in the margin" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Routes written in the margin/ })).toBeVisible();
@@ -234,6 +253,12 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   await page.getByRole("link", { name: "Todo", exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
+
+  await page.goto("/blog/1?from=first&from=last");
+  await expect(page.getByTestId("route-query-source")).toHaveText("Opened from last");
+  await page.goto("/blog/not-a-number");
+  await expect(page.getByTestId("global-header")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This entry is missing." })).toHaveCount(0);
 });
 
 test("renders context-backed async components and Await behind Suspense", async ({ page }) => {

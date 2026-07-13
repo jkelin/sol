@@ -18,7 +18,7 @@ const NewBlogPage = $component(function NewBlogPage() {
     const cleanContent = content.trim();
     if (!cleanName || !cleanContent) return;
     const entry = createBlogEntry(cleanName, cleanContent);
-    blogDetailRoute.navigate({ id: entry.id });
+    blogDetailRoute.navigate({ params: { id: entry.id }, query: { from: "new" } });
   }
 
   return (

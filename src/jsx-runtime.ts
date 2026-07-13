@@ -16,7 +16,6 @@ export namespace JSX {
   export type ElementType =
     | keyof IntrinsicElements
     | ((props: never) => Element | PromiseLike<Element>);
-
   export interface IntrinsicElementAttributes {
     $bind?: unknown;
     $transition?: Transition;

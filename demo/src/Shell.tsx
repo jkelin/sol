@@ -64,12 +64,20 @@ const Header = $component(function Header() {
   );
 });
 
+const RoutePending = $component(function RoutePending() {
+  return (
+    <p class="font-mono text-xs tracking-widest text-pencil uppercase" data-testid="route-pending">
+      Reading route parameters…
+    </p>
+  );
+});
+
 export const Shell = $component(function Shell() {
   return (
     <div class="min-h-screen">
       <Header />
       <main class="mx-auto grid min-h-[calc(100vh-5.5rem)] w-full max-w-6xl place-items-start px-0 py-8 sm:px-8 sm:py-12">
-        <Route />
+        <Route pending={RoutePending} />
       </main>
     </div>
   );

@@ -175,27 +175,53 @@ const BlogDetail = $component(function BlogDetail() {
   return <article>Blog entry</article>;
 });
 
-export const blogDetailRoute = $route({ path: "/blog/:id" }, BlogDetail);
+export const blogDetailRoute = $route(
+  {
+    path: "/blog/:id",
+    schema: async ({ params, query }) => ({
+      params: { id: Number(params.id) },
+      query: { page: query.page ? Number(query.page) : undefined },
+    }),
+  },
+  BlogDetail,
+);
 ```
 
 Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
 
-Each compiled route is a typed handle. Parameter names are inferred from its literal path, navigation fills and URL-encodes those parameters, and active-state getters remain reactive inside compiled components:
+Each compiled route is a typed handle. Its optional `schema` accepts the same callable, `parse()`, and `parseAsync()` formats as `$form`. The parser receives decoded `{ params, query }` string records; repeated query keys use their final value. Its output must contain exactly the path's parameters plus string, number, or undefined query values. Parsed output types flow through the handle and every typed destination:
 
 ```tsx
-const id = blogDetailRoute.params.id; // string
-blogDetailRoute.navigate({ id: 42 });
+const id = blogDetailRoute.params.id; // number
+const page = blogDetailRoute.query.page; // number | undefined
+blogDetailRoute.navigate({ params: { id: 42 }, query: { page: 2 } });
 
 blogDetailRoute.isActive; // exact route match
 blogDetailRoute.isActivePrefix; // true anywhere below /blog
 ```
 
-Reading `params` from an inactive route throws instead of returning stale values. `navigate()` validates missing, unknown, and non-string/number parameters at runtime as well as through TypeScript.
+Routes without a schema retain inferred string path parameters and an empty typed query record. Reading `params` or `query` from an inactive, pending, or invalid route throws instead of returning stale values. A recognized schema validation failure makes the route not match; other parser errors remain visible. Async validation ignores stale results after newer navigation.
+
+Use `Link` when the destination is represented by a route handle. It requires exactly one anchor child, supplies that anchor's `href`, and intercepts eligible same-tab clicks without adding a wrapper element:
+
+```tsx
+import { Link } from "frontend-framework";
+
+<Link route={blogDetailRoute} params={{ id: 42 }} query={{ page: 2 }}>
+  <a class="entry-link">Open entry</a>
+</Link>;
+```
+
+The route handle determines the required `params` and `query` props. Author styling, ARIA, targets, downloads, and click handlers on the child anchor; do not provide `href`. Prevented, targeted, downloaded, and modified clicks retain native behavior.
 
 Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
 
 ```tsx
 import { $component, Route, router } from "frontend-framework";
+
+const LoadingRoute = $component(function LoadingRoute() {
+  return <p>Loading…</p>;
+});
 
 const App = $component(function App() {
   return (
@@ -203,13 +229,13 @@ const App = $component(function App() {
       <p>Current path: {router.pathname}</p>
       <p>Entry: {router.params.id}</p>
       <button onClick={() => router.navigate("/")}>Home</button>
-      <Route />
+      <Route pending={LoadingRoute} />
     </main>
   );
 });
 ```
 
-The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped matched `params`, the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are handled through browser history while external, downloaded, targeted, and modified-click links retain their native behavior.
+The optional `pending` component renders while an asynchronous schema resolves. Without it, the outlet remains empty during validation. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` and `query`, the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are still handled through browser history.
 
 The demo uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
 

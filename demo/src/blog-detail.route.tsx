@@ -4,9 +4,7 @@ import { blogEntries } from "./blog-store.ts";
 import { pageTransition } from "./transitions.ts";
 
 const BlogDetailPage = $component(function BlogDetailPage() {
-  const entry = blogEntries.value.find(
-    (candidate) => String(candidate.id) === blogDetailRoute.params.id,
-  );
+  const entry = blogEntries.value.find((candidate) => candidate.id === blogDetailRoute.params.id);
 
   return (
     <section
@@ -20,6 +18,12 @@ const BlogDetailPage = $component(function BlogDetailPage() {
             <p class="mb-5 font-mono text-[0.6875rem] tracking-[0.11em] text-correction">
               FIELD NOTE / {String(entry.id).padStart(2, "0")}
             </p>
+            {blogDetailRoute.query.from && (
+              <p class="sr-only" data-testid="route-query-source">
+                {"Opened from "}
+                {blogDetailRoute.query.from}
+              </p>
+            )}
             <h1
               id="blog-detail-title"
               class="font-serif text-[clamp(2.5rem,6vw,4.5rem)] leading-[0.95] tracking-[-0.04em]"
@@ -47,4 +51,19 @@ const BlogDetailPage = $component(function BlogDetailPage() {
   );
 });
 
-export const blogDetailRoute = $route({ path: "/blog/:id" }, BlogDetailPage);
+export const blogDetailRoute = $route(
+  {
+    path: "/blog/:id",
+    schema: async ({ params, query }) => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const id = Number(params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        throw {
+          issues: [{ message: "Entry id must be a positive integer", path: ["params", "id"] }],
+        };
+      }
+      return { params: { id }, query: { from: query.from } };
+    },
+  },
+  BlogDetailPage,
+);

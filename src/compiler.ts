@@ -24,6 +24,7 @@ const RUNTIME_IMPORT = `import {
   errorBoundary as __ff_error_boundary,
   event as __ff_event,
   instantiate as __ff_instantiate,
+  link as __ff_link,
   list as __ff_list,
   route as __ff_route,
   suspense as __ff_suspense,
@@ -84,6 +85,7 @@ interface CompilerContext {
   templates: string[];
   componentNames: Set<string>;
   builtinNames: Map<string, "Suspense" | "Await" | "ErrorBoundary">;
+  linkNames: Set<string>;
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;
@@ -754,6 +756,7 @@ function compileIntrinsicElement(
   context: TemplateContext,
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
+  injectedOperations: ReadonlyArray<(element: number) => string> = [],
 ): void {
   const tag = jsxName(compiler, node.openingElement.name);
   if (!/^[a-z][a-z0-9-]*$/.test(tag))
@@ -908,6 +911,7 @@ function compileIntrinsicElement(
     }
   }
 
+  deferredOperations.push(...injectedOperations);
   if (deferredOperations.length > 0) {
     const index = elementId(context, node.openingElement);
     attributes.push(`data-ff-e="${index}"`);
@@ -920,6 +924,62 @@ function compileIntrinsicElement(
   } else if (node.children.length > 0) {
     codeFrame(compiler, node, `Void element <${tag}> cannot have children`);
   }
+}
+
+function compileLinkElement(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  context: TemplateContext,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+): void {
+  const meaningfulChildren = node.children.filter(
+    (child) => !t.isJSXText(child) || normalizeJsxText(child.value) !== "",
+  );
+  if (meaningfulChildren.length !== 1 || !t.isJSXElement(meaningfulChildren[0])) {
+    codeFrame(compiler, node, "Link requires exactly one anchor child");
+  }
+  const anchor = meaningfulChildren[0];
+  if (!t.isJSXIdentifier(anchor.openingElement.name, { name: "a" })) {
+    codeFrame(compiler, anchor, "Link child must be an intrinsic anchor element");
+  }
+  const anchorHref = anchor.openingElement.attributes.find(
+    (attribute) =>
+      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "href" }),
+  );
+  if (anchorHref) codeFrame(compiler, anchorHref, "Link provides its anchor href");
+
+  const attributes = new Map<string, t.JSXAttribute>();
+  for (const attribute of node.openingElement.attributes) {
+    if (t.isJSXSpreadAttribute(attribute)) {
+      codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
+    }
+    const name = getAttributeName(compiler, attribute.name);
+    if (!["route", "params", "query", "replace"].includes(name)) {
+      codeFrame(compiler, attribute, `Unsupported Link property ${name}`);
+    }
+    if (attributes.has(name)) codeFrame(compiler, attribute, `Duplicate Link property ${name}`);
+    attributes.set(name, attribute);
+  }
+  const routeAttribute = attributes.get("route");
+  if (!routeAttribute) codeFrame(compiler, node.openingElement, "Link requires a route property");
+  const route = expressionCode(expressionAttribute(compiler, routeAttribute), scope);
+  const destinationProperties = ["params", "query"].flatMap((name) => {
+    const attribute = attributes.get(name);
+    if (!attribute) return [];
+    const value = expressionCode(expressionAttribute(compiler, attribute), scope);
+    return [`${JSON.stringify(name)}: (${value})`];
+  });
+  const replaceAttribute = attributes.get("replace");
+  const replace = replaceAttribute
+    ? staticAttributeValue(compiler, replaceAttribute) === true
+      ? "true"
+      : expressionCode(expressionAttribute(compiler, replaceAttribute), scope)
+    : "false";
+  compileIntrinsicElement(compiler, anchor, context, bindings, scope, [
+    (element) =>
+      `__ff_link(__ff_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => Boolean(${replace}), __ff_cleanups);`,
+  ]);
 }
 
 function mapDetails(
@@ -1094,7 +1154,9 @@ function compileNode(
   if (compileProviderElement(compiler, node, context, bindings, scope)) return;
   const name = jsxName(compiler, node.openingElement.name);
   const builtin = compiler.builtinNames.get(name);
-  if (builtin) {
+  if (compiler.linkNames.has(name)) {
+    compileLinkElement(compiler, node, context, bindings, scope);
+  } else if (builtin) {
     compileBuiltinElement(compiler, builtin, node, context, bindings, scope);
   } else if (compiler.componentNames.has(name)) {
     compileComponentElement(compiler, node, context, scope);
@@ -1538,6 +1600,7 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     templates: [],
     componentNames: new Set(),
     builtinNames: new Map(),
+    linkNames: new Set(),
     mappingOrigins: [],
     nextListId: 0,
   };
@@ -1591,6 +1654,12 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
             specifier.imported.name === "ErrorBoundary"
           ) {
             compiler.builtinNames.set(specifier.local.name, specifier.imported.name);
+          }
+          if (
+            t.isImportSpecifier(specifier) &&
+            t.isIdentifier(specifier.imported, { name: "Link" })
+          ) {
+            compiler.linkNames.add(specifier.local.name);
           }
         }
       }
@@ -1676,16 +1745,27 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     if (!t.isObjectExpression(config)) {
       codeFrame(compiler, call, "$route() config must be an object literal");
     }
-    if (config.properties.length !== 1) {
-      codeFrame(compiler, config, "$route() config must contain only a path property");
+    const configProperties = new Map<string, t.ObjectProperty>();
+    for (const configProperty of config.properties) {
+      if (
+        !t.isObjectProperty(configProperty) ||
+        configProperty.computed ||
+        !t.isIdentifier(configProperty.key) ||
+        !["path", "schema"].includes(configProperty.key.name)
+      ) {
+        codeFrame(compiler, configProperty, "$route() config may contain only path and schema");
+      }
+      if (configProperties.has(configProperty.key.name)) {
+        codeFrame(
+          compiler,
+          configProperty,
+          `Duplicate $route() ${configProperty.key.name} property`,
+        );
+      }
+      configProperties.set(configProperty.key.name, configProperty);
     }
-    const property = config.properties[0];
-    if (
-      !t.isObjectProperty(property) ||
-      property.computed ||
-      !t.isIdentifier(property.key, { name: "path" }) ||
-      !t.isStringLiteral(property.value)
-    ) {
+    const property = configProperties.get("path");
+    if (!property || !t.isStringLiteral(property.value)) {
       codeFrame(compiler, config, "$route() path must be a string literal");
     }
     if (!t.isIdentifier(candidate) || !compiler.componentNames.has(candidate.name)) {

@@ -13,10 +13,12 @@ export interface Transition {
 
 export type FormValidationStrategy = "onSubmit" | "onBlur" | "onInput";
 
-export type FormParser<TValues extends Record<string, unknown>, TOutput> =
-  | ((values: TValues) => TOutput | PromiseLike<TOutput>)
-  | { parse(values: TValues): TOutput; parseAsync?: never }
-  | { parseAsync(values: TValues): PromiseLike<TOutput>; parse?: (values: TValues) => TOutput };
+export type Parser<TInput, TOutput> =
+  | ((input: TInput) => TOutput | PromiseLike<TOutput>)
+  | { parse(input: TInput): TOutput; parseAsync?: never }
+  | { parseAsync(input: TInput): PromiseLike<TOutput>; parse?: (input: TInput) => TOutput };
+
+export type FormParser<TValues extends Record<string, unknown>, TOutput> = Parser<TValues, TOutput>;
 
 export interface FormConfig<TValues extends Record<string, unknown>, TOutput> {
   schema: FormParser<TValues, TOutput>;
@@ -69,8 +71,38 @@ export interface NavigateOptions {
   readonly replace?: boolean;
 }
 
-export interface RouteConfig<Path extends string = string> {
+export interface RawRouteValues {
+  readonly params: Readonly<Record<string, string>>;
+  readonly query: Readonly<Record<string, string>>;
+}
+
+export type RouteValue = string | number;
+export type RouteQueryValues = Readonly<Record<string, RouteValue | undefined>>;
+
+export interface RouteValues {
+  readonly params: Readonly<Record<string, RouteValue>>;
+  readonly query: RouteQueryValues;
+}
+
+type RouteSchemaParameterCheck<Path extends string, Values extends RouteValues> =
+  Exclude<keyof Values["params"], keyof RouteParams<Path>> extends never
+    ? Exclude<keyof RouteParams<Path>, keyof Values["params"]> extends never
+      ? unknown
+      : { readonly __missingRouteSchemaParameter: never }
+    : { readonly __unknownRouteSchemaParameter: never };
+
+export type RouteSchema<Path extends string, Values extends RouteValues> = Parser<
+  RawRouteValues,
+  Values
+> &
+  RouteSchemaParameterCheck<Path, Values>;
+
+export interface RouteConfig<
+  Path extends string = string,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+> {
   readonly path: Path & `/${string}`;
+  readonly schema?: RouteSchema<Path, Values>;
 }
 
 type RouteParameterName<Path extends string> = Path extends `${infer Segment}/${infer Rest}`
@@ -83,9 +115,23 @@ export type RouteParams<Path extends string> = string extends Path
   ? Readonly<Record<string, string>>
   : Readonly<{ [Parameter in RouteParameterName<Path>]: string }>;
 
-export type RouteNavigationParams<Path extends string> = {
-  readonly [Parameter in keyof RouteParams<Path>]: string | number;
+export type DefaultRouteValues<Path extends string> = {
+  readonly params: RouteParams<Path>;
+  readonly query: Readonly<Record<never, never>>;
 };
+
+type RouteDestinationSection<
+  Key extends "params" | "query",
+  Values extends RouteValues,
+> = keyof Values[Key] extends never ? {} : { readonly [Property in Key]: Values[Key] };
+
+export type RouteDestination<Values extends RouteValues> = RouteDestinationSection<
+  "params",
+  Values
+> &
+  RouteDestinationSection<"query", Values>;
+
+export type RouteNavigationParams<Path extends string> = RouteDestination<DefaultRouteValues<Path>>;
 
 export interface CompiledRoutePattern {
   readonly pattern: string;
@@ -93,19 +139,28 @@ export interface CompiledRoutePattern {
   readonly specificity: readonly number[];
 }
 
-type RouteNavigateArguments<Path extends string> = keyof RouteParams<Path> extends never
-  ? [options?: NavigateOptions]
-  : [params: RouteNavigationParams<Path>, options?: NavigateOptions];
-
-export interface RouteDefinition<Path extends string = string> {
-  readonly config: RouteConfig<Path>;
+export interface RouteDefinition<
+  Path extends string = string,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+> {
+  readonly config: RouteConfig<Path, Values>;
   readonly component: Component;
   readonly compiled: CompiledRoutePattern;
-  readonly params: RouteParams<Path>;
+  readonly params: Values["params"];
+  readonly query: Values["query"];
   readonly isActive: boolean;
   readonly isActivePrefix: boolean;
-  navigate(...arguments_: RouteNavigateArguments<Path>): void;
+  navigate(destination: RouteDestination<Values>, options?: NavigateOptions): void;
 }
+
+export type LinkProps<
+  Path extends string,
+  Values extends RouteValues,
+> = RouteDestination<Values> & {
+  readonly route: RouteDefinition<Path, Values>;
+  readonly replace?: boolean;
+  readonly children: JSX.Element;
+};
 
 type Cleanup = () => void;
 type Dependency = Set<ReactiveEffect>;
@@ -305,6 +360,7 @@ function isObject(value: unknown): value is object {
 }
 
 function isReactiveTarget(value: object): boolean {
+  if (!Object.isExtensible(value)) return false;
   if (Array.isArray(value)) return true;
   const prototype = Object.getPrototypeOf(value) as unknown;
   return prototype === Object.prototype || prototype === null;
@@ -678,13 +734,19 @@ export const ErrorBoundary = (() => {
   throw new Error("ErrorBoundary must be rendered as JSX inside a compiled component");
 }) as Component<ErrorBoundaryProps>;
 
-export function $route<const Path extends `/${string}`>(
-  _config: RouteConfig<Path>,
-  _candidate: Component,
-): RouteDefinition<Path> {
+export function $route<
+  const Path extends `/${string}`,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+>(_config: RouteConfig<Path, Values>, _candidate: Component): RouteDefinition<Path, Values> {
   throw new Error(
     "$route() reached runtime. Define exported routes in a *.route.js, .jsx, .ts, or .tsx file and add frontendFramework() to Vite.",
   );
+}
+
+export function Link<const Path extends string, Values extends RouteValues>(
+  _props: LinkProps<Path, Values>,
+): JSX.Element {
+  throw new Error("Link reached runtime. Add frontendFramework() before Vite's JSX transform.");
 }
 
 export interface Region {
@@ -741,14 +803,20 @@ type CompiledComponent<Props extends object> = Component<Props> & {
   [COMPONENT]: ComponentFactory<Props>;
 };
 
-type CompiledRouteDefinition<Path extends string = string> = RouteDefinition<Path> & {
+type CompiledRouteDefinition<
+  Path extends string = string,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+> = RouteDefinition<Path, Values> & {
   [ROUTE]: true;
 };
 
-type RouteRuntimeDefinition = Pick<RouteDefinition, "compiled" | "config">;
+interface RouteRuntimeDefinition {
+  readonly compiled: CompiledRoutePattern;
+  readonly config: { readonly path: string };
+}
 
 interface RouteRuntimeAdapter {
-  getParams(definition: RouteRuntimeDefinition): Readonly<Record<string, string>>;
+  getValues(definition: RouteRuntimeDefinition): RouteValues;
   getPathname(): string;
   isActive(definition: RouteRuntimeDefinition): boolean;
   navigate(path: string, options?: NavigateOptions): void;
@@ -1076,13 +1144,186 @@ export function renderComponent<Props extends object>(
   return resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
 }
 
-export function route<const Path extends `/${string}`>(
-  config: RouteConfig<Path>,
+function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  return isObject(value) && typeof (value as { then?: unknown }).then === "function";
+}
+
+function validateRouteValues(values: unknown, parameterNames: readonly string[]): RouteValues {
+  if (!isObject(values) || Array.isArray(values)) {
+    throw new TypeError("Route schema output must be an object");
+  }
+  const unexpectedSection = Object.keys(values).find(
+    (name) => name !== "params" && name !== "query",
+  );
+  if (unexpectedSection) {
+    throw new TypeError(`Route schema output contains unknown property ${unexpectedSection}`);
+  }
+  const params = (values as { params?: unknown }).params;
+  const query = (values as { query?: unknown }).query;
+  if (!isObject(params) || Array.isArray(params)) {
+    throw new TypeError("Route schema output params must be an object");
+  }
+  if (!isObject(query) || Array.isArray(query)) {
+    throw new TypeError("Route schema output query must be an object");
+  }
+  const paramKeys = Object.keys(params);
+  const missing = parameterNames.find((name) => !(name in params));
+  if (missing) throw new TypeError(`Route schema output is missing parameter ${missing}`);
+  const unexpected = paramKeys.find((name) => !parameterNames.includes(name));
+  if (unexpected)
+    throw new TypeError(`Route schema output contains unknown parameter ${unexpected}`);
+  for (const name of parameterNames) {
+    const value = (params as Record<string, unknown>)[name];
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new TypeError(`Route schema output parameter ${name} must be a string or number`);
+    }
+  }
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== undefined && typeof value !== "string" && typeof value !== "number") {
+      throw new TypeError(
+        `Route schema output query ${name} must be a string, number, or undefined`,
+      );
+    }
+  }
+  return Object.freeze({
+    params: Object.freeze({ ...params }) as Readonly<Record<string, RouteValue>>,
+    query: Object.freeze({ ...query }) as RouteQueryValues,
+  });
+}
+
+export type RouteResolution =
+  | { readonly matched: true; readonly values: RouteValues }
+  | { readonly matched: false };
+
+export function resolveRoute<Path extends string, Values extends RouteValues>(
+  definition: RouteDefinition<Path, Values>,
+  raw: RawRouteValues,
+): RouteResolution | PromiseLike<RouteResolution> {
+  const schema = definition.config.schema;
+  if (!schema) {
+    return {
+      matched: true,
+      values: validateRouteValues(
+        { params: raw.params, query: {} },
+        definition.compiled.parameterNames,
+      ),
+    };
+  }
+  const parse = (): RouteValues | PromiseLike<RouteValues> => {
+    if (typeof schema === "function") return schema(raw);
+    if (typeof schema.parseAsync === "function") return schema.parseAsync(raw);
+    return schema.parse(raw);
+  };
+  try {
+    const result = parse();
+    if (isPromiseLike(result)) {
+      return Promise.resolve(result).then(
+        (values) => ({
+          matched: true as const,
+          values: validateRouteValues(values, definition.compiled.parameterNames),
+        }),
+        (error: unknown) => {
+          if (validationFailure(error)) return { matched: false as const };
+          throw error;
+        },
+      );
+    }
+    return {
+      matched: true,
+      values: validateRouteValues(result, definition.compiled.parameterNames),
+    };
+  } catch (error) {
+    if (validationFailure(error)) return { matched: false };
+    throw error;
+  }
+}
+
+export function routeHref<Path extends string, Values extends RouteValues>(
+  definition: RouteDefinition<Path, Values>,
+  destination: Readonly<Record<string, unknown>>,
+): string {
+  if (!isObject(destination) || Array.isArray(destination)) {
+    throw new TypeError("Route destination must be an object");
+  }
+  const unexpectedSection = Object.keys(destination).find(
+    (name) => name !== "params" && name !== "query",
+  );
+  if (unexpectedSection) {
+    throw new TypeError(`Route destination contains unknown property ${unexpectedSection}`);
+  }
+  const hasParams = definition.compiled.parameterNames.length > 0;
+  const params = (destination as { params?: unknown }).params;
+  if (hasParams && params === undefined) {
+    throw new TypeError(`Missing route parameter ${definition.compiled.parameterNames[0]}`);
+  }
+  if (hasParams && (!isObject(params) || Array.isArray(params))) {
+    throw new TypeError("Route destination params must be an object");
+  }
+  if (!hasParams && params !== undefined) {
+    if (!isObject(params) || Array.isArray(params) || Object.keys(params).length > 0) {
+      throw new TypeError("Route destination contains params for a static route");
+    }
+  }
+  const candidateParams = (params ?? {}) as Readonly<Record<string, unknown>>;
+  const unexpected = Object.keys(candidateParams).find(
+    (name) => !definition.compiled.parameterNames.includes(name),
+  );
+  if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
+  let path = definition.config.path as string;
+  for (const name of definition.compiled.parameterNames) {
+    if (!(name in candidateParams)) throw new TypeError(`Missing route parameter ${name}`);
+    const value = candidateParams[name];
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new TypeError(`Route parameter ${name} must be a string or number`);
+    }
+    path = path.replace(`:${name}`, encodeURIComponent(String(value)));
+  }
+  const query = (destination as { query?: unknown }).query;
+  if (query !== undefined && (!isObject(query) || Array.isArray(query))) {
+    throw new TypeError("Route destination query must be an object");
+  }
+  if (!definition.config.schema && query && Object.keys(query).length > 0) {
+    throw new TypeError("Route destination contains query values for a route without a schema");
+  }
+  const search = new URLSearchParams();
+  for (const [name, value] of Object.entries(query ?? {})) {
+    if (value === undefined) continue;
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new TypeError(`Route query ${name} must be a string, number, or undefined`);
+    }
+    search.set(name, String(value));
+  }
+  const serialized = search.toString();
+  return serialized ? `${path}?${serialized}` : path;
+}
+
+export function route<
+  const Path extends `/${string}`,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+>(
+  config: RouteConfig<Path, Values>,
   candidate: Component,
   compiled: CompiledRoutePattern,
-): RouteDefinition<Path> {
+): RouteDefinition<Path, Values> {
   if (!config || typeof config !== "object" || typeof config.path !== "string") {
     throw new TypeError("Compiled route config must contain a path");
+  }
+  const unexpectedConfig = Object.keys(config).find((name) => name !== "path" && name !== "schema");
+  if (unexpectedConfig) {
+    throw new TypeError(`Compiled route config contains unknown property ${unexpectedConfig}`);
+  }
+  if (config.schema !== undefined) {
+    const schema = config.schema;
+    const hasParser =
+      typeof schema === "function" ||
+      (isObject(schema) &&
+        (typeof (schema as { parse?: unknown }).parse === "function" ||
+          typeof (schema as { parseAsync?: unknown }).parseAsync === "function"));
+    if (!hasParser) {
+      throw new TypeError(
+        "Compiled route schema must be callable or expose parse() or parseAsync()",
+      );
+    }
   }
   getFactory(candidate);
   if (
@@ -1093,20 +1334,8 @@ export function route<const Path extends `/${string}`>(
   ) {
     throw new TypeError("Compiled route metadata is invalid");
   }
-  let definition: CompiledRouteDefinition<Path>;
+  let definition: CompiledRouteDefinition<Path, Values>;
   const staticPrefix = config.path.split("/:", 1)[0] || "/";
-  const buildPath = (params: Readonly<Record<string, string | number>>): string => {
-    let path = config.path as string;
-    for (const name of compiled.parameterNames) {
-      if (!(name in params)) throw new TypeError(`Missing route parameter ${name}`);
-      const value = params[name];
-      if (typeof value !== "string" && typeof value !== "number") {
-        throw new TypeError(`Route parameter ${name} must be a string or number`);
-      }
-      path = path.replace(`:${name}`, encodeURIComponent(String(value)));
-    }
-    return path;
-  };
   definition = Object.freeze({
     [ROUTE]: true,
     config: Object.freeze({ ...config }),
@@ -1118,7 +1347,11 @@ export function route<const Path extends `/${string}`>(
     }),
     get params() {
       if (!routeRuntime) throw new Error("Route runtime is not initialized");
-      return routeRuntime.getParams(definition) as RouteParams<Path>;
+      return routeRuntime.getValues(definition).params as Values["params"];
+    },
+    get query() {
+      if (!routeRuntime) throw new Error("Route runtime is not initialized");
+      return routeRuntime.getValues(definition).query as Values["query"];
     },
     get isActive() {
       return routeRuntime?.isActive(definition) ?? false;
@@ -1130,24 +1363,17 @@ export function route<const Path extends `/${string}`>(
         ? compiled.parameterNames.length > 0 || pathname === "/"
         : pathname === staticPrefix || pathname.startsWith(`${staticPrefix}/`);
     },
-    navigate(...arguments_: RouteNavigateArguments<Path>) {
+    navigate(destination: RouteDestination<Values>, options?: NavigateOptions) {
       if (!routeRuntime) throw new Error("Route runtime is not initialized");
-      const hasParams = compiled.parameterNames.length > 0;
-      const candidateParams = arguments_[0];
-      if (hasParams && (!candidateParams || typeof candidateParams !== "object")) {
-        throw new TypeError("Route navigation params must be an object");
-      }
-      const params = hasParams
-        ? (candidateParams as Readonly<Record<string, string | number>>)
-        : {};
-      const unexpected = Object.keys(params).find(
-        (name) => !compiled.parameterNames.includes(name),
+      routeRuntime.navigate(
+        routeHref(
+          definition,
+          destination as RouteDestination<Values> & Readonly<Record<string, unknown>>,
+        ),
+        options,
       );
-      if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
-      const options = (hasParams ? arguments_[1] : arguments_[0]) as NavigateOptions | undefined;
-      routeRuntime.navigate(buildPath(params), options);
     },
-  }) as CompiledRouteDefinition<Path>;
+  }) as CompiledRouteDefinition<Path, Values>;
   return definition;
 }
 
@@ -1343,6 +1569,55 @@ export function event(
   };
   element.addEventListener(name, listener);
   cleanups.push(() => element.removeEventListener(name, listener));
+}
+
+export function link<Path extends string, Values extends RouteValues>(
+  element: HTMLAnchorElement,
+  getRoute: () => RouteDefinition<Path, Values>,
+  getDestination: () => Readonly<Record<string, unknown>>,
+  getReplace: () => boolean,
+  cleanups: Cleanup[],
+): void {
+  if (!element || element.nodeType !== Node.ELEMENT_NODE || element.tagName !== "A") {
+    throw new TypeError("Link must decorate an anchor element");
+  }
+  const href = (): string => {
+    const definition = getRoute();
+    if (
+      !definition ||
+      typeof definition !== "object" ||
+      !(definition as unknown as { [ROUTE]?: unknown })[ROUTE]
+    ) {
+      throw new TypeError("Link route must be a route definition");
+    }
+    return routeHref(definition, getDestination());
+  };
+  cleanups.push(
+    runtimeEffect(() => element.setAttribute("href", href())),
+    (() => {
+      const listener = (domEvent: MouseEvent): void => {
+        if (
+          domEvent.defaultPrevented ||
+          domEvent.button !== 0 ||
+          domEvent.metaKey ||
+          domEvent.ctrlKey ||
+          domEvent.shiftKey ||
+          domEvent.altKey ||
+          element.hasAttribute("download")
+        )
+          return;
+        const target = element.getAttribute("target");
+        if (target && target.toLowerCase() !== "_self") return;
+        if (!routeRuntime) throw new Error("Route runtime is not initialized");
+        const replace = getReplace();
+        if (typeof replace !== "boolean") throw new TypeError("Link replace must be a boolean");
+        domEvent.preventDefault();
+        routeRuntime.navigate(href(), { replace });
+      };
+      element.addEventListener("click", listener);
+      return () => element.removeEventListener("click", listener);
+    })(),
+  );
 }
 
 export function bindValue(

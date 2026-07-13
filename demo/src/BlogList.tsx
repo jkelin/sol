@@ -1,4 +1,5 @@
-import { $component } from "frontend-framework";
+import { $component, Link } from "frontend-framework";
+import { blogDetailRoute } from "./blog-detail.route.tsx";
 import type { BlogEntry } from "./blog-store.ts";
 
 export const BlogList = $component(function BlogList(props: { entries: BlogEntry[] }) {
@@ -18,22 +19,21 @@ export const BlogList = $component(function BlogList(props: { entries: BlogEntry
       <ol class="space-y-1">
         {props.entries.map((entry) => (
           <li key={entry.id}>
-            <a
-              class="group grid grid-cols-[2rem_1fr] gap-3 border-b border-rule py-4 text-graphite"
-              href={`/blog/${entry.id}`}
-            >
-              <span class="pt-1 font-mono text-[0.6875rem] text-correction">
-                {String(entry.id).padStart(2, "0")}
-              </span>
-              <span>
-                <strong class="block font-serif text-lg font-normal group-hover:underline group-hover:decoration-correction/60 group-hover:underline-offset-4">
-                  {entry.name}
-                </strong>
-                <span class="mt-1 block line-clamp-2 text-sm leading-relaxed text-pencil">
-                  {entry.content}
+            <Link route={blogDetailRoute} params={{ id: entry.id }} query={{ from: "index" }}>
+              <a class="group grid grid-cols-[2rem_1fr] gap-3 border-b border-rule py-4 text-graphite">
+                <span class="pt-1 font-mono text-[0.6875rem] text-correction">
+                  {String(entry.id).padStart(2, "0")}
                 </span>
-              </span>
-            </a>
+                <span>
+                  <strong class="block font-serif text-lg font-normal group-hover:underline group-hover:decoration-correction/60 group-hover:underline-offset-4">
+                    {entry.name}
+                  </strong>
+                  <span class="mt-1 block line-clamp-2 text-sm leading-relaxed text-pencil">
+                    {entry.content}
+                  </span>
+                </span>
+              </a>
+            </Link>
           </li>
         ))}
       </ol>

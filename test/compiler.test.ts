@@ -2,6 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { SourceMapConsumer } from "source-map-js";
 import { compile } from "../src/compiler.ts";
 
+function linkSource(link: string): string {
+  return `
+    import { $component, Link } from "frontend-framework";
+    import { detail } from "./detail.route";
+    const App = $component(function App() { return ${link}; });
+  `;
+}
+
 describe("compiler", () => {
   test("compiles exported route declarations and path parameters", () => {
     const result = compile(
@@ -26,6 +34,45 @@ describe("compiler", () => {
       );
       expect(routeModule.code).toContain("export const page = __ff_route");
     }
+  });
+
+  test("preserves route schemas and compiles Link into its anchor child", () => {
+    const result = compile(
+      `
+      import { $component, $route, Link as RouteLink } from "frontend-framework";
+      const schema = { parse: value => value };
+      const Blog = $component(function Blog() { return <main>Blog</main>; });
+      export const blog = $route({ path: "/blog/:id", schema }, Blog);
+      export const Navigation = $component(function Navigation() {
+        const params = { id: "first" };
+        return <RouteLink route={blog} params={params}><a class="entry">Open</a></RouteLink>;
+      });
+    `,
+      "blog.route.tsx",
+    );
+
+    expect(result.code).toContain('__ff_route({\n  path: "/blog/:id",\n  schema\n}');
+    expect(result.code).toContain("__ff_link(__ff_view.elements[0]");
+    expect(result.code).toContain('class="entry"');
+    expect(result.code).not.toContain("<RouteLink");
+  });
+
+  test("validates the compiler-specialized Link interface", () => {
+    expect(() => compile(linkSource(`<Link><a>Open</a></Link>`), "App.tsx")).toThrow(
+      "requires a route property",
+    );
+    expect(() =>
+      compile(linkSource(`<Link route={detail}><button>Open</button></Link>`), "App.tsx"),
+    ).toThrow("child must be an intrinsic anchor");
+    expect(() =>
+      compile(linkSource(`<Link route={detail}><a href="/bad">Open</a></Link>`), "App.tsx"),
+    ).toThrow("provides its anchor href");
+    expect(() =>
+      compile(linkSource(`<Link route={detail}><a>One</a><a>Two</a></Link>`), "App.tsx"),
+    ).toThrow("exactly one anchor child");
+    expect(() =>
+      compile(linkSource(`<Link route={detail} class="bad"><a>Open</a></Link>`), "App.tsx"),
+    ).toThrow("Unsupported Link property class");
   });
 
   test("validates the compile-time route boundary", () => {
@@ -68,6 +115,12 @@ describe("compiler", () => {
         "blog.route.tsx",
       ),
     ).toThrow("must reference a compiled component");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "/blog", extra: true }, Blog);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("may contain only path and schema");
   });
 
   test("compiles $component setup into inferred signals, computeds, and DOM effects", () => {

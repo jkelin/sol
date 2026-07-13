@@ -1,0 +1,19 @@
+{
+  "name": "solix",
+  "version": "0.0.0",
+  "type": "module",
+  "module": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./compiler-runtime": "./src/compiler-runtime.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts"
+  },
+  "scripts": {
+    "test": "bun test tests/runtime.test.ts tests/router.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

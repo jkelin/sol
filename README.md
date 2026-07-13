@@ -1,22 +1,31 @@
-# frontend-framework
+# Solix
 
 An experimental JSX framework that compiles components into static HTML templates and fine-grained DOM operations. Component setup runs once per mounted instance; reactive changes patch only the DOM that depends on them.
 
-## Run the demo
+## Install
+
+```bash
+bun add solix
+bun add --dev @solix/compiler vite
+```
+
+Configure the compiler through the Vite plugin shown below, then set TypeScript's `jsxImportSource` to `solix`.
+
+## Run the example
 
 ```bash
 bun install
 bun run dev
 ```
 
-The Tailwind-powered notebook app demonstrates compiler-managed state, keyed lists, bindings, compile-time routes, path parameters, browser history, and shared blog entries.
+The Tailwind-powered notebook example demonstrates compiler-managed state, keyed lists, bindings, compile-time routes, path parameters, browser history, and shared blog entries.
 
-`bun run build` (or `bun run build:demo`) creates an unminified production demo in `dist/`. Use `bun run build:demo:inspect` to create the same readable output in `out/demo-inspect/` without replacing the normal build.
+`bun run build` (or `bun run build:example`) creates an unminified production example in `example/dist/`. Use `bun run build:example:inspect` to create a separate readable build in `example/out/inspect/`.
 
 ## Authoring model
 
 ```tsx
-import { $component, mount } from "frontend-framework";
+import { $component, mount } from "solix";
 
 const Counter = $component(function Counter() {
   let count = 0;
@@ -43,7 +52,7 @@ Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `check
 `$form()` owns a form's values, validation errors, and submission state. It accepts a callable parser or a schema with `parse()` or `parseAsync()`, so Valibot and Zod can share the same controller API.
 
 ```tsx
-import { $component, $form } from "frontend-framework";
+import { $component, $form } from "solix";
 import * as v from "valibot";
 
 const TodoSchema = v.object({
@@ -86,7 +95,7 @@ Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()`
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string, so the application can define animation details with Tailwind, another CSS framework, or its own stylesheet. Transitions run only for updates after the initial render:
 
 ```tsx
-import { $component, type Transition } from "frontend-framework";
+import { $component, type Transition } from "solix";
 
 const fade: Transition = {
   enter: "animate-in fade-in duration-150",
@@ -113,9 +122,9 @@ Enable compilation in Vite:
 
 ```ts
 import { defineConfig } from "vite";
-import { frontendFramework } from "frontend-framework/vite";
+import { solix } from "@solix/compiler/vite";
 
-export default defineConfig({ plugins: [frontendFramework()] });
+export default defineConfig({ plugins: [solix()] });
 ```
 
 ## Context and async rendering
@@ -169,7 +178,7 @@ descendant setup/render failures; event-handler errors are not intercepted.
 Routes are discovered automatically below the Vite project root. Define each route as an exported top-level constant in a `*.route.js`, `.jsx`, `.ts`, or `.tsx` file:
 
 ```tsx
-import { $component, $route } from "frontend-framework";
+import { $component, $route } from "solix";
 import * as v from "valibot";
 
 const BlogDetail = $component(function BlogDetail() {
@@ -206,7 +215,7 @@ Routes without a schema retain inferred string values for path parameters and op
 Use `Link` when the destination is represented by a route handle. It requires exactly one anchor child, supplies that anchor's `href`, and intercepts eligible same-tab clicks without adding a wrapper element:
 
 ```tsx
-import { Link } from "frontend-framework";
+import { Link } from "solix";
 
 <Link route={blogDetailRoute} params={{ id: 42, page: 2 }}>
   <a class="entry-link">Open entry</a>
@@ -218,7 +227,7 @@ The route handle determines every required value in its single `params` prop. Au
 Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
 
 ```tsx
-import { $component, Route, router } from "frontend-framework";
+import { $component, Route, router } from "solix";
 
 const LoadingRoute = $component(function LoadingRoute() {
   return <p>Loading…</p>;
@@ -238,7 +247,7 @@ const App = $component(function App() {
 
 The optional `pending` component renders while an asynchronous schema resolves. Without it, the outlet remains empty during validation. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` (with `query` as an alias), the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are still handled through browser history.
 
-The demo uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
+The example uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
 
 ## Verification
 

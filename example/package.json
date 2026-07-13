@@ -1,0 +1,25 @@
+{
+  "name": "@solix/example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --minify=false && bun test tests/build-output.test.ts",
+    "build:inspect": "vite build --minify=false --outDir out/inspect",
+    "test": "bun test tests/build-output.test.ts",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "solix": "workspace:*",
+    "valibot": "^1.4.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@solix/compiler": "workspace:*",
+    "@tailwindcss/vite": "^4.1.14",
+    "tailwindcss": "^4.1.14",
+    "vite": "^8.0.10"
+  }
+}

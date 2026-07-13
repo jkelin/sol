@@ -1,0 +1,195 @@
+import { parseExpression } from "@babel/parser";
+import type { NodePath } from "@babel/traverse";
+import * as t from "@babel/types";
+import { generate, traverse } from "./ast.ts";
+import type { CompilerContext, Scope, TemplateContext } from "./context.ts";
+import { codeFrame } from "./diagnostics.ts";
+
+export function isRouteFilename(filename: string): boolean {
+  return /\.route\.[jt]sx?$/i.test(filename.replaceAll("\\", "/"));
+}
+
+export function normalizeJsxText(value: string): string {
+  if (!value.includes("\n") && !value.includes("\r")) return value;
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function rewriteIdentifiers(file: t.File, scope: Scope): void {
+  traverse(file, {
+    Identifier(path: NodePath<t.Identifier>) {
+      const replacement = scope.get(path.node.name);
+      if (!replacement || path.scope.hasBinding(path.node.name)) return;
+      const isAssignment = t.isAssignmentExpression(path.parent) && path.parent.left === path.node;
+      const isUpdate = t.isUpdateExpression(path.parent) && path.parent.argument === path.node;
+      if (!path.isReferencedIdentifier() && !isAssignment && !isUpdate) return;
+      if (t.isObjectProperty(path.parent) && path.parent.shorthand) path.parent.shorthand = false;
+      path.replaceWith(parseExpression(replacement, { plugins: ["typescript"] }));
+      path.skip();
+    },
+  });
+}
+
+export function expressionCode(expression: t.Expression, scope: Scope): string {
+  const cloned = t.cloneNode(expression, true);
+  const file = t.file(t.program([t.expressionStatement(cloned)]));
+  rewriteIdentifiers(file, scope);
+  return generate((file.program.body[0] as t.ExpressionStatement).expression).code;
+}
+
+export function statementCode(statement: t.Statement, scope: Scope): string {
+  const file = t.file(t.program([t.cloneNode(statement, true)]));
+  rewriteIdentifiers(file, scope);
+  return generate(file.program.body[0]!).code;
+}
+
+export function jsxName(
+  context: CompilerContext,
+  name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName,
+): string {
+  if (!t.isJSXIdentifier(name))
+    codeFrame(context, name, "Dynamic and namespaced JSX tag names are not supported in v1");
+  return name.name;
+}
+
+export function region(context: TemplateContext): number {
+  const index = context.nextRegion++;
+  context.html.push(`<!--solix:s:${index}--><!--solix:e:${index}-->`);
+  return index;
+}
+
+export function elementId(context: TemplateContext, opening: t.JSXOpeningElement): number {
+  const existing = context.elementIds.get(opening);
+  if (existing !== undefined) return existing;
+  const index = context.nextElement++;
+  context.elementIds.set(opening, index);
+  return index;
+}
+
+export function getAttributeName(
+  context: CompilerContext,
+  name: t.JSXIdentifier | t.JSXNamespacedName,
+): string {
+  if (t.isJSXIdentifier(name)) return name.name;
+  if (name.namespace.name === "bind") {
+    codeFrame(
+      context,
+      name,
+      "bind:* was removed; use $bind={value} and let the compiler infer the DOM property",
+    );
+  }
+  return codeFrame(context, name, "JSX namespaces are not supported");
+}
+
+export function staticAttributeValue(
+  context: CompilerContext,
+  attribute: t.JSXAttribute,
+): string | boolean | undefined {
+  if (!attribute.value) return true;
+  if (t.isStringLiteral(attribute.value)) return attribute.value.value;
+  if (t.isJSXExpressionContainer(attribute.value) && t.isStringLiteral(attribute.value.expression))
+    return attribute.value.expression.value;
+  if (
+    t.isJSXExpressionContainer(attribute.value) &&
+    t.isBooleanLiteral(attribute.value.expression)
+  ) {
+    return attribute.value.expression.value;
+  }
+  return undefined;
+}
+
+export function expressionAttribute(
+  context: CompilerContext,
+  attribute: t.JSXAttribute,
+): t.Expression {
+  if (!t.isJSXExpressionContainer(attribute.value) || !t.isExpression(attribute.value.expression)) {
+    codeFrame(context, attribute, "This JSX attribute requires an expression");
+  }
+  return attribute.value.expression;
+}
+
+export function getKeyAttribute(
+  context: CompilerContext,
+  node: t.JSXElement | t.JSXFragment,
+): t.JSXAttribute {
+  if (t.isJSXFragment(node))
+    codeFrame(context, node, "A keyed list row must have a single element or component root");
+  for (const attribute of node.openingElement.attributes) {
+    if (t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "key" }))
+      return attribute;
+  }
+  return codeFrame(context, node, "Every JSX .map() row requires a key attribute");
+}
+
+export function keyCode(context: CompilerContext, attribute: t.JSXAttribute, scope: Scope): string {
+  const value = staticAttributeValue(context, attribute);
+  if (value !== undefined) return JSON.stringify(value);
+  return expressionCode(expressionAttribute(context, attribute), scope);
+}
+
+export type ReactiveKind = "signal" | "computed";
+
+export function isReservedCompilerName(name: string): boolean {
+  return name.startsWith("__solix_");
+}
+
+export function validateReservedIdentifier(
+  compiler: CompilerContext,
+  identifier: t.Identifier,
+): void {
+  if (isReservedCompilerName(identifier.name)) {
+    codeFrame(
+      compiler,
+      identifier,
+      `Identifier ${identifier.name} uses the reserved compiler prefix __solix_`,
+    );
+  }
+}
+
+export function isHelperCall(
+  expression: t.Expression | null | undefined,
+  name: "$signal" | "$computed",
+): expression is t.CallExpression {
+  return t.isCallExpression(expression) && t.isIdentifier(expression.callee, { name });
+}
+
+export function referencesReactive(
+  expression: t.Expression,
+  reactiveNames: ReadonlySet<string>,
+  propsName: string | undefined,
+): boolean {
+  let found = false;
+  const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
+  traverse(file, {
+    ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
+      if (!t.isIdentifier(path.node)) return;
+      if (path.scope.hasBinding(path.node.name)) return;
+      if (path.node.name === propsName || reactiveNames.has(path.node.name)) {
+        found = true;
+        path.stop();
+      }
+    },
+  });
+  return found;
+}
+
+export function referencedNames(expression: t.Expression): Set<string> {
+  const names = new Set<string>();
+  const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
+  traverse(file, {
+    ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
+      if (!t.isIdentifier(path.node) || path.scope.hasBinding(path.node.name)) return;
+      names.add(path.node.name);
+    },
+  });
+  return names;
+}
+
+export function bindingRoot(expression: t.Expression): string | undefined {
+  let current: t.Expression = expression;
+  while (t.isMemberExpression(current) && t.isExpression(current.object)) current = current.object;
+  return t.isIdentifier(current) ? current.name : undefined;
+}

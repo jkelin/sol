@@ -1,0 +1,317 @@
+import type { Cleanup, RenderFrame } from "./rendering.ts";
+
+export interface Signal<T> {
+  value: T;
+}
+
+export interface ReadonlySignal<T> {
+  readonly value: T;
+}
+
+type Dependency = Set<ReactiveEffect>;
+
+interface ReactiveEffect {
+  active: boolean;
+  computed: boolean;
+  running: boolean;
+  dependencies: Set<Dependency>;
+  run: () => void;
+}
+
+const ITERATE = Symbol("solix.iterate");
+const SIGNAL = Symbol("solix.signal");
+const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
+const proxyCache = new WeakMap<object, object>();
+const proxyTargets = new WeakMap<object, object>();
+const mutatingArrayMethods = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
+let activeEffect: ReactiveEffect | undefined;
+export const runtimeState: { activeOwner?: Cleanup[]; activeFrame?: RenderFrame } = {};
+let batchDepth = 0;
+let flushingEffects = false;
+const pendingEffects = new Set<ReactiveEffect>();
+const disposedOwners = new WeakSet<Cleanup[]>();
+
+export function disposeOwner(owner: Cleanup[]): void {
+  if (disposedOwners.has(owner)) return;
+  disposedOwners.add(owner);
+  for (const cleanup of owner.toReversed()) cleanup();
+}
+
+function cleanupEffect(effect: ReactiveEffect): void {
+  for (const dependency of effect.dependencies) dependency.delete(effect);
+  effect.dependencies.clear();
+}
+
+function track(target: object, key: PropertyKey): void {
+  if (!activeEffect?.active) return;
+  let targetDependencies = dependencies.get(target);
+  if (!targetDependencies) {
+    targetDependencies = new Map();
+    dependencies.set(target, targetDependencies);
+  }
+  let dependency = targetDependencies.get(key);
+  if (!dependency) {
+    dependency = new Set();
+    targetDependencies.set(key, dependency);
+  }
+  dependency.add(activeEffect);
+  activeEffect.dependencies.add(dependency);
+}
+
+function flushEffects(): void {
+  if (flushingEffects) return;
+  flushingEffects = true;
+  let failed = false;
+  let failure: unknown;
+  try {
+    while (pendingEffects.size > 0) {
+      let effect: ReactiveEffect | undefined;
+      for (const candidate of pendingEffects) {
+        effect ??= candidate;
+        if (candidate.computed) {
+          effect = candidate;
+          break;
+        }
+      }
+      if (!effect) break;
+      pendingEffects.delete(effect);
+      try {
+        effect.run();
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          failure = error;
+        }
+      }
+    }
+  } finally {
+    flushingEffects = false;
+  }
+  if (failed) throw failure;
+}
+
+function trigger(target: object, key: PropertyKey): void {
+  const targetDependencies = dependencies.get(target);
+  if (!targetDependencies) return;
+  const effects = new Set<ReactiveEffect>();
+  for (const effect of targetDependencies.get(key) ?? []) effects.add(effect);
+  for (const effect of effects) {
+    if (effect.active && !effect.running) pendingEffects.add(effect);
+  }
+  if (batchDepth === 0 && !flushingEffects) flushEffects();
+}
+
+export function batch<T>(callback: () => T): T {
+  batchDepth += 1;
+  let result: T | undefined;
+  let callbackFailed = false;
+  let callbackFailure: unknown;
+  try {
+    result = callback();
+  } catch (error) {
+    callbackFailed = true;
+    callbackFailure = error;
+  } finally {
+    batchDepth -= 1;
+  }
+  let flushFailed = false;
+  let flushFailure: unknown;
+  if (batchDepth === 0) {
+    try {
+      flushEffects();
+    } catch (error) {
+      flushFailed = true;
+      flushFailure = error;
+    }
+  }
+  if (callbackFailed && flushFailed) {
+    throw new AggregateError(
+      [callbackFailure, flushFailure],
+      "Batch callback and reactive flush failed",
+    );
+  }
+  if (callbackFailed) throw callbackFailure;
+  if (flushFailed) throw flushFailure;
+  return result as T;
+}
+
+function createReactiveEffect(
+  callback: () => void,
+  computed: boolean,
+  explicitOwner?: Cleanup[],
+): Cleanup {
+  const effect: ReactiveEffect = {
+    active: true,
+    computed,
+    running: false,
+    dependencies: new Set(),
+    run() {
+      if (!effect.active || effect.running) return;
+      cleanupEffect(effect);
+      const previousEffect = activeEffect;
+      activeEffect = effect;
+      effect.running = true;
+      try {
+        callback();
+      } finally {
+        effect.running = false;
+        activeEffect = previousEffect;
+      }
+    },
+  };
+  const stop = () => {
+    if (!effect.active) return;
+    effect.active = false;
+    pendingEffects.delete(effect);
+    cleanupEffect(effect);
+  };
+  const owner = explicitOwner ?? runtimeState.activeOwner;
+  const ownerWasDisposed = owner ? disposedOwners.has(owner) : false;
+  if (owner && !ownerWasDisposed) owner.push(stop);
+  try {
+    effect.run();
+    if (ownerWasDisposed) stop();
+  } catch (error) {
+    stop();
+    if (owner && !ownerWasDisposed) {
+      const index = owner.lastIndexOf(stop);
+      if (index >= 0) owner.splice(index, 1);
+    }
+    throw error;
+  }
+  return stop;
+}
+
+export function runtimeEffect(callback: () => void): Cleanup {
+  return createReactiveEffect(callback, false);
+}
+
+export function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+export function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  return isObject(value) && typeof (value as { then?: unknown }).then === "function";
+}
+
+function isReactiveTarget(value: object): boolean {
+  if (!Object.isExtensible(value)) return false;
+  if (Array.isArray(value)) return true;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
+}
+
+function unwrap<T>(value: T): T {
+  if (!isObject(value)) return value;
+  return (proxyTargets.get(value) ?? value) as T;
+}
+
+export function reactive<T extends object>(target: T): T {
+  if (proxyTargets.has(target)) return target;
+  const cached = proxyCache.get(target);
+  if (cached) return cached as T;
+
+  const proxy = new Proxy(target, {
+    get(object, key, receiver) {
+      if (Array.isArray(object) && typeof key === "string" && mutatingArrayMethods.has(key)) {
+        return (...args: unknown[]) =>
+          batch(() => {
+            const method = Reflect.get(object, key, receiver) as (...values: unknown[]) => unknown;
+            return method.apply(receiver, args);
+          });
+      }
+      track(object, key);
+      const value = Reflect.get(object, key, receiver) as unknown;
+      return wrap(value);
+    },
+    set(object, key, value, receiver) {
+      const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
+      const oldValue = unwrap(Reflect.get(object, key, receiver) as unknown);
+      const nextValue = unwrap(value);
+      const oldLength = Array.isArray(object) ? object.length : 0;
+      const changed = Reflect.set(object, key, nextValue, receiver);
+      if (changed && !Object.is(oldValue, nextValue)) {
+        trigger(object, key);
+        if (!wasPresent) trigger(object, ITERATE);
+        if (Array.isArray(object) && key !== "length" && object.length !== oldLength) {
+          trigger(object, "length");
+        }
+      }
+      return changed;
+    },
+    deleteProperty(object, key) {
+      const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
+      const deleted = Reflect.deleteProperty(object, key);
+      if (deleted && wasPresent) {
+        trigger(object, key);
+        trigger(object, ITERATE);
+      }
+      return deleted;
+    },
+    ownKeys(object) {
+      track(object, ITERATE);
+      return Reflect.ownKeys(object);
+    },
+  });
+  proxyCache.set(target, proxy);
+  proxyTargets.set(proxy, target);
+  return proxy;
+}
+
+function wrap<T>(value: T): T {
+  return isObject(value) && isReactiveTarget(value) ? (reactive(value) as T) : value;
+}
+
+export function $signal<T>(initial: T): Signal<T> {
+  let value = wrap(initial);
+  const reference = {
+    [SIGNAL]: true,
+    get value(): T {
+      track(reference, "value");
+      return value;
+    },
+    set value(next: T) {
+      const currentValue = unwrap(value);
+      const nextValue = unwrap(next);
+      if (Object.is(currentValue, nextValue)) return;
+      value = wrap(nextValue);
+      trigger(reference, "value");
+    },
+  };
+  return reference;
+}
+
+function createComputed<T>(derive: () => T, frame?: RenderFrame): ReadonlySignal<T> {
+  if (typeof derive !== "function") throw new TypeError("$computed() expects a function");
+  const value = $signal<T>(undefined as T);
+  createReactiveEffect(
+    () => {
+      value.value = derive();
+    },
+    true,
+    frame?.owner,
+  );
+  return Object.freeze({
+    get value(): T {
+      return value.value;
+    },
+  });
+}
+
+export function $computed<T>(derive: () => T): ReadonlySignal<T> {
+  return createComputed(derive);
+}
+
+export function computedInFrame<T>(derive: () => T, frame: RenderFrame): ReadonlySignal<T> {
+  return createComputed(derive, frame);
+}

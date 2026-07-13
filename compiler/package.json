@@ -1,0 +1,27 @@
+{
+  "name": "@solix/compiler",
+  "version": "0.0.0",
+  "type": "module",
+  "module": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./vite": "./src/vite.ts"
+  },
+  "scripts": {
+    "test": "bun test tests/compiler.test.ts tests/integration.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@babel/generator": "^7.28.4",
+    "@babel/parser": "^7.28.4",
+    "@babel/traverse": "^7.28.4",
+    "@babel/types": "^7.28.4",
+    "magic-string": "^0.30.21"
+  },
+  "devDependencies": {
+    "solix": "workspace:*"
+  },
+  "peerDependencies": {
+    "vite": "^8.0.10"
+  }
+}

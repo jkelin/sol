@@ -23,10 +23,47 @@
         "oxlint-tsgolint": "^0.24.0",
         "source-map-js": "^1.2.1",
         "tailwindcss": "^4.1.14",
+        "typescript": "^5",
         "valibot": "^1.4.2",
         "vite": "^8.0.10",
         "zod": "^4.4.3",
       },
+    },
+    "compiler": {
+      "name": "@solix/compiler",
+      "version": "0.0.0",
+      "dependencies": {
+        "@babel/generator": "^7.28.4",
+        "@babel/parser": "^7.28.4",
+        "@babel/traverse": "^7.28.4",
+        "@babel/types": "^7.28.4",
+        "magic-string": "^0.30.21",
+      },
+      "devDependencies": {
+        "solix": "workspace:*",
+      },
+      "peerDependencies": {
+        "vite": "^8.0.10",
+      },
+    },
+    "example": {
+      "name": "@solix/example",
+      "version": "0.0.0",
+      "dependencies": {
+        "solix": "workspace:*",
+        "valibot": "^1.4.2",
+      },
+      "devDependencies": {
+        "@playwright/test": "^1.61.1",
+        "@solix/compiler": "workspace:*",
+        "@tailwindcss/vite": "^4.1.14",
+        "tailwindcss": "^4.1.14",
+        "vite": "^8.0.10",
+      },
+    },
+    "runtime": {
+      "name": "solix",
+      "version": "0.0.0",
       "peerDependencies": {
         "typescript": "^5",
       },
@@ -193,6 +230,10 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
+    "@solix/compiler": ["@solix/compiler@workspace:compiler"],
+
+    "@solix/example": ["@solix/example@workspace:example"],
+
     "@tailwindcss/node": ["@tailwindcss/node@4.3.2", "", { "dependencies": { "@jridgewell/remapping": "^2.3.5", "enhanced-resolve": "5.21.6", "jiti": "^2.7.0", "lightningcss": "1.32.0", "magic-string": "^0.30.21", "source-map-js": "^1.2.1", "tailwindcss": "4.3.2" } }, "sha512-yWP/sqEcBLaD8JuA6zNwxoYKr75qxTioYwlRwekj5Jr/I5GXnoJfjetH/psLUIv74cYTH2lBUEzBkinthoYcBg=="],
 
     "@tailwindcss/oxide": ["@tailwindcss/oxide@4.3.2", "", { "optionalDependencies": { "@tailwindcss/oxide-android-arm64": "4.3.2", "@tailwindcss/oxide-darwin-arm64": "4.3.2", "@tailwindcss/oxide-darwin-x64": "4.3.2", "@tailwindcss/oxide-freebsd-x64": "4.3.2", "@tailwindcss/oxide-linux-arm-gnueabihf": "4.3.2", "@tailwindcss/oxide-linux-arm64-gnu": "4.3.2", "@tailwindcss/oxide-linux-arm64-musl": "4.3.2", "@tailwindcss/oxide-linux-x64-gnu": "4.3.2", "@tailwindcss/oxide-linux-x64-musl": "4.3.2", "@tailwindcss/oxide-wasm32-wasi": "4.3.2", "@tailwindcss/oxide-win32-arm64-msvc": "4.3.2", "@tailwindcss/oxide-win32-x64-msvc": "4.3.2" } }, "sha512-z8ZgnzX8gdNoWLBLqBPoh/sjnxkwvf9ZuWjnO0l0yIzbLa5/9S+eC5QxGZKRobVHIC3/1BoMWjHblqWjcgFgag=="],
@@ -350,6 +391,8 @@
     "signal-exit": ["signal-exit@4.1.0", "", {}, "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw=="],
 
     "slice-ansi": ["slice-ansi@8.0.0", "", { "dependencies": { "ansi-styles": "^6.2.3", "is-fullwidth-code-point": "^5.1.0" } }, "sha512-stxByr12oeeOyY2BlviTNQlYV5xOj47GirPr4yA1hE9JCtxfQN0+tVbkxwCtYDQWhEKWFHsEK48ORg5jrouCAg=="],
+
+    "solix": ["solix@workspace:runtime"],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 

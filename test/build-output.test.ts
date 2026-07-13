@@ -1,0 +1,14 @@
+import { expect, test } from "bun:test";
+
+test("the demo build keeps compiler output readable", async () => {
+  const assets = new Bun.Glob("*.js");
+  const outputFiles = [...assets.scanSync("dist/assets")];
+  expect(outputFiles.length).toBeGreaterThan(0);
+
+  const output = (await Promise.all(
+    outputFiles.map((file) => Bun.file(`dist/assets/${file}`).text()),
+  )).join("\n");
+  expect(output).toContain("__ff_template");
+  expect(output).toContain("//#region demo/src/App.tsx");
+  expect(output).toContain("function cleanupEffect(effect)");
+});

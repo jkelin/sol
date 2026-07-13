@@ -18,6 +18,7 @@ import {
   template,
   text,
   type Region,
+  type Signal,
   when,
 } from "../src/runtime.ts";
 
@@ -67,6 +68,90 @@ describe("reactivity", () => {
     expect(values).toEqual([2, 6]);
   });
 
+  test("deduplicates computed cascades during a batch", () => {
+    const count = $signal(1);
+    const doubled = $computed(() => count.value * 2);
+    const observations: string[] = [];
+    runtimeEffect(() => observations.push(`${count.value}:${doubled.value}`));
+
+    batch(() => {
+      count.value = 2;
+      count.value = 3;
+    });
+
+    expect(observations).toEqual(["1:2", "3:6"]);
+  });
+
+  test("deduplicates computed cascades outside a batch", () => {
+    const count = $signal(1);
+    const doubled = $computed(() => count.value * 2);
+    const observations: string[] = [];
+    runtimeEffect(() => observations.push(`${count.value}:${doubled.value}`));
+
+    count.value = 2;
+
+    expect(observations).toEqual(["1:2", "2:4"]);
+  });
+
+  test("settles transitive computed chains before running consumers", () => {
+    for (const update of [
+      (source: Signal<number>) => { source.value = 2; },
+      (source: Signal<number>) => batch(() => { source.value = 2; }),
+    ]) {
+      const source = $signal(1);
+      const doubled = $computed(() => source.value * 2);
+      const incremented = $computed(() => doubled.value + 1);
+      const observations: string[] = [];
+      runtimeEffect(() => observations.push(`${source.value}:${incremented.value}`));
+
+      update(source);
+
+      expect(observations).toEqual(["1:3", "2:5"]);
+    }
+  });
+
+  test("preserves a batch callback failure when the reactive flush also fails", () => {
+    const source = $signal(0);
+    runtimeEffect(() => {
+      if (source.value > 0) throw new Error("effect failed");
+    });
+
+    try {
+      batch(() => {
+        source.value = 1;
+        throw new Error("callback failed");
+      });
+      throw new Error("expected batch to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors.map(String)).toEqual([
+        "Error: callback failed",
+        "Error: effect failed",
+      ]);
+    }
+  });
+
+  test("unsubscribes effects and computed values whose initial evaluation throws", () => {
+    const source = $signal(0);
+    let effectRuns = 0;
+    expect(() => runtimeEffect(() => {
+      effectRuns += 1;
+      void source.value;
+      throw new Error("effect failed");
+    })).toThrow("effect failed");
+
+    let computedRuns = 0;
+    expect(() => $computed(() => {
+      computedRuns += 1;
+      void source.value;
+      throw new Error("computed failed");
+    })).toThrow("computed failed");
+
+    source.value = 1;
+    expect(effectRuns).toBe(1);
+    expect(computedRuns).toBe(1);
+  });
+
   test("tracks deep object writes and array mutators", () => {
     const state = $signal({ todos: [{ done: false }] });
     const observations: string[] = [];
@@ -77,6 +162,36 @@ describe("reactivity", () => {
     state.value.todos.splice(0, 1);
 
     expect(observations).toEqual(["1:false", "1:true", "2:true", "1:false"]);
+  });
+
+  test("preserves built-in and class instances instead of proxying them", () => {
+    class Model {
+      constructor(readonly value: number) {}
+    }
+    const date = new Date(0);
+    const map = new Map([["answer", 42]]);
+    const model = new Model(7);
+    const state = $signal({ date, map, model });
+
+    expect(state.value.date).toBe(date);
+    expect(state.value.date.getTime()).toBe(0);
+    expect(state.value.map).toBe(map);
+    expect(state.value.map.get("answer")).toBe(42);
+    expect(state.value.model).toBe(model);
+    expect(state.value.model.value).toBe(7);
+  });
+
+  test("treats assigning a cached proxy back to its property as a no-op", () => {
+    const state = $signal({ child: { value: 1 } });
+    const observations: number[] = [];
+    runtimeEffect(() => observations.push(state.value.child.value));
+    const child = state.value.child;
+
+    state.value.child = child;
+    child.value = 2;
+
+    expect(state.value.child).toBe(child);
+    expect(observations).toEqual([1, 2]);
   });
 
   test("tracks property iteration and deletion", () => {
@@ -144,6 +259,28 @@ describe("compiled DOM runtime", () => {
     expect(() => mount((() => undefined) as never, target)).toThrow("uncompiled component");
     expect(() => mount((() => undefined) as never, null as never)).toThrow("DOM Element target");
     expect(() => mount((() => undefined) as never, target, "bad props" as never)).toThrow("props must be an object");
+  });
+
+  test("rejects every reflective mutation of readonly component props", () => {
+    let receivedProps: Readonly<{ label: string }> | undefined;
+    const Example = component((props: Readonly<{ label: string }>) => {
+      receivedProps = props;
+      return block(document.createDocumentFragment());
+    });
+    mount(Example, document.createElement("main"), { label: "original" });
+    const props = receivedProps!;
+
+    expect(() => Object.defineProperty(props, "label", { value: "changed" })).toThrow("Component props are readonly");
+    expect(() => Reflect.defineProperty(props, "label", { value: "changed" })).toThrow("Component props are readonly");
+    expect(() => Object.setPrototypeOf(props, null)).toThrow("Component props are readonly");
+    expect(() => Reflect.setPrototypeOf(props, null)).toThrow("Component props are readonly");
+    expect(() => Object.preventExtensions(props)).toThrow("Component props are readonly");
+    expect(() => Reflect.preventExtensions(props)).toThrow("Component props are readonly");
+    expect(() => Object.freeze(props)).toThrow("Component props are readonly");
+    expect(() => Object.seal(props)).toThrow("Component props are readonly");
+    expect(props.label).toBe("original");
+    expect(Object.isExtensible(props)).toBe(true);
+    expect(Object.getPrototypeOf(props)).toBe(Object.prototype);
   });
 
   test("cleans setup-owned effects when component setup throws", () => {

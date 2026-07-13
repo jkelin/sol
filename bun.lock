@@ -15,6 +15,7 @@
         "@types/bun": "latest",
         "happy-dom": "^20.10.6",
         "magic-string": "^0.30.21",
+        "source-map-js": "^1.2.1",
         "vite": "^8.0.10",
       },
       "peerDependencies": {

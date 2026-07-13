@@ -11,6 +11,8 @@ bun run dev
 
 The notebook-style to-do app demonstrates compiler-managed component state, derived values, deep proxies, child props, keyed lists, conditionals, editable rows, class composition, and two-way bindings.
 
+`bun run build` (or `bun run build:demo`) creates an unminified production demo in `dist/`. Use `bun run build:demo:inspect` to create the same readable output in `out/demo-inspect/` without replacing the normal build.
+
 ## Authoring model
 
 ```tsx
@@ -37,7 +39,7 @@ Direct component-body data variables are reactive automatically. Writable declar
 
 Derived inference follows direct reads in the initializer. When a helper function closes over reactive state and the initializer only calls that helper, use an explicit `$computed(() => helper())` override; interprocedural dependency analysis is intentionally outside v1.
 
-Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static checkbox/radio inputs and `value` for other supported controls. Signal object and array values are deep proxies, so nested assignments and mutating array methods are reactive.
+Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static checkbox/radio inputs and `value` for other supported controls. Signal arrays and plain-object values are deep proxies, so nested assignments and mutating array methods are reactive. Dates, collections, and class instances retain their original identity.
 
 `class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, nested arrays, and object maps. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 

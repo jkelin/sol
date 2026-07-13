@@ -3,7 +3,7 @@ import { parse, parseExpression } from "@babel/parser";
 import traverseModule from "@babel/traverse";
 import * as t from "@babel/types";
 import type { NodePath } from "@babel/traverse";
-import MagicString from "magic-string";
+import MagicString, { SourceMap } from "magic-string";
 
 const generate = (
   (generateModule as unknown as { default?: typeof generateModule }).default ?? generateModule
@@ -40,7 +40,7 @@ type Scope = ReadonlyMap<string, string>;
 
 export interface CompileResult {
   code: string;
-  map: ReturnType<MagicString["generateMap"]> | null;
+  map: SourceMap | null;
 }
 
 interface Edit {
@@ -68,6 +68,53 @@ interface CompilerContext {
   templates: string[];
   componentNames: Set<string>;
   propsName?: string;
+  mappingOrigins: Array<{ marker: string; originalOffset: number }>;
+  nextListId: number;
+}
+
+function mappedCode(compiler: CompilerContext, node: t.Node, code: string): string {
+  const marker = `/*__ff_source_${compiler.mappingOrigins.length}__*/`;
+  compiler.mappingOrigins.push({ marker, originalOffset: node.start ?? 0 });
+  return `${marker}${code}`;
+}
+
+function offsetPosition(source: string, offset: number): { line: number; column: number } {
+  let line = 0;
+  let lineStart = 0;
+  for (let index = 0; index < offset; index += 1) {
+    if (source.charCodeAt(index) === 10) {
+      line += 1;
+      lineStart = index + 1;
+    }
+  }
+  return { line, column: offset - lineStart };
+}
+
+function generatedSourceMap(
+  transformedSource: MagicString,
+  transformed: string,
+  compiler: CompilerContext,
+): SourceMap {
+  const decoded = transformedSource.generateDecodedMap({
+    hires: true,
+    source: compiler.filename,
+    includeContent: true,
+  });
+  for (const origin of compiler.mappingOrigins) {
+    const markerOffset = transformed.indexOf(origin.marker);
+    if (markerOffset < 0) continue;
+    const generated = offsetPosition(transformed, markerOffset + origin.marker.length);
+    const original = offsetPosition(compiler.source, origin.originalOffset);
+    const segments = decoded.mappings[generated.line] ?? (decoded.mappings[generated.line] = []);
+    const existing = segments.findIndex((segment) => segment[0] === generated.column);
+    if (existing >= 0) segments.splice(existing, 1);
+    segments.push([generated.column, 0, original.line, original.column]);
+    segments.sort((left, right) => left[0] - right[0]);
+  }
+  return new SourceMap({
+    ...decoded,
+    sourcesContent: (decoded.sourcesContent ?? [compiler.source]).map((content) => content ?? ""),
+  });
 }
 
 function codeFrame(context: CompilerContext, node: t.Node, message: string): never {
@@ -210,6 +257,20 @@ function keyCode(context: CompilerContext, attribute: t.JSXAttribute, scope: Sco
 
 type ReactiveKind = "signal" | "computed";
 
+function isReservedCompilerName(name: string): boolean {
+  return name.startsWith("__ff_");
+}
+
+function validateReservedIdentifier(compiler: CompilerContext, identifier: t.Identifier): void {
+  if (isReservedCompilerName(identifier.name)) {
+    codeFrame(
+      compiler,
+      identifier,
+      `Identifier ${identifier.name} uses the reserved compiler prefix __ff_`,
+    );
+  }
+}
+
 function isHelperCall(expression: t.Expression | null | undefined, name: "$signal" | "$computed"): boolean {
   return t.isCallExpression(expression) && t.isIdentifier(expression.callee, { name });
 }
@@ -271,11 +332,23 @@ function compileBinding(
   }
   if (t.isMemberExpression(expression) && !expression.optional) {
     const root = bindingRoot(expression);
-    if (root === compiler.propsName && t.isIdentifier(expression.object, { name: root })) {
+    const scopedRoot = root ? scope.get(root) : undefined;
+    const isKeyedRowValue = scopedRoot !== undefined
+      && /^__ff_(?:item|index)_\d+\.value$/.test(scopedRoot);
+    if (!isKeyedRowValue && root === compiler.propsName && t.isIdentifier(expression.object, { name: root })) {
       codeFrame(compiler, expression, "$bind cannot assign directly to a readonly component prop");
     }
-    if (root && bindings.get(root) === "computed") {
+    if (!isKeyedRowValue && root && bindings.get(root) === "computed") {
       codeFrame(compiler, expression, "$bind cannot target a computed value or one of its members");
+    }
+    const isNestedProp = !isKeyedRowValue && root === compiler.propsName
+      && t.isMemberExpression(expression.object);
+    if (!root || (!bindings.has(root) && !isNestedProp && !isKeyedRowValue)) {
+      codeFrame(
+        compiler,
+        expression,
+        "$bind member expressions must be rooted in component state, nested props, or keyed-list row state",
+      );
     }
     const target = expressionCode(expression, scope);
     return {
@@ -312,9 +385,11 @@ function compileComponentElement(
     props.push(`${JSON.stringify(name)}: ${getter}`);
   }
   const index = region(context);
-  context.operations.push(
+  context.operations.push(mappedCode(
+    compiler,
+    node,
     `__ff_child(__ff_view.regions[${index}], ${componentName}, { ${props.join(", ")} }, __ff_cleanups);`,
-  );
+  ));
 }
 
 function compileIntrinsicElement(
@@ -365,19 +440,31 @@ function compileIntrinsicElement(
         bindings,
         scope,
       );
-      deferredOperations.push((element) =>
+      deferredOperations.push((element) => mappedCode(
+        compiler,
+        attribute,
         `__ff_bind(__ff_view.elements[${element}], ${JSON.stringify(property)}, () => (${binding.read}), (__ff_value: unknown) => { ${binding.write}; }, __ff_cleanups);`,
-      );
+      ));
       continue;
+    }
+
+    if (/^on/i.test(sourceName) && !/^on[A-Z][A-Za-z0-9]*$/.test(sourceName)) {
+      codeFrame(
+        compiler,
+        attribute,
+        `Event attribute ${sourceName} must use React-style onEvent capitalization`,
+      );
     }
 
     if (/^on[A-Z]/.test(sourceName)) {
       const normalizedEventName = sourceName.slice(2).toLowerCase();
       const eventName = normalizedEventName === "doubleclick" ? "dblclick" : normalizedEventName;
       const handler = expressionCode(expressionAttribute(compiler, attribute), scope);
-      deferredOperations.push((element) =>
+      deferredOperations.push((element) => mappedCode(
+        compiler,
+        attribute,
         `__ff_event(__ff_view.elements[${element}], ${JSON.stringify(eventName)}, () => (${handler}), __ff_cleanups);`,
-      );
+      ));
       continue;
     }
 
@@ -389,9 +476,11 @@ function compileIntrinsicElement(
     else if (staticValue === false) continue;
     else {
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
-      deferredOperations.push((element) =>
+      deferredOperations.push((element) => mappedCode(
+        compiler,
+        attribute,
         `__ff_attribute(__ff_view.elements[${element}], ${JSON.stringify(name)}, () => (${value}), __ff_cleanups);`,
-      );
+      ));
     }
   }
 
@@ -443,7 +532,7 @@ function mapDetails(
       codeFrame(
         compiler,
         body.body[0]!,
-        "JSX .map() setup statements are not supported in v1; move them into a component or computed()",
+        "JSX .map() setup statements are not supported in v1; move them into a component or $computed()",
       );
     }
     body = directReturns[0]!.argument;
@@ -483,41 +572,53 @@ function compileExpressionChild(
 ): void {
   const map = mapDetails(compiler, expression);
   if (map) {
+    const listId = compiler.nextListId;
+    compiler.nextListId += 1;
+    const itemReference = `__ff_item_${listId}`;
+    const indexReference = `__ff_index_${listId}`;
     const rowScope = new Map(scope);
-    rowScope.set(map.itemName, "__ff_item.value");
-    if (map.indexName) rowScope.set(map.indexName, "__ff_index.value");
+    rowScope.set(map.itemName, `${itemReference}.value`);
+    if (map.indexName) rowScope.set(map.indexName, `${indexReference}.value`);
     const keyScope = new Map(scope);
     keyScope.set(map.itemName, "__ff_value");
     if (map.indexName) keyScope.set(map.indexName, "__ff_position");
     const key = keyCode(compiler, getKeyAttribute(compiler, map.body), keyScope);
     const factory = compileRenderableFactory(compiler, map.body, bindings, rowScope);
     const index = region(context);
-    context.operations.push(
-      `__ff_list(__ff_view.regions[${index}], () => (${expressionCode(map.collection, scope)}), (__ff_value, __ff_position) => (${key}), (__ff_item, __ff_index) => (${factory})(), __ff_cleanups);`,
-    );
+    context.operations.push(mappedCode(
+      compiler,
+      expression,
+      `__ff_list(__ff_view.regions[${index}], () => (${expressionCode(map.collection, scope)}), (__ff_value, __ff_position) => (${key}), (${itemReference}, ${indexReference}) => (${factory})(), __ff_cleanups);`,
+    ));
     return;
   }
 
   if (t.isConditionalExpression(expression)) {
     const index = region(context);
-    context.operations.push(
+    context.operations.push(mappedCode(
+      compiler,
+      expression,
       `__ff_when(__ff_view.regions[${index}], () => (${expressionCode(expression.test, scope)}), ${compileRenderableFactory(compiler, expression.consequent as Expression, bindings, scope)}, ${compileRenderableFactory(compiler, expression.alternate as Expression, bindings, scope)}, __ff_cleanups);`,
-    );
+    ));
     return;
   }
 
   if (t.isLogicalExpression(expression, { operator: "&&" })) {
     const index = region(context);
-    context.operations.push(
+    context.operations.push(mappedCode(
+      compiler,
+      expression,
       `__ff_when(__ff_view.regions[${index}], () => (${expressionCode(expression.left, scope)}), ${compileRenderableFactory(compiler, expression.right as Expression, bindings, scope)}, () => __ff_empty_block(), __ff_cleanups);`,
-    );
+    ));
     return;
   }
 
   const index = region(context);
-  context.operations.push(
+  context.operations.push(mappedCode(
+    compiler,
+    expression,
     `__ff_text(__ff_view.regions[${index}], () => (${expressionCode(expression, scope)}), __ff_cleanups);`,
-  );
+  ));
 }
 
 function compileNode(
@@ -628,6 +729,65 @@ function validateComputedWrites(
   });
 }
 
+function validatePropWrites(
+  compiler: CompilerContext,
+  body: t.BlockStatement,
+  propsName: string | undefined,
+): void {
+  if (!propsName) return;
+  const clonedComponent = t.functionExpression(
+    null,
+    [],
+    t.cloneNode(body, true),
+  );
+  const file = t.file(t.program([t.expressionStatement(clonedComponent)]));
+  const isDirectPropMember = (path: NodePath, expression: t.Expression): boolean =>
+    t.isMemberExpression(expression)
+    && t.isIdentifier(expression.object, { name: propsName })
+    && !path.scope.hasBinding(propsName);
+  const reject = (node: t.Node): never => codeFrame(
+    compiler,
+    node,
+    `Component props are readonly; ${propsName} members cannot be assigned directly`,
+  );
+
+  traverse(file, {
+    AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
+      if (t.isExpression(path.node.left) && isDirectPropMember(path, path.node.left)) reject(path.node.left);
+    },
+    UpdateExpression(path: NodePath<t.UpdateExpression>) {
+      if (t.isExpression(path.node.argument) && isDirectPropMember(path, path.node.argument)) {
+        reject(path.node.argument);
+      }
+    },
+    UnaryExpression(path: NodePath<t.UnaryExpression>) {
+      if (
+        path.node.operator === "delete"
+        && t.isExpression(path.node.argument)
+        && isDirectPropMember(path, path.node.argument)
+      ) reject(path.node.argument);
+    },
+    CallExpression(path: NodePath<t.CallExpression>) {
+      const [target] = path.node.arguments;
+      if (
+        !target
+        || !t.isExpression(target)
+        || !t.isIdentifier(target, { name: propsName })
+        || path.scope.hasBinding(propsName)
+      ) return;
+      if (
+        t.isMemberExpression(path.node.callee)
+        && !path.node.callee.computed
+        && t.isIdentifier(path.node.callee.object)
+        && t.isIdentifier(path.node.callee.property)
+        && ["defineProperty", "setPrototypeOf", "preventExtensions"].includes(path.node.callee.property.name)
+        && (path.node.callee.object.name === "Object" || path.node.callee.object.name === "Reflect")
+        && !path.scope.getBinding(path.node.callee.object.name)
+      ) reject(target);
+    },
+  });
+}
+
 function validateDerivedInitializer(compiler: CompilerContext, expression: t.Expression): void {
   const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
   traverse(file, {
@@ -716,27 +876,27 @@ function compileSetup(
 
   for (const statement of setup) {
     if (!t.isVariableDeclaration(statement)) {
-      generated.push(statementCode(statement, scope));
+      generated.push(mappedCode(compiler, statement, statementCode(statement, scope)));
       continue;
     }
     for (const declaration of statement.declarations) {
       const identifier = declaration.id as t.Identifier;
       const kind = declarationKinds.get(declaration)!;
       if (kind === "function") {
-        generated.push(`${statement.kind} ${identifier.name} = ${expressionCode(declaration.init as t.Expression, scope)};`);
+        generated.push(mappedCode(compiler, declaration, `${statement.kind} ${identifier.name} = ${expressionCode(declaration.init as t.Expression, scope)};`));
         continue;
       }
       const initializer = declaration.init && t.isExpression(declaration.init)
         ? declaration.init
         : t.identifier("undefined");
       if (kind === "signal" && isHelperCall(initializer, "$signal")) {
-        generated.push(`const ${identifier.name} = ${reactiveCallCode(initializer as t.CallExpression, "__ff_signal", scope)};`);
+        generated.push(mappedCode(compiler, declaration, `const ${identifier.name} = ${reactiveCallCode(initializer as t.CallExpression, "__ff_signal", scope)};`));
       } else if (kind === "computed" && isHelperCall(initializer, "$computed")) {
-        generated.push(`const ${identifier.name} = ${reactiveCallCode(initializer as t.CallExpression, "__ff_computed", scope)};`);
+        generated.push(mappedCode(compiler, declaration, `const ${identifier.name} = ${reactiveCallCode(initializer as t.CallExpression, "__ff_computed", scope)};`));
       } else if (kind === "computed") {
-        generated.push(`const ${identifier.name} = __ff_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}));`);
+        generated.push(mappedCode(compiler, declaration, `const ${identifier.name} = __ff_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}));`));
       } else {
-        generated.push(`const ${identifier.name} = __ff_signal${typeParameterCode(identifier)}(${expressionCode(initializer, scope)});`);
+        generated.push(mappedCode(compiler, declaration, `const ${identifier.name} = __ff_signal${typeParameterCode(identifier)}(${expressionCode(initializer, scope)});`));
       }
     }
   }
@@ -750,6 +910,7 @@ function compileFunction(
   exported: boolean,
 ): CompiledFunction {
   if (!declaration.id) codeFrame(compiler, declaration, "$component() requires a named function expression");
+  validateReservedIdentifier(compiler, declaration.id);
   if (declaration.id.name !== name) {
     codeFrame(compiler, declaration.id, `$component() function name ${declaration.id.name} must match binding ${name}`);
   }
@@ -759,6 +920,7 @@ function compileFunction(
   if (parameter && !t.isIdentifier(parameter)) {
     codeFrame(compiler, parameter, "Component props must use one identifier; destructuring is not reactive in v1");
   }
+  if (parameter) validateReservedIdentifier(compiler, parameter);
   const directReturns = declaration.body.body.filter((statement): statement is t.ReturnStatement => t.isReturnStatement(statement));
   if (directReturns.length !== 1 || directReturns[0] !== declaration.body.body.at(-1)) {
     codeFrame(compiler, declaration, "Components require exactly one final JSX return");
@@ -781,6 +943,19 @@ function compileFunction(
     codeFrame(compiler, directReturns[0]!, "The final component return must be JSX");
   }
   const setup = declaration.body.body.slice(0, -1);
+  validatePropWrites(compiler, declaration.body, parameter?.name);
+  for (const statement of setup) {
+    if (t.isVariableDeclaration(statement)) {
+      for (const variable of statement.declarations) {
+        if (t.isIdentifier(variable.id)) validateReservedIdentifier(compiler, variable.id);
+      }
+    } else if (
+      (t.isFunctionDeclaration(statement) || t.isClassDeclaration(statement))
+      && statement.id
+    ) {
+      validateReservedIdentifier(compiler, statement.id);
+    }
+  }
   const compiledSetup = compileSetup(compiler, setup, parameter?.name);
   const parameterCode = parameter ? generate(parameter).code : "__ff_props";
   const previousPropsName = compiler.propsName;
@@ -804,10 +979,26 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     sourceFilename: filename,
     plugins: ["typescript", "jsx"],
   });
-  const compiler: CompilerContext = { filename, source, templates: [], componentNames: new Set() };
+  const compiler: CompilerContext = {
+    filename,
+    source,
+    templates: [],
+    componentNames: new Set(),
+    mappingOrigins: [],
+    nextListId: 0,
+  };
   const edits: Edit[] = [];
   const compiledJsxRanges: Array<{ start: number; end: number }> = [];
   const componentCallRanges = new Set<string>();
+
+  traverse(ast, {
+    Program(path) {
+      for (const binding of Object.values(path.scope.bindings)) {
+        validateReservedIdentifier(compiler, binding.identifier);
+      }
+      path.stop();
+    },
+  });
 
   for (const statement of ast.program.body) {
     if (t.isImportDeclaration(statement)) {
@@ -826,7 +1017,9 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
           }
         }
       }
-      if (statement.importKind !== "type") {
+      const isFrameworkHelperModule = statement.source.value === "frontend-framework"
+        || statement.source.value.startsWith("frontend-framework/");
+      if (statement.importKind !== "type" && !isFrameworkHelperModule) {
         for (const specifier of statement.specifiers) {
           if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;
           compiler.componentNames.add(specifier.local.name);
@@ -923,10 +1116,6 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
   void outputAst;
   return {
     code: transformed,
-    map: transformedSource.generateMap({
-      hires: true,
-      source: filename,
-      includeContent: true,
-    }),
+    map: generatedSourceMap(transformedSource, transformed, compiler),
   };
 }

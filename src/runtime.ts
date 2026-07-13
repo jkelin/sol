@@ -15,6 +15,7 @@ type Dependency = Set<ReactiveEffect>;
 
 interface ReactiveEffect {
   active: boolean;
+  computed: boolean;
   running: boolean;
   dependencies: Set<Dependency>;
   run: () => void;
@@ -25,7 +26,7 @@ const SIGNAL = Symbol("frontend-framework.signal");
 const COMPONENT = Symbol("frontend-framework.component");
 const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
 const proxyCache = new WeakMap<object, object>();
-const reactiveProxies = new WeakSet<object>();
+const proxyTargets = new WeakMap<object, object>();
 const mutatingArrayMethods = new Set([
   "copyWithin",
   "fill",
@@ -40,6 +41,7 @@ const mutatingArrayMethods = new Set([
 let activeEffect: ReactiveEffect | undefined;
 let activeOwner: Cleanup[] | undefined;
 let batchDepth = 0;
+let flushingEffects = false;
 const pendingEffects = new Set<ReactiveEffect>();
 
 function cleanupEffect(effect: ReactiveEffect): void {
@@ -63,10 +65,36 @@ function track(target: object, key: PropertyKey): void {
   activeEffect.dependencies.add(dependency);
 }
 
-function schedule(effect: ReactiveEffect): void {
-  if (!effect.active || effect.running) return;
-  if (batchDepth > 0) pendingEffects.add(effect);
-  else effect.run();
+function flushEffects(): void {
+  if (flushingEffects) return;
+  flushingEffects = true;
+  let failed = false;
+  let failure: unknown;
+  try {
+    while (pendingEffects.size > 0) {
+      let effect: ReactiveEffect | undefined;
+      for (const candidate of pendingEffects) {
+        effect ??= candidate;
+        if (candidate.computed) {
+          effect = candidate;
+          break;
+        }
+      }
+      if (!effect) break;
+      pendingEffects.delete(effect);
+      try {
+        effect.run();
+      } catch (error) {
+        if (!failed) {
+          failed = true;
+          failure = error;
+        }
+      }
+    }
+  } finally {
+    flushingEffects = false;
+  }
+  if (failed) throw failure;
 }
 
 function trigger(target: object, key: PropertyKey): void {
@@ -74,28 +102,47 @@ function trigger(target: object, key: PropertyKey): void {
   if (!targetDependencies) return;
   const effects = new Set<ReactiveEffect>();
   for (const effect of targetDependencies.get(key) ?? []) effects.add(effect);
-  for (const effect of effects) schedule(effect);
+  for (const effect of effects) {
+    if (effect.active && !effect.running) pendingEffects.add(effect);
+  }
+  if (batchDepth === 0 && !flushingEffects) flushEffects();
 }
 
 export function batch<T>(callback: () => T): T {
   batchDepth += 1;
+  let result: T | undefined;
+  let callbackFailed = false;
+  let callbackFailure: unknown;
   try {
-    return callback();
+    result = callback();
+  } catch (error) {
+    callbackFailed = true;
+    callbackFailure = error;
   } finally {
     batchDepth -= 1;
-    if (batchDepth === 0) {
-      while (pendingEffects.size > 0) {
-        const queued = [...pendingEffects];
-        pendingEffects.clear();
-        for (const effect of queued) schedule(effect);
-      }
+  }
+  let flushFailed = false;
+  let flushFailure: unknown;
+  if (batchDepth === 0) {
+    try {
+      flushEffects();
+    } catch (error) {
+      flushFailed = true;
+      flushFailure = error;
     }
   }
+  if (callbackFailed && flushFailed) {
+    throw new AggregateError([callbackFailure, flushFailure], "Batch callback and reactive flush failed");
+  }
+  if (callbackFailed) throw callbackFailure;
+  if (flushFailed) throw flushFailure;
+  return result as T;
 }
 
-export function runtimeEffect(callback: () => void): Cleanup {
+function createReactiveEffect(callback: () => void, computed: boolean): Cleanup {
   const effect: ReactiveEffect = {
     active: true,
+    computed,
     running: false,
     dependencies: new Set(),
     run() {
@@ -112,23 +159,48 @@ export function runtimeEffect(callback: () => void): Cleanup {
       }
     },
   };
-  effect.run();
   const stop = () => {
     if (!effect.active) return;
     effect.active = false;
     pendingEffects.delete(effect);
     cleanupEffect(effect);
   };
-  activeOwner?.push(stop);
+  const owner = activeOwner;
+  owner?.push(stop);
+  try {
+    effect.run();
+  } catch (error) {
+    stop();
+    if (owner) {
+      const index = owner.lastIndexOf(stop);
+      if (index >= 0) owner.splice(index, 1);
+    }
+    throw error;
+  }
   return stop;
+}
+
+export function runtimeEffect(callback: () => void): Cleanup {
+  return createReactiveEffect(callback, false);
 }
 
 function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null;
 }
 
+function isReactiveTarget(value: object): boolean {
+  if (Array.isArray(value)) return true;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
+}
+
+function unwrap<T>(value: T): T {
+  if (!isObject(value)) return value;
+  return (proxyTargets.get(value) ?? value) as T;
+}
+
 function reactive<T extends object>(target: T): T {
-  if (reactiveProxies.has(target)) return target;
+  if (proxyTargets.has(target)) return target;
   const cached = proxyCache.get(target);
   if (cached) return cached as T;
 
@@ -142,14 +214,15 @@ function reactive<T extends object>(target: T): T {
       }
       track(object, key);
       const value = Reflect.get(object, key, receiver) as unknown;
-      return isObject(value) ? reactive(value) : value;
+      return wrap(value);
     },
     set(object, key, value, receiver) {
       const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
-      const oldValue = Reflect.get(object, key, receiver) as unknown;
+      const oldValue = unwrap(Reflect.get(object, key, receiver) as unknown);
+      const nextValue = unwrap(value);
       const oldLength = Array.isArray(object) ? object.length : 0;
-      const changed = Reflect.set(object, key, value, receiver);
-      if (changed && !Object.is(oldValue, value)) {
+      const changed = Reflect.set(object, key, nextValue, receiver);
+      if (changed && !Object.is(oldValue, nextValue)) {
         trigger(object, key);
         if (!wasPresent) trigger(object, ITERATE);
         if (Array.isArray(object) && key !== "length" && object.length !== oldLength) {
@@ -173,12 +246,12 @@ function reactive<T extends object>(target: T): T {
     },
   });
   proxyCache.set(target, proxy);
-  reactiveProxies.add(proxy);
+  proxyTargets.set(proxy, target);
   return proxy;
 }
 
 function wrap<T>(value: T): T {
-  return isObject(value) ? (reactive(value) as T) : value;
+  return isObject(value) && isReactiveTarget(value) ? (reactive(value) as T) : value;
 }
 
 export function $signal<T>(initial: T): Signal<T> {
@@ -190,8 +263,10 @@ export function $signal<T>(initial: T): Signal<T> {
       return value;
     },
     set value(next: T) {
-      if (Object.is(value, next)) return;
-      value = wrap(next);
+      const currentValue = unwrap(value);
+      const nextValue = unwrap(next);
+      if (Object.is(currentValue, nextValue)) return;
+      value = wrap(nextValue);
       trigger(reference, "value");
     },
   };
@@ -201,9 +276,9 @@ export function $signal<T>(initial: T): Signal<T> {
 export function $computed<T>(derive: () => T): ReadonlySignal<T> {
   if (typeof derive !== "function") throw new TypeError("$computed() expects a function");
   const value = $signal<T>(undefined as T);
-  runtimeEffect(() => {
+  createReactiveEffect(() => {
     value.value = derive();
-  });
+  }, true);
   return Object.freeze({
     get value(): T {
       return value.value;
@@ -371,6 +446,15 @@ function readonlyProps<Props extends object>(props: Props): Readonly<Props> {
       throw new TypeError("Component props are readonly");
     },
     deleteProperty() {
+      throw new TypeError("Component props are readonly");
+    },
+    defineProperty() {
+      throw new TypeError("Component props are readonly");
+    },
+    setPrototypeOf() {
+      throw new TypeError("Component props are readonly");
+    },
+    preventExtensions() {
       throw new TypeError("Component props are readonly");
     },
   });

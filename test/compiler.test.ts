@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SourceMapConsumer } from "source-map-js";
 import { compile } from "../src/compiler.ts";
 
 describe("compiler", () => {
@@ -28,6 +29,34 @@ describe("compiler", () => {
     expect(result.map?.sourcesContent).toEqual([source]);
   });
 
+  test("maps generated setup and DOM effects to their authored locations", () => {
+    const source = [
+      'import { $component } from "frontend-framework";',
+      'const Counter = $component(function Counter() {',
+      '  let count = 0;',
+      '  function increment() { count++; }',
+      '  return <button onClick={increment}>{count}</button>;',
+      '});',
+    ].join("\n");
+    const result = compile(source, "Mapped.tsx");
+    const consumer = new SourceMapConsumer(JSON.parse(result.map!.toString()));
+    const originalFor = (needle: string) => {
+      const offset = result.code.indexOf(needle);
+      expect(offset).toBeGreaterThanOrEqual(0);
+      const prefix = result.code.slice(0, offset);
+      const lines = prefix.split("\n");
+      return consumer.originalPositionFor({
+        line: lines.length,
+        column: lines.at(-1)!.length,
+      });
+    };
+
+    expect(originalFor("const count = __ff_signal").line).toBe(3);
+    expect(originalFor("function increment").line).toBe(4);
+    expect(originalFor("__ff_event(__ff_view").line).toBe(5);
+    expect(originalFor("__ff_text(__ff_view").line).toBe(5);
+  });
+
   test("compiles inferred bindings, conditionals, components, and keyed maps", () => {
     const result = compile(`
       import { $component } from "frontend-framework";
@@ -49,6 +78,24 @@ describe("compiler", () => {
     expect(result.code).toContain("__ff_when");
     expect(result.code).toContain("__ff_list");
     expect(result.code).toContain("__ff_child");
+  });
+
+  test("keeps outer row state distinct in nested keyed lists", () => {
+    const result = compile(`
+      const App = $component(function App() {
+        const groups = [{ id: 1, name: "First", items: [{ id: 2, label: "Item" }] }];
+        return <main>{groups.map(group =>
+          <section key={group.id}>{group.items.map(item =>
+            <p key={item.id}>{group.name}: {item.label}</p>
+          )}</section>
+        )}</main>;
+      });
+    `, "NestedLists.tsx");
+
+    expect(result.code).toContain("__ff_item_0.value.name");
+    expect(result.code).toContain("__ff_item_1.value.label");
+    expect(result.code).toContain("(__ff_item_0, __ff_index_0)");
+    expect(result.code).toContain("(__ff_item_1, __ff_index_1)");
   });
 
   test("supports explicit reactive overrides and every class alias", () => {
@@ -287,5 +334,119 @@ describe("compiler", () => {
     for (const fixture of cases) {
       expect(() => compile(fixture.source, "Boundary.tsx")).toThrow(fixture.message);
     }
+  });
+
+  test("protects compiler identifiers and component import classification", () => {
+    expect(() => compile(`
+      const __ff_signal = 1;
+      const App = $component(function App() { return <p>{__ff_signal}</p>; });
+    `, "ReservedModule.tsx")).toThrow("reserved compiler prefix __ff_");
+
+    expect(() => compile(`
+      const App = $component(function App() {
+        let __ff_view = 1;
+        return <p>{__ff_view}</p>;
+      });
+    `, "ReservedComponent.tsx")).toThrow("reserved compiler prefix __ff_");
+
+    expect(() => compile(`
+      import { $component, Fragment } from "frontend-framework";
+      const App = $component(function App() { return <Fragment />; });
+    `, "FrameworkImport.tsx")).toThrow("must be declared with $component() or imported");
+
+    const externalComponent = compile(`
+      import { $component } from "frontend-framework";
+      import { Row } from "./Row";
+      const App = $component(function App() { return <Row />; });
+    `, "ExternalComponent.tsx");
+    expect(externalComponent.code).toContain("__ff_child");
+  });
+
+  test("validates binding roots, readonly props, and event spelling", () => {
+    const valid = compile(`
+      import { $component } from "frontend-framework";
+      const App = $component(function App(props: { todo: { done: boolean } }) {
+        let todos = [{ id: 1, done: false }];
+        function updateNestedProp() { props.todo.done = true; }
+        return <main onClick={updateNestedProp}>
+          <input type="checkbox" $bind={props.todo.done} />
+          {todos.map(todo => <input key={todo.id} type="checkbox" $bind={todo.done} />)}
+        </main>;
+      });
+    `, "ValidBoundaries.tsx");
+    expect(valid.code.match(/__ff_bind/g)?.length).toBeGreaterThanOrEqual(2);
+
+    expect(() => compile(`
+      const App = $component(function App(props: { done: boolean }) {
+        const rows = [{ id: 1, done: false }];
+        const derived = rows.length;
+        return <main>
+          {rows.map(props => <input key={props.id} type="checkbox" $bind={props.done} />)}
+          {rows.map(derived => <input key={derived.id} type="checkbox" $bind={derived.done} />)}
+        </main>;
+      });
+    `, "ShadowedRowBindings.tsx")).not.toThrow();
+
+    expect(() => compile(`
+      const App = $component(function App(props: { value: number }) {
+        function updateShadow(props: { value: number }) { props.value = 2; }
+        return <button onClick={() => updateShadow({ value: 1 })}>{props.value}</button>;
+      });
+    `, "ShadowedProps.tsx")).not.toThrow();
+
+    for (const expression of ["external.value", "Math.value"]) {
+      expect(() => compile(`
+        import { $component } from "frontend-framework";
+        const external = { value: "" };
+        const App = $component(function App() { return <input $bind={${expression}} />; });
+      `, "InvalidBindingRoot.tsx")).toThrow("must be rooted in component state");
+    }
+
+    for (const statement of [
+      "props.value = 2;",
+      "delete props.value;",
+      "Object.defineProperty(props, 'value', { value: 2 });",
+      "Reflect.defineProperty(props, 'value', { value: 2 });",
+      "Object.setPrototypeOf(props, null);",
+      "Reflect.setPrototypeOf(props, null);",
+      "Object.preventExtensions(props);",
+      "Reflect.preventExtensions(props);",
+    ]) {
+      expect(() => compile(`
+        import { $component } from "frontend-framework";
+        const App = $component(function App(props: { value: number }) {
+          function mutate() { ${statement} }
+          return <button onClick={mutate}>{props.value}</button>;
+        });
+      `, "ReadonlyProps.tsx")).toThrow("Component props are readonly");
+    }
+
+    expect(() => compile(`
+      const App = $component(function App(props: { value: number }) {
+        function helper(Object: { defineProperty: (...args: unknown[]) => void }) {
+          Object.defineProperty(props, "value", { value: 2 });
+        }
+        return <button onClick={() => helper({ defineProperty() {} })}>{props.value}</button>;
+      });
+    `, "ShadowedObject.tsx")).not.toThrow();
+
+    expect(() => compile(`
+      const App = $component(function App(props: { value: number }) {
+        return <button onClick={() => props.value++}>{props.value}</button>;
+      });
+    `, "InlineReadonlyProps.tsx")).toThrow("Component props are readonly");
+
+    for (const eventName of ["onclick", "on-click", "on1Click", "OnClick"]) {
+      expect(() => compile(`
+        const App = $component(function App() { return <button ${eventName}={() => {}}>Run</button>; });
+      `, "InvalidEvent.tsx")).toThrow("React-style onEvent capitalization");
+    }
+
+    expect(() => compile(`
+      const App = $component(function App() {
+        let values = [1];
+        return <ul>{values.map(value => { const label = value; return <li key={value}>{label}</li>; })}</ul>;
+      });
+    `, "LegacyWording.tsx")).toThrow("component or $computed()");
   });
 });

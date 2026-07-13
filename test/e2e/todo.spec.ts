@@ -76,6 +76,11 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeHidden();
   await expect(page.locator(".todo-row")).toHaveCount(2);
 
+  await page.getByRole("button", { name: "Completed", exact: true }).click();
+  await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeVisible();
+  await expect(page.getByText("Trace the first compiled template", { exact: true })).toBeVisible();
+  await expect(page.locator(".todo-row")).toHaveCount(2);
+
   await page.getByRole("button", { name: "All", exact: true }).click();
   await page.getByRole("button", { name: "Clear completed", exact: true }).click();
   await expect(page.locator(".todo-row")).toHaveCount(2);
@@ -86,7 +91,7 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
   await page.getByRole("button", { name: "Remove Ship without a virtual DOM", exact: true }).click();
   await expect(page.locator(".todo-row")).toHaveCount(0);
   await expect(page.getByText("No notes on this page.", { exact: true })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__frontendFrameworkDemo)).toEqual({ app: 1, row: 6 });
+  await expect.poll(() => page.evaluate(() => window.__frontendFrameworkDemo)).toEqual({ app: 1, row: 8 });
 });
 
 test("stays usable and overflow-free at desktop and mobile sizes", async ({ page }) => {

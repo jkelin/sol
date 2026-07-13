@@ -88,15 +88,25 @@ const First = page("First", true, true);
 const Second = page("Second", true);
 const Plain = page("Plain", false);
 const routes = [
-  route({ path: "/" }, First, { pattern: "^/$", parameterNames: [], specificity: [] }),
+  route({ path: "/" }, First, {
+    pattern: "^/$",
+    parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
+    specificity: [],
+  }),
   route({ path: "/second" }, Second, {
     pattern: "^/second$",
     parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
     specificity: [1],
   }),
   route({ path: "/plain" }, Plain, {
     pattern: "^/plain$",
     parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
     specificity: [1],
   }),
 ];

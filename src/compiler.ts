@@ -965,13 +965,13 @@ function compileLinkElement(
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
 ): void {
-  const meaningfulChildren = node.children.filter(
+  const children = node.children.filter(
     (child) => !t.isJSXText(child) || normalizeJsxText(child.value) !== "",
   );
-  if (meaningfulChildren.length !== 1 || !t.isJSXElement(meaningfulChildren[0])) {
+  if (children.length !== 1 || !t.isJSXElement(children[0])) {
     codeFrame(compiler, node, "Link requires exactly one anchor child");
   }
-  const anchor = meaningfulChildren[0];
+  const anchor = children[0];
   if (!t.isJSXIdentifier(anchor.openingElement.name, { name: "a" })) {
     codeFrame(compiler, anchor, "Link child must be an intrinsic anchor element");
   }

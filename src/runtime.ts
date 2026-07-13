@@ -1485,10 +1485,6 @@ function rootFrame(): RenderFrame {
   return { owner: [], contexts: new Map() };
 }
 
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return isObject(value) && typeof (value as { then?: unknown }).then === "function";
-}
-
 function cancelPendingBlock(value: PromiseLike<unknown>): void {
   const cancel = (value as PendingBlock).cancel;
   if (typeof cancel === "function") cancel();

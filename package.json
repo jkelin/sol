@@ -1,10 +1,34 @@
 {
-  "name": "frontend_framework",
+  "name": "frontend-framework",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "exports": {
+    ".": "./index.ts",
+    "./runtime": "./src/runtime.ts",
+    "./vite": "./src/vite.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test/runtime.test.ts test/compiler.test.ts",
+    "test:e2e": "bun run build && playwright test"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@babel/generator": "^7.28.4",
+    "@babel/parser": "^7.28.4",
+    "@babel/traverse": "^7.28.4",
+    "@babel/types": "^7.28.4",
+    "@playwright/test": "^1.61.1",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/bun": "latest",
+    "happy-dom": "^20.10.6",
+    "magic-string": "^0.30.21",
+    "vite": "^8.0.10"
   },
   "peerDependencies": {
     "typescript": "^5"

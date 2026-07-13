@@ -12,7 +12,9 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "bun run build:demo",
+    "build:demo": "vite build --minify=false",
+    "build:demo:inspect": "vite build --minify=false --outDir ../out/demo-inspect",
     "typecheck": "tsc --noEmit",
     "test": "bun test test/runtime.test.ts test/compiler.test.ts",
     "test:e2e": "bun run build && playwright test"

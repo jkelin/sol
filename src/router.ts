@@ -23,7 +23,7 @@ export interface Router {
   readonly hash: string;
   readonly searchParams: URLSearchParams;
   readonly params: Readonly<Record<string, string | number>>;
-  readonly query: Readonly<Record<string, string | number | undefined>>;
+  readonly query: Readonly<Record<string, string | number>>;
   readonly route: RouteConfig | null;
   navigate(path: string, options?: NavigateOptions): void;
 }
@@ -94,21 +94,32 @@ function decodeParameter(value: string): string {
   }
 }
 
-function matchRoute(pathname: string): RouteMatch | null {
+function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatch | null {
   for (const definition of preparedRoutes) {
     const match = new RegExp(definition.compiled.pattern).exec(pathname);
     if (!match) continue;
     const params: Record<string, string> = {};
-    for (const [index, name] of definition.compiled.parameterNames.entries()) {
+    for (const [index, name] of definition.compiled.pathnameParameterNames.entries()) {
       params[name] = decodeParameter(match[index + 1] ?? "");
+    }
+    if (searchParams) {
+      let queryMatches = true;
+      for (const queryParameter of definition.compiled.queryParameters) {
+        const value = searchParams.getAll(queryParameter.key).at(-1);
+        if (
+          value === undefined ||
+          (queryParameter.name in params && params[queryParameter.name] !== value)
+        ) {
+          queryMatches = false;
+          break;
+        }
+        params[queryParameter.name] = value;
+      }
+      if (!queryMatches) continue;
     }
     return { definition, params: Object.freeze(params) };
   }
   return null;
-}
-
-function rawQuery(searchParams: URLSearchParams): Readonly<Record<string, string>> {
-  return Object.freeze(Object.fromEntries(searchParams));
 }
 
 function unmatchedState(location: RouterState): RouterState {
@@ -138,7 +149,7 @@ let resolutionId = 0;
 function synchronizeLocation(): void {
   const currentResolution = ++resolutionId;
   const location = readLocation();
-  const match = matchRoute(location.pathname);
+  const match = matchRoute(location.pathname, location.searchParams);
   if (!match) {
     state.value = unmatchedState(location);
     return;
@@ -146,10 +157,7 @@ function synchronizeLocation(): void {
 
   let result;
   try {
-    result = resolveRoute(match.definition, {
-      params: match.params,
-      query: rawQuery(location.searchParams),
-    });
+    result = resolveRoute(match.definition, match.params);
   } catch (error) {
     state.value = { ...unmatchedState(location), status: "error", error };
     return;
@@ -216,10 +224,10 @@ export const router: Router = Object.freeze({
     return state.value.searchParams;
   },
   get params() {
-    return state.value.values?.params ?? Object.freeze({});
+    return state.value.values ?? Object.freeze({});
   },
   get query() {
-    return state.value.values?.query ?? Object.freeze({});
+    return state.value.values ?? Object.freeze({});
   },
   get route() {
     return state.value.route;
@@ -228,7 +236,7 @@ export const router: Router = Object.freeze({
 });
 
 configureRouteRuntime({
-  getValues(definition) {
+  getParams(definition) {
     const current = state.value;
     if (current.pattern !== definition.compiled.pattern || !current.values) {
       throw new Error("Cannot read values from an inactive route");

@@ -1,4 +1,5 @@
 import { $component, $route } from "frontend-framework";
+import * as v from "valibot";
 import { BlogList } from "./BlogList.tsx";
 import { blogEntries } from "./blog-store.ts";
 import { pageTransition } from "./transitions.ts";
@@ -18,10 +19,10 @@ const BlogDetailPage = $component(function BlogDetailPage() {
             <p class="mb-5 font-mono text-[0.6875rem] tracking-[0.11em] text-correction">
               FIELD NOTE / {String(entry.id).padStart(2, "0")}
             </p>
-            {blogDetailRoute.query.from && (
+            {blogDetailRoute.params.from && (
               <p class="sr-only" data-testid="route-query-source">
                 {"Opened from "}
-                {blogDetailRoute.query.from}
+                {blogDetailRoute.params.from}
               </p>
             )}
             <h1
@@ -53,17 +54,18 @@ const BlogDetailPage = $component(function BlogDetailPage() {
 
 export const blogDetailRoute = $route(
   {
-    path: "/blog/:id",
-    schema: async ({ params, query }) => {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      const id = Number(params.id);
-      if (!Number.isInteger(id) || id < 1) {
-        throw {
-          issues: [{ message: "Entry id must be a positive integer", path: ["params", "id"] }],
-        };
-      }
-      return { params: { id }, query: { from: query.from } };
-    },
+    path: "/blog/:id?from=:from",
+    schema: v.objectAsync({
+      id: v.pipeAsync(
+        v.string(),
+        v.transform(Number),
+        v.checkAsync(async (id) => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          return Number.isInteger(id) && id >= 1;
+        }, "Entry id must be a positive integer"),
+      ),
+      from: v.string(),
+    }),
   },
   BlogDetailPage,
 );

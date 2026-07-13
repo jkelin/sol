@@ -165,6 +165,8 @@ function escapeRegExp(value: string): string {
 interface ParsedRoutePath {
   pattern: string;
   parameterNames: string[];
+  pathnameParameterNames: string[];
+  queryParameters: Array<{ key: string; name: string }>;
   specificity: number[];
 }
 
@@ -173,37 +175,67 @@ function parseRoutePath(context: CompilerContext, node: t.StringLiteral): Parsed
   if (!path.startsWith("/") || path.startsWith("//")) {
     codeFrame(context, node, "Route paths must start with exactly one slash");
   }
-  if (path.includes("?") || path.includes("#")) {
-    codeFrame(context, node, "Route paths must not contain a query string or hash");
-  }
-  if (path !== "/" && (path.endsWith("/") || path.includes("//"))) {
+  if (path.includes("#")) codeFrame(context, node, "Route paths must not contain a hash");
+  const parts = path.split("?");
+  if (parts.length > 2) codeFrame(context, node, "Route paths may contain only one query template");
+  const pathname = parts[0]!;
+  const query = parts[1];
+  if (pathname !== "/" && (pathname.endsWith("/") || pathname.includes("//"))) {
     codeFrame(context, node, "Route paths must not contain empty or trailing segments");
   }
-  if (path === "/") return { pattern: "^/$", parameterNames: [], specificity: [] };
 
   const parameterNames: string[] = [];
+  const pathnameParameterNames: string[] = [];
+  const queryParameters: Array<{ key: string; name: string }> = [];
   const specificity: number[] = [];
-  const pattern = path
-    .slice(1)
-    .split("/")
-    .map((segment) => {
-      if (!segment.startsWith(":")) {
-        specificity.push(1);
-        return escapeRegExp(segment);
+  const pattern =
+    pathname === "/"
+      ? ""
+      : pathname
+          .slice(1)
+          .split("/")
+          .map((segment) => {
+            if (!segment.startsWith(":")) {
+              specificity.push(1);
+              return escapeRegExp(segment);
+            }
+            const name = segment.slice(1);
+            if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+              codeFrame(context, node, `Invalid route parameter ${segment}`);
+            }
+            if (parameterNames.includes(name)) {
+              codeFrame(context, node, `Duplicate route parameter ${name}`);
+            }
+            parameterNames.push(name);
+            pathnameParameterNames.push(name);
+            specificity.push(0);
+            return "([^/]+)";
+          })
+          .join("/");
+
+  if (query !== undefined) {
+    if (!query) codeFrame(context, node, "Route query templates must not be empty");
+    const queryKeys = new Set<string>();
+    for (const part of query.split("&")) {
+      const match = /^([A-Za-z_$][A-Za-z0-9_$-]*)=:([A-Za-z_$][A-Za-z0-9_$]*)$/.exec(part);
+      if (!match) {
+        codeFrame(context, node, `Invalid route query parameter ${part}`);
       }
-      const name = segment.slice(1);
-      if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
-        codeFrame(context, node, `Invalid route parameter ${segment}`);
-      }
-      if (parameterNames.includes(name)) {
-        codeFrame(context, node, `Duplicate route parameter ${name}`);
-      }
-      parameterNames.push(name);
-      specificity.push(0);
-      return "([^/]+)";
-    })
-    .join("/");
-  return { pattern: `^/${pattern}$`, parameterNames, specificity };
+      const [, key, name] = match;
+      if (queryKeys.has(key!)) codeFrame(context, node, `Duplicate route query key ${key}`);
+      queryKeys.add(key!);
+      queryParameters.push({ key: key!, name: name! });
+      if (!parameterNames.includes(name!)) parameterNames.push(name!);
+    }
+  }
+
+  return {
+    pattern: pathname === "/" ? "^/$" : `^/${pattern}$`,
+    parameterNames,
+    pathnameParameterNames,
+    queryParameters,
+    specificity,
+  };
 }
 
 function isRouteFilename(filename: string): boolean {
@@ -955,7 +987,7 @@ function compileLinkElement(
       codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
     }
     const name = getAttributeName(compiler, attribute.name);
-    if (!["route", "params", "query", "replace"].includes(name)) {
+    if (!["route", "params", "replace"].includes(name)) {
       codeFrame(compiler, attribute, `Unsupported Link property ${name}`);
     }
     if (attributes.has(name)) codeFrame(compiler, attribute, `Duplicate Link property ${name}`);
@@ -964,7 +996,7 @@ function compileLinkElement(
   const routeAttribute = attributes.get("route");
   if (!routeAttribute) codeFrame(compiler, node.openingElement, "Link requires a route property");
   const route = expressionCode(expressionAttribute(compiler, routeAttribute), scope);
-  const destinationProperties = ["params", "query"].flatMap((name) => {
+  const destinationProperties = ["params"].flatMap((name) => {
     const attribute = attributes.get(name);
     if (!attribute) return [];
     const value = expressionCode(expressionAttribute(compiler, attribute), scope);

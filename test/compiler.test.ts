@@ -16,14 +16,18 @@ describe("compiler", () => {
       `
       import { $component, $route } from "frontend-framework";
       const Blog = $component(function Blog() { return <main>Blog</main>; });
-      export const blog = $route({ path: "/blog/:id" }, Blog);
+      export const blog = $route({ path: "/blog/:id?copy=:id&filter=:filter" }, Blog);
     `,
       "blog.route.tsx",
     );
 
     expect(result.code).toContain("export const blog = __ff_route");
     expect(result.code).toContain('"pattern":"^/blog/([^/]+)$"');
-    expect(result.code).toContain('"parameterNames":["id"]');
+    expect(result.code).toContain('"parameterNames":["id","filter"]');
+    expect(result.code).toContain('"pathnameParameterNames":["id"]');
+    expect(result.code).toContain(
+      '"queryParameters":[{"key":"copy","name":"id"},{"key":"filter","name":"filter"}]',
+    );
     expect(result.code).toContain('"specificity":[1,0]');
 
     for (const extension of ["js", "jsx", "ts", "tsx"]) {
@@ -108,7 +112,13 @@ describe("compiler", () => {
         `${component} export const blog = $route({ path: "/blog?draft=1" }, Blog);`,
         "blog.route.tsx",
       ),
-    ).toThrow("must not contain a query string or hash");
+    ).toThrow("Invalid route query parameter draft=1");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "/blog?from=:from&from=:other" }, Blog);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("Duplicate route query key from");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog" }, Missing);`,

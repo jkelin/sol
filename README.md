@@ -170,6 +170,7 @@ Routes are discovered automatically below the Vite project root. Define each rou
 
 ```tsx
 import { $component, $route } from "frontend-framework";
+import * as v from "valibot";
 
 const BlogDetail = $component(function BlogDetail() {
   return <article>Blog entry</article>;
@@ -177,42 +178,42 @@ const BlogDetail = $component(function BlogDetail() {
 
 export const blogDetailRoute = $route(
   {
-    path: "/blog/:id",
-    schema: async ({ params, query }) => ({
-      params: { id: Number(params.id) },
-      query: { page: query.page ? Number(query.page) : undefined },
+    path: "/blog/:id?page=:page",
+    schema: v.object({
+      id: v.pipe(v.string(), v.transform(Number)),
+      page: v.pipe(v.string(), v.transform(Number)),
     }),
   },
   BlogDetail,
 );
 ```
 
-Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
+Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. A query template such as `?page=:page` declares a required query parameter. The same logical parameter may appear in both places, as in `/blog/:id?selected=:id`; incoming values must then agree. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
 
-Each compiled route is a typed handle. Its optional `schema` accepts the same callable, `parse()`, and `parseAsync()` formats as `$form`. The parser receives decoded `{ params, query }` string records; repeated query keys use their final value. Its output must contain exactly the path's parameters plus string, number, or undefined query values. Parsed output types flow through the handle and every typed destination:
+Each compiled route is a typed handle. Its optional `schema` accepts the same callable, `parse()`, `parseAsync()`, and Standard Schema formats as `$form`, including Valibot schemas directly. The parser receives one decoded string record containing both path and declared query parameters; repeated query keys use their final value. Its output must contain exactly the route's declared parameters as strings or numbers. Parsed output types flow through the handle and every typed destination:
 
 ```tsx
 const id = blogDetailRoute.params.id; // number
-const page = blogDetailRoute.query.page; // number | undefined
-blogDetailRoute.navigate({ params: { id: 42 }, query: { page: 2 } });
+const page = blogDetailRoute.params.page; // number
+blogDetailRoute.navigate({ params: { id: 42, page: 2 } });
 
 blogDetailRoute.isActive; // exact route match
 blogDetailRoute.isActivePrefix; // true anywhere below /blog
 ```
 
-Routes without a schema retain inferred string path parameters and an empty typed query record. Reading `params` or `query` from an inactive, pending, or invalid route throws instead of returning stale values. A recognized schema validation failure makes the route not match; other parser errors remain visible. Async validation ignores stale results after newer navigation.
+Routes without a schema retain inferred string values for all declared parameters. `query` is a compatibility alias for the same object exposed by `params`. Reading either property from an inactive, pending, or invalid route throws instead of returning stale values. A recognized schema validation failure makes the route not match; other parser errors remain visible. Async validation ignores stale results after newer navigation.
 
 Use `Link` when the destination is represented by a route handle. It requires exactly one anchor child, supplies that anchor's `href`, and intercepts eligible same-tab clicks without adding a wrapper element:
 
 ```tsx
 import { Link } from "frontend-framework";
 
-<Link route={blogDetailRoute} params={{ id: 42 }} query={{ page: 2 }}>
+<Link route={blogDetailRoute} params={{ id: 42, page: 2 }}>
   <a class="entry-link">Open entry</a>
 </Link>;
 ```
 
-The route handle determines the required `params` and `query` props. Author styling, ARIA, targets, downloads, and click handlers on the child anchor; do not provide `href`. Prevented, targeted, downloaded, and modified clicks retain native behavior.
+The route handle determines every required value in its single `params` prop. Author styling, ARIA, targets, downloads, and click handlers on the child anchor; do not provide `href`. Prevented, targeted, downloaded, and modified clicks retain native behavior.
 
 Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
 
@@ -235,7 +236,7 @@ const App = $component(function App() {
 });
 ```
 
-The optional `pending` component renders while an asynchronous schema resolves. Without it, the outlet remains empty during validation. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` and `query`, the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are still handled through browser history.
+The optional `pending` component renders while an asynchronous schema resolves. Without it, the outlet remains empty during validation. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` (with `query` as an alias), the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are still handled through browser history.
 
 The demo uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
 

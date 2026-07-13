@@ -11,8 +11,8 @@ test("the demo build keeps compiler output readable", async () => {
   expect(output).toContain("__ff_template");
   expect(output).toContain("//#region demo/src/App.tsx");
   expect(output).toContain('path: "/blog/new"');
-  expect(output).toContain('path: "/blog/:id"');
-  expect(output).toContain("function matchRoute(pathname)");
+  expect(output).toContain('path: "/blog/:id?from=:from"');
+  expect(output).toContain("function matchRoute(pathname, searchParams)");
   expect(output).toContain("function cleanupEffect(effect)");
   expect(output).toContain("function runTransitions(");
   expect(output).toContain("element.getAnimations(");

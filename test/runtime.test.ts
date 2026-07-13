@@ -681,6 +681,8 @@ describe("compiled DOM runtime", () => {
     const definition = route({ path: "/entry/:id" }, Empty, {
       pattern: "^/entry/([^/]+)$",
       parameterNames: ["id"],
+      pathnameParameterNames: ["id"],
+      queryParameters: [],
       specificity: [1, 0],
     });
 
@@ -699,20 +701,25 @@ describe("compiled DOM runtime", () => {
     const detail = route({ path: "/blog/:id" }, Empty, {
       pattern: "^/blog/([^/]+)$",
       parameterNames: ["id"],
+      pathnameParameterNames: ["id"],
+      queryParameters: [],
       specificity: [1, 0],
     });
     const todo = route({ path: "/" }, Empty, {
       pattern: "^/$",
       parameterNames: [],
+      pathnameParameterNames: [],
+      queryParameters: [],
       specificity: [],
     });
     let active: object = detail;
     let pathname = "/blog/first";
+    const activeParams = { id: "first" } as const;
     const navigations: Array<{ path: string; replace: boolean | undefined }> = [];
     configureRouteRuntime({
-      getValues(definition) {
+      getParams(definition) {
         if (definition !== active) throw new Error("inactive");
-        return { params: { id: "first" }, query: {} };
+        return activeParams;
       },
       getPathname: () => pathname,
       isActive: (definition) => definition === active,
@@ -722,6 +729,7 @@ describe("compiled DOM runtime", () => {
     });
 
     expect(detail.params.id).toBe("first");
+    expect(detail.query).toBe(detail.params);
     expect(detail.isActive).toBe(true);
     expect(detail.isActivePrefix).toBe(true);
     expect(todo.isActive).toBe(false);
@@ -745,40 +753,78 @@ describe("compiled DOM runtime", () => {
     const Empty = component(() => block(document.createDocumentFragment()));
     const detail = route(
       {
-        path: "/blog/:id",
-        schema: ({ params, query }) => ({
-          params: { id: Number(params.id) },
-          query: { page: query.page ? Number(query.page) : undefined, filter: query.filter },
+        path: "/blog/:id?page=:page&filter=:filter",
+        schema: ({ id, page, filter }) => ({ id: Number(id), page: Number(page), filter: filter! }),
+      },
+      Empty,
+      {
+        pattern: "^/blog/([^/]+)$",
+        parameterNames: ["id", "page", "filter"],
+        pathnameParameterNames: ["id"],
+        queryParameters: [
+          { key: "page", name: "page" },
+          { key: "filter", name: "filter" },
+        ],
+        specificity: [1, 0],
+      },
+    );
+
+    const resolution = await resolveRoute(detail, { id: "42", page: "3", filter: "recent" });
+    expect(resolution).toEqual({
+      matched: true,
+      values: { id: 42, page: 3, filter: "recent" },
+    });
+    expect(
+      routeHref(detail, {
+        params: { id: 42, page: 3, filter: "recent" },
+      }),
+    ).toBe("/blog/42?page=3&filter=recent");
+    expect(() =>
+      routeHref(detail, { params: { id: 42, page: true, filter: "recent" } } as never),
+    ).toThrow("must be a string or number");
+    expect(() => routeHref(detail, { params: { id: 42 }, extra: true })).toThrow(
+      "unknown property extra",
+    );
+
+    const repeated = route({ path: "/blog/:id?selected=:id" }, Empty, {
+      pattern: "^/blog/([^/]+)$",
+      parameterNames: ["id"],
+      pathnameParameterNames: ["id"],
+      queryParameters: [{ key: "selected", name: "id" }],
+      specificity: [1, 0],
+    });
+    expect(routeHref(repeated, { params: { id: "hello world" } })).toBe(
+      "/blog/hello%20world?selected=hello+world",
+    );
+  });
+
+  test("validates routes with Standard Schema implementations", async () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const detail = route(
+      {
+        path: "/blog/:id?from=:from",
+        schema: v.object({
+          id: v.pipe(v.string(), v.transform(Number), v.integer()),
+          from: v.string(),
         }),
       },
       Empty,
       {
         pattern: "^/blog/([^/]+)$",
-        parameterNames: ["id"],
+        parameterNames: ["id", "from"],
+        pathnameParameterNames: ["id"],
+        queryParameters: [{ key: "from", name: "from" }],
         specificity: [1, 0],
       },
     );
 
-    const resolution = await resolveRoute(detail, {
-      params: { id: "42" },
-      query: { page: "3", filter: "recent" },
-    });
-    expect(resolution).toEqual({
+    expect(await resolveRoute(detail, { id: "42", from: "index" })).toEqual({
       matched: true,
-      values: { params: { id: 42 }, query: { page: 3, filter: "recent" } },
+      values: { id: 42, from: "index" },
     });
-    expect(
-      routeHref(detail, {
-        params: { id: 42 },
-        query: { page: 3, filter: undefined },
-      }),
-    ).toBe("/blog/42?page=3");
-    expect(() => routeHref(detail, { params: { id: 42 }, query: { page: true } })).toThrow(
-      "must be a string, number, or undefined",
-    );
-    expect(() => routeHref(detail, { params: { id: 42 }, extra: true })).toThrow(
-      "unknown property extra",
-    );
+    expect(await resolveRoute(detail, { id: "invalid", from: "index" })).toEqual({
+      matched: false,
+    });
   });
 
   test("treats schema issues as no match and preserves unexpected failures", async () => {
@@ -786,13 +832,15 @@ describe("compiled DOM runtime", () => {
     const compiled = {
       pattern: "^/entry/([^/]+)$",
       parameterNames: ["id"],
+      pathnameParameterNames: ["id"],
+      queryParameters: [],
       specificity: [1, 0],
     };
     const invalid = route(
       {
         path: "/entry/:id",
-        schema: async (): Promise<{ params: { id: string }; query: {} }> => {
-          throw { issues: [{ message: "Invalid id", path: ["params", "id"] }] };
+        schema: async (): Promise<{ id: string }> => {
+          throw { issues: [{ message: "Invalid id", path: ["id"] }] };
         },
       },
       Empty,
@@ -801,7 +849,7 @@ describe("compiled DOM runtime", () => {
     const broken = route(
       {
         path: "/entry/:id",
-        schema: (): { params: { id: string }; query: {} } => {
+        schema: (): { id: string } => {
           throw new Error("parser failed");
         },
       },
@@ -809,12 +857,10 @@ describe("compiled DOM runtime", () => {
       compiled,
     );
 
-    expect(await resolveRoute(invalid, { params: { id: "bad" }, query: {} })).toEqual({
+    expect(await resolveRoute(invalid, { id: "bad" })).toEqual({
       matched: false,
     });
-    expect(() => resolveRoute(broken, { params: { id: "bad" }, query: {} })).toThrow(
-      "parser failed",
-    );
+    expect(() => resolveRoute(broken, { id: "bad" })).toThrow("parser failed");
   });
 
   test("decorates Link anchors and preserves cancelled or modified clicks", () => {
@@ -822,11 +868,13 @@ describe("compiled DOM runtime", () => {
     const detail = route({ path: "/blog/:id" }, Empty, {
       pattern: "^/blog/([^/]+)$",
       parameterNames: ["id"],
+      pathnameParameterNames: ["id"],
+      queryParameters: [],
       specificity: [1, 0],
     });
     const navigations: string[] = [];
     configureRouteRuntime({
-      getValues: () => ({ params: { id: "first" }, query: {} }),
+      getParams: () => ({ id: "first" }),
       getPathname: () => "/",
       isActive: () => false,
       navigate: (path) => navigations.push(path),

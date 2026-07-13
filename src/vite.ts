@@ -89,6 +89,7 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
   for (const declaration of declarations) {
     for (const path of declaration.paths) {
       const matcher = path
+        .split("?", 1)[0]!
         .split("/")
         .map((segment) => (segment.startsWith(":") ? ":" : segment))
         .join("/");

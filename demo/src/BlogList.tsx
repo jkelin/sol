@@ -19,7 +19,7 @@ export const BlogList = $component(function BlogList(props: { entries: BlogEntry
       <ol class="space-y-1">
         {props.entries.map((entry) => (
           <li key={entry.id}>
-            <Link route={blogDetailRoute} params={{ id: entry.id }} query={{ from: "index" }}>
+            <Link route={blogDetailRoute} params={{ id: entry.id, from: "index" }}>
               <a class="group grid grid-cols-[2rem_1fr] gap-3 border-b border-rule py-4 text-graphite">
                 <span class="pt-1 font-mono text-[0.6875rem] text-correction">
                   {String(entry.id).padStart(2, "0")}

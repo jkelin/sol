@@ -18,11 +18,11 @@ export const componentSetupCounts = { app: 0, row: 0 };
 
 declare global {
   interface Window {
-    __frontendFrameworkDemo?: typeof componentSetupCounts;
+    frontendFrameworkDemo?: typeof componentSetupCounts;
   }
 }
 
-window.__frontendFrameworkDemo = componentSetupCounts;
+window.frontendFrameworkDemo = componentSetupCounts;
 
 const TodoRow = $component(function TodoRow(props: TodoRowProps) {
   componentSetupCounts.row += 1;
@@ -65,7 +65,10 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
 
   return (
     <li
-      className={["todo-row", { "todo-row--completed": props.todo.completed, "todo-row--editing": editing }]}
+      className={[
+        "todo-row",
+        { "todo-row--completed": props.todo.completed, "todo-row--editing": editing },
+      ]}
       data-testid={`todo-${props.todo.id}`}
     >
       <label class="todo-check">
@@ -74,7 +77,9 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
           $bind={props.todo.completed}
           aria-label={`Mark ${props.todo.title} as ${props.todo.completed ? "active" : "completed"}`}
         />
-        <span class="check-mark" aria-hidden="true">✓</span>
+        <span class="check-mark" aria-hidden="true">
+          ✓
+        </span>
       </label>
       <input
         class="todo-editor"
@@ -84,10 +89,21 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
         onBlur={finishEditing}
         onKeyDown={handleEditKey}
       />
-      <button class="todo-title" type="button" hidden={editing} onClick={beginEditing} aria-label={`Edit ${props.todo.title}`}>
+      <button
+        class="todo-title"
+        type="button"
+        hidden={editing}
+        onClick={beginEditing}
+        aria-label={`Edit ${props.todo.title}`}
+      >
         {props.todo.title}
       </button>
-      <button class="remove-button" type="button" onClick={props.onRemove} aria-label={`Remove ${props.todo.title}`}>
+      <button
+        class="remove-button"
+        type="button"
+        onClick={props.onRemove}
+        aria-label={`Remove ${props.todo.title}`}
+      >
         Remove
       </button>
     </li>
@@ -97,7 +113,7 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
 export const App = $component(function App() {
   componentSetupCounts.app += 1;
   let draft = "";
-  let filter: Filter = "all" as Filter;
+  let filter = "all" as Filter;
   let todos: Todo[] = [
     { id: 1, title: "Trace the first compiled template", completed: true },
     { id: 2, title: "Prove nested proxy updates", completed: false },
@@ -105,11 +121,12 @@ export const App = $component(function App() {
   ];
   let nextId = 4;
 
-  const filteredTodos = filter === "active"
-    ? todos.filter((todo) => !todo.completed)
-    : filter === "completed"
-      ? todos.filter((todo) => todo.completed)
-      : todos;
+  const filteredTodos =
+    filter === "active"
+      ? todos.filter((todo) => !todo.completed)
+      : filter === "completed"
+        ? todos.filter((todo) => todo.completed)
+        : todos;
   const remaining = todos.filter((todo) => !todo.completed).length;
   const completed = todos.length - remaining;
   const canAdd = draft.trim().length > 0;
@@ -170,14 +187,37 @@ export const App = $component(function App() {
               placeholder="What should happen next?"
               autocomplete="off"
             />
-            <button type="submit" disabled={!canAdd}>Add task</button>
+            <button type="submit" disabled={!canAdd}>
+              Add task
+            </button>
           </div>
         </form>
 
         <nav class="filter-tabs" aria-label="Filter tasks">
-          <button type="button" classNames={{ "filter-tab": true, "filter-tab--active": filter === "all" }} aria-pressed={filter === "all"} onClick={() => filter = "all"}>All</button>
-          <button type="button" classNames={{ "filter-tab": true, "filter-tab--active": filter === "active" }} aria-pressed={filter === "active"} onClick={() => filter = "active"}>Active</button>
-          <button type="button" classNames={{ "filter-tab": true, "filter-tab--active": filter === "completed" }} aria-pressed={filter === "completed"} onClick={() => filter = "completed"}>Completed</button>
+          <button
+            type="button"
+            classNames={{ "filter-tab": true, "filter-tab--active": filter === "all" }}
+            aria-pressed={filter === "all"}
+            onClick={() => (filter = "all")}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            classNames={{ "filter-tab": true, "filter-tab--active": filter === "active" }}
+            aria-pressed={filter === "active"}
+            onClick={() => (filter = "active")}
+          >
+            Active
+          </button>
+          <button
+            type="button"
+            classNames={{ "filter-tab": true, "filter-tab--active": filter === "completed" }}
+            aria-pressed={filter === "completed"}
+            onClick={() => (filter = "completed")}
+          >
+            Completed
+          </button>
         </nav>
 
         <div class="task-paper">
@@ -201,9 +241,14 @@ export const App = $component(function App() {
         </div>
 
         <footer class="ledger-footer">
-          <span>{todos.length} total / {completed} completed</span>
+          <span>
+            {todos.length} total / {completed}
+            {" completed"}
+          </span>
           {completed > 0 && (
-            <button type="button" class="clear-button" onClick={clearCompleted}>Clear completed</button>
+            <button type="button" class="clear-button" onClick={clearCompleted}>
+              Clear completed
+            </button>
           )}
         </footer>
       </section>

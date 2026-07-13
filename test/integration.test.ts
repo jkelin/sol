@@ -10,14 +10,14 @@ interface SetupCounts {
 }
 
 declare global {
-  var __integrationSetups: SetupCounts;
+  var integrationSetups: SetupCounts;
 }
 
 let window: Window;
 
 beforeEach(() => {
   window = new Window();
-  globalThis.__integrationSetups = { app: 0, child: 0 };
+  globalThis.integrationSetups = { app: 0, child: 0 };
   Object.assign(globalThis, {
     window,
     document: window.document,
@@ -37,12 +37,13 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
     '"frontend-framework/runtime"',
     JSON.stringify(runtimeUrl),
   );
-  const javascript = ts.transpileModule(sourceWithRuntime, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-    },
-  }).outputText + `\n// ${crypto.randomUUID()}`;
+  const javascript =
+    ts.transpileModule(sourceWithRuntime, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText + `\n// ${crypto.randomUUID()}`;
   const encoded = Buffer.from(javascript).toString("base64");
   return import(`data:text/javascript;base64,${encoded}`);
 }
@@ -50,12 +51,12 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
 test("compiled components update fine-grained DOM without rerunning setup", async () => {
   const module = await loadCompiled(`
     const Child = $component(function Child(props: { item: { id: number; label: string } }) {
-      globalThis.__integrationSetups.child += 1;
+      globalThis.integrationSetups.child += 1;
       return <li data-id={props.item.id}>{props.item.label}</li>;
     });
 
     export const App = $component(function App() {
-      globalThis.__integrationSetups.app += 1;
+      globalThis.integrationSetups.app += 1;
       let count = 0;
       let visible = true;
       const doubled = count * 2;
@@ -89,7 +90,7 @@ test("compiled components update fine-grained DOM without rerunning setup", asyn
 
   target.querySelector<HTMLButtonElement>("#toggle")!.click();
   expect(target.querySelector("p")).toBeNull();
-  expect(globalThis.__integrationSetups).toEqual({ app: 1, child: 2 });
+  expect(globalThis.integrationSetups).toEqual({ app: 1, child: 2 });
 
   dispose();
   expect(target.childNodes).toHaveLength(0);
@@ -98,7 +99,7 @@ test("compiled components update fine-grained DOM without rerunning setup", asyn
 test("nested keyed lists preserve and react to outer row state", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {
-      globalThis.__integrationSetups.app += 1;
+      globalThis.integrationSetups.app += 1;
       const groups = [{
         id: 1,
         name: "First",
@@ -121,7 +122,7 @@ test("nested keyed lists preserve and react to outer row state", async () => {
   expect(target.querySelector("p")!.textContent).toBe("Updated: Item");
   target.querySelector<HTMLButtonElement>("#rename-item")!.click();
   expect(target.querySelector("p")!.textContent).toBe("Updated: Renamed");
-  expect(globalThis.__integrationSetups.app).toBe(1);
+  expect(globalThis.integrationSetups.app).toBe(1);
 
   dispose();
 });

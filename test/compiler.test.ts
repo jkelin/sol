@@ -32,11 +32,11 @@ describe("compiler", () => {
   test("maps generated setup and DOM effects to their authored locations", () => {
     const source = [
       'import { $component } from "frontend-framework";',
-      'const Counter = $component(function Counter() {',
-      '  let count = 0;',
-      '  function increment() { count++; }',
-      '  return <button onClick={increment}>{count}</button>;',
-      '});',
+      "const Counter = $component(function Counter() {",
+      "  let count = 0;",
+      "  function increment() { count++; }",
+      "  return <button onClick={increment}>{count}</button>;",
+      "});",
     ].join("\n");
     const result = compile(source, "Mapped.tsx");
     const consumer = new SourceMapConsumer(JSON.parse(result.map!.toString()));
@@ -58,7 +58,8 @@ describe("compiler", () => {
   });
 
   test("compiles inferred bindings, conditionals, components, and keyed maps", () => {
-    const result = compile(`
+    const result = compile(
+      `
       import { $component } from "frontend-framework";
       const Row = $component(function Row(props: { todo: { id: number; done: boolean } }) {
         return <li><input type="checkbox" $bind={props.todo.done} /></li>;
@@ -71,7 +72,9 @@ describe("compiler", () => {
           {todos.length ? <ul>{todos.map(todo => <Row key={todo.id} todo={todo} />)}</ul> : <p>Empty</p>}
         </main>;
       });
-    `, "App.tsx");
+    `,
+      "App.tsx",
+    );
 
     expect(result.code).toContain('__ff_bind(__ff_view.elements[0], "checked"');
     expect(result.code).toContain('__ff_bind(__ff_view.elements[0], "value"');
@@ -81,7 +84,8 @@ describe("compiler", () => {
   });
 
   test("keeps outer row state distinct in nested keyed lists", () => {
-    const result = compile(`
+    const result = compile(
+      `
       const App = $component(function App() {
         const groups = [{ id: 1, name: "First", items: [{ id: 2, label: "Item" }] }];
         return <main>{groups.map(group =>
@@ -90,7 +94,9 @@ describe("compiler", () => {
           )}</section>
         )}</main>;
       });
-    `, "NestedLists.tsx");
+    `,
+      "NestedLists.tsx",
+    );
 
     expect(result.code).toContain("__ff_item_0.value.name");
     expect(result.code).toContain("__ff_item_1.value.label");
@@ -99,7 +105,8 @@ describe("compiler", () => {
   });
 
   test("supports explicit reactive overrides and every class alias", () => {
-    const result = compile(`
+    const result = compile(
+      `
       import { $component, $computed, $signal } from "frontend-framework";
       const App = $component(function App() {
         const count = $signal(1);
@@ -110,7 +117,9 @@ describe("compiler", () => {
           <p classNames={["row", { done: false }]}>{count}</p>
         </main>;
       });
-    `, "Aliases.tsx");
+    `,
+      "Aliases.tsx",
+    );
 
     expect(result.code).toContain("__ff_signal(1)");
     expect(result.code).toContain("__ff_computed(() => count.value * 2)");
@@ -119,7 +128,8 @@ describe("compiler", () => {
   });
 
   test("infers value and checked bindings for every supported form control", () => {
-    const result = compile(`
+    const result = compile(
+      `
       import { $component } from "frontend-framework";
       const Form = $component(function Form() {
         let text = "";
@@ -131,18 +141,23 @@ describe("compiler", () => {
           <input type="radio" $bind={checked} />
         </form>;
       });
-    `, "Form.tsx");
+    `,
+      "Form.tsx",
+    );
 
     expect(result.code.match(/__ff_bind\([^\n]+"value"/g)?.length).toBe(2);
     expect(result.code.match(/__ff_bind\([^\n]+"checked"/g)?.length).toBe(1);
   });
 
   test("resolves component declarations independently of capitalization", () => {
-    const result = compile(`
+    const result = compile(
+      `
       import { $component } from "frontend-framework";
       const row = $component(function row() { return <span>Row</span>; });
       const app = $component(function app() { return <row />; });
-    `, "Lowercase.tsx");
+    `,
+      "Lowercase.tsx",
+    );
 
     expect(result.code).toContain("const row = __ff_component");
     expect(result.code).toContain("__ff_child");
@@ -150,67 +165,114 @@ describe("compiler", () => {
   });
 
   test("reports invalid component, binding, class, and list interfaces with locations", () => {
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { signal } from "frontend-framework";
       export const value = signal(1);
-    `, "Invalid.tsx")).toThrow("signal() was renamed to $signal()");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("signal() was renamed to $signal()");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App({ name }: { name: string }) {
         return <p>{name}</p>;
       });
-    `, "Invalid.tsx")).toThrow("Component props must use one identifier");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("Component props must use one identifier");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App(props: { values: string[] }) {
         return <ul>{props.values.map(value => <li>{value}</li>)}</ul>;
       });
-    `, "Invalid.tsx")).toThrow("Every JSX .map() row requires a key attribute");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("Every JSX .map() row requires a key attribute");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       function App() { return <p>Not compiled</p>; }
-    `, "Invalid.tsx")).toThrow(/Invalid\.tsx:2:.*\$component/s);
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow(/Invalid\.tsx:2:.*\$component/s);
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import type { Missing } from "./types";
       import { $component } from "frontend-framework";
       const App = $component(function App() { return <Missing />; });
-    `, "Invalid.tsx")).toThrow("JSX component Missing must be declared with $component() or imported");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("JSX component Missing must be declared with $component() or imported");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         let value = false;
         let kind = "checkbox";
         return <input type={kind} $bind={value} />;
       });
-    `, "Invalid.tsx")).toThrow("$bind requires a static input type");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("$bind requires a static input type");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         return <input $bind={"snapshot"} />;
       });
-    `, "Invalid.tsx")).toThrow("$bind requires writable component state");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("$bind requires writable component state");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         let value = "";
         return <input bind:value={value} />;
       });
-    `, "Invalid.tsx")).toThrow("bind:* was removed");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("bind:* was removed");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         return <p class="one" className="two">Duplicate</p>;
       });
-    `, "Invalid.tsx")).toThrow("Use only one of class, className, or classNames");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("Use only one of class, className, or classNames");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         let source = 1;
@@ -218,85 +280,138 @@ describe("compiler", () => {
         function invalid() { doubled = 3; }
         return <p>{doubled}</p>;
       });
-    `, "Invalid.tsx")).toThrow("Computed component value doubled is readonly");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("Computed component value doubled is readonly");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         const later = source + 1;
         let source = 1;
         return <p>{later}</p>;
       });
-    `, "Invalid.tsx")).toThrow("cannot reference later binding source");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("cannot reference later binding source");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         const value = value + 1;
         return <p>{value}</p>;
       });
-    `, "Invalid.tsx")).toThrow("cannot reference itself");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("cannot reference itself");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         let values = [1];
         const length = values.push(2);
         return <p>{length}</p>;
       });
-    `, "Invalid.tsx")).toThrow("must not call mutating collection methods");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("must not call mutating collection methods");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App() {
         let source = 1;
         const doubled = source * 2;
         return <input $bind={doubled} />;
       });
-    `, "Invalid.tsx")).toThrow("$bind cannot target a computed value");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("$bind cannot target a computed value");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App(props: { value: string }) {
         return <input $bind={props.value} />;
       });
-    `, "Invalid.tsx")).toThrow("readonly component prop");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("readonly component prop");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const Child = $component(function Child() { return <p>Child</p>; });
       const App = $component(function App() {
         let value = "";
         return <Child $bind={value} />;
       });
-    `, "Invalid.tsx")).toThrow("$bind is only valid on intrinsic form elements");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("$bind is only valid on intrinsic form elements");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       function makeComponent() {
         return $component(function Nested() { return null as never; });
       }
-    `, "Invalid.tsx")).toThrow("direct top-level const initializer");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("direct top-level const initializer");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App(props: { ready: boolean }) {
         if (!props.ready) return <p>Waiting</p>;
         return <p>Ready</p>;
       });
-    `, "Invalid.tsx")).toThrow("Early component returns are not supported");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("Early component returns are not supported");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(function App(props: { value: string }) {
         return <div {...props}>{props.value}</div>;
       });
-    `, "Invalid.tsx")).toThrow("JSX spread attributes are not supported");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("JSX spread attributes are not supported");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component } from "frontend-framework";
       const App = $component(() => <p>Arrow</p>);
-    `, "Invalid.tsx")).toThrow("exactly one named function expression");
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("exactly one named function expression");
   });
 
   test("enforces component and expression boundary diagnostics", () => {
@@ -314,11 +429,11 @@ describe("compiler", () => {
         message: "sole initializer",
       },
       {
-        source: `const App = $component(function App() { function read() { return \"\"; } return <input $bind={read()} />; });`,
+        source: `const App = $component(function App() { function read() { return ""; } return <input $bind={read()} />; });`,
         message: "$bind requires writable component state",
       },
       {
-        source: `const App = $component(function App() { const state = { value: \"\" }; return <input $bind={state?.value} />; });`,
+        source: `const App = $component(function App() { const state = { value: "" }; return <input $bind={state?.value} />; });`,
         message: "$bind requires writable component state",
       },
       {
@@ -337,33 +452,52 @@ describe("compiler", () => {
   });
 
   test("protects compiler identifiers and component import classification", () => {
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const __ff_signal = 1;
       const App = $component(function App() { return <p>{__ff_signal}</p>; });
-    `, "ReservedModule.tsx")).toThrow("reserved compiler prefix __ff_");
+    `,
+        "ReservedModule.tsx",
+      ),
+    ).toThrow("reserved compiler prefix __ff_");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const App = $component(function App() {
         let __ff_view = 1;
         return <p>{__ff_view}</p>;
       });
-    `, "ReservedComponent.tsx")).toThrow("reserved compiler prefix __ff_");
+    `,
+        "ReservedComponent.tsx",
+      ),
+    ).toThrow("reserved compiler prefix __ff_");
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       import { $component, Fragment } from "frontend-framework";
       const App = $component(function App() { return <Fragment />; });
-    `, "FrameworkImport.tsx")).toThrow("must be declared with $component() or imported");
+    `,
+        "FrameworkImport.tsx",
+      ),
+    ).toThrow("must be declared with $component() or imported");
 
-    const externalComponent = compile(`
+    const externalComponent = compile(
+      `
       import { $component } from "frontend-framework";
       import { Row } from "./Row";
       const App = $component(function App() { return <Row />; });
-    `, "ExternalComponent.tsx");
+    `,
+      "ExternalComponent.tsx",
+    );
     expect(externalComponent.code).toContain("__ff_child");
   });
 
   test("validates binding roots, readonly props, and event spelling", () => {
-    const valid = compile(`
+    const valid = compile(
+      `
       import { $component } from "frontend-framework";
       const App = $component(function App(props: { todo: { done: boolean } }) {
         let todos = [{ id: 1, done: false }];
@@ -373,10 +507,14 @@ describe("compiler", () => {
           {todos.map(todo => <input key={todo.id} type="checkbox" $bind={todo.done} />)}
         </main>;
       });
-    `, "ValidBoundaries.tsx");
+    `,
+      "ValidBoundaries.tsx",
+    );
     expect(valid.code.match(/__ff_bind/g)?.length).toBeGreaterThanOrEqual(2);
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const App = $component(function App(props: { done: boolean }) {
         const rows = [{ id: 1, done: false }];
         const derived = rows.length;
@@ -385,21 +523,34 @@ describe("compiler", () => {
           {rows.map(derived => <input key={derived.id} type="checkbox" $bind={derived.done} />)}
         </main>;
       });
-    `, "ShadowedRowBindings.tsx")).not.toThrow();
+    `,
+        "ShadowedRowBindings.tsx",
+      ),
+    ).not.toThrow();
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const App = $component(function App(props: { value: number }) {
         function updateShadow(props: { value: number }) { props.value = 2; }
         return <button onClick={() => updateShadow({ value: 1 })}>{props.value}</button>;
       });
-    `, "ShadowedProps.tsx")).not.toThrow();
+    `,
+        "ShadowedProps.tsx",
+      ),
+    ).not.toThrow();
 
     for (const expression of ["external.value", "Math.value"]) {
-      expect(() => compile(`
+      expect(() =>
+        compile(
+          `
         import { $component } from "frontend-framework";
         const external = { value: "" };
         const App = $component(function App() { return <input $bind={${expression}} />; });
-      `, "InvalidBindingRoot.tsx")).toThrow("must be rooted in component state");
+      `,
+          "InvalidBindingRoot.tsx",
+        ),
+      ).toThrow("must be rooted in component state");
     }
 
     for (const statement of [
@@ -412,41 +563,66 @@ describe("compiler", () => {
       "Object.preventExtensions(props);",
       "Reflect.preventExtensions(props);",
     ]) {
-      expect(() => compile(`
+      expect(() =>
+        compile(
+          `
         import { $component } from "frontend-framework";
         const App = $component(function App(props: { value: number }) {
           function mutate() { ${statement} }
           return <button onClick={mutate}>{props.value}</button>;
         });
-      `, "ReadonlyProps.tsx")).toThrow("Component props are readonly");
+      `,
+          "ReadonlyProps.tsx",
+        ),
+      ).toThrow("Component props are readonly");
     }
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const App = $component(function App(props: { value: number }) {
         function helper(Object: { defineProperty: (...args: unknown[]) => void }) {
           Object.defineProperty(props, "value", { value: 2 });
         }
         return <button onClick={() => helper({ defineProperty() {} })}>{props.value}</button>;
       });
-    `, "ShadowedObject.tsx")).not.toThrow();
+    `,
+        "ShadowedObject.tsx",
+      ),
+    ).not.toThrow();
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const App = $component(function App(props: { value: number }) {
         return <button onClick={() => props.value++}>{props.value}</button>;
       });
-    `, "InlineReadonlyProps.tsx")).toThrow("Component props are readonly");
+    `,
+        "InlineReadonlyProps.tsx",
+      ),
+    ).toThrow("Component props are readonly");
 
     for (const eventName of ["onclick", "on-click", "on1Click", "OnClick"]) {
-      expect(() => compile(`
+      expect(() =>
+        compile(
+          `
         const App = $component(function App() { return <button ${eventName}={() => {}}>Run</button>; });
-      `, "InvalidEvent.tsx")).toThrow("React-style onEvent capitalization");
+      `,
+          "InvalidEvent.tsx",
+        ),
+      ).toThrow("React-style onEvent capitalization");
     }
 
-    expect(() => compile(`
+    expect(() =>
+      compile(
+        `
       const App = $component(function App() {
         let values = [1];
         return <ul>{values.map(value => { const label = value; return <li key={value}>{label}</li>; })}</ul>;
       });
-    `, "LegacyWording.tsx")).toThrow("component or $computed()");
+    `,
+        "LegacyWording.tsx",
+      ),
+    ).toThrow("component or $computed()");
   });
 });

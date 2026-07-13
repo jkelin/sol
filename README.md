@@ -23,10 +23,7 @@ const Counter = $component(function Counter() {
   const doubled = count * 2;
 
   return (
-    <button
-      classNames={["counter", { "counter--active": count > 0 }]}
-      onClick={() => count++}
-    >
+    <button classNames={["counter", { "counter--active": count > 0 }]} onClick={() => count++}>
       {count} / {doubled}
     </button>
   );

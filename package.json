@@ -1,8 +1,8 @@
 {
   "name": "frontend-framework",
-  "module": "index.ts",
-  "type": "module",
   "private": true,
+  "type": "module",
+  "module": "index.ts",
   "exports": {
     ".": "./index.ts",
     "./runtime": "./src/runtime.ts",
@@ -15,9 +15,17 @@
     "build": "bun run build:demo",
     "build:demo": "vite build --minify=false && bun test test/build-output.test.ts",
     "build:demo:inspect": "vite build --minify=false --outDir ../out/demo-inspect",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "bun run lint:oxc && bun run lint:types",
+    "lint:fix": "oxlint . --fix --deny-warnings",
+    "lint:oxc": "oxlint . --deny-warnings",
+    "lint:types": "oxlint . --type-aware --type-check --deny-warnings",
+    "prepare": "husky",
     "typecheck": "tsc --noEmit",
     "test": "bun test test/runtime.test.ts test/compiler.test.ts test/integration.test.ts",
-    "test:e2e": "bun run build && playwright test"
+    "test:e2e": "bun run build && playwright test",
+    "verify": "bun run format && bun run lint && bun run test"
   },
   "devDependencies": {
     "@babel/generator": "^7.28.4",
@@ -29,11 +37,19 @@
     "@types/babel__traverse": "^7.28.0",
     "@types/bun": "latest",
     "happy-dom": "^20.10.6",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "magic-string": "^0.30.21",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.73.0",
+    "oxlint-tsgolint": "^0.24.0",
     "source-map-js": "^1.2.1",
     "vite": "^8.0.10"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "lint-staged": {
+    "*.{css,html,js,jsx,json,jsonc,md,mjs,cjs,ts,tsx,yaml,yml}": "oxfmt --write"
   }
 }

@@ -132,7 +132,10 @@ export function batch<T>(callback: () => T): T {
     }
   }
   if (callbackFailed && flushFailed) {
-    throw new AggregateError([callbackFailure, flushFailure], "Batch callback and reactive flush failed");
+    throw new AggregateError(
+      [callbackFailure, flushFailure],
+      "Batch callback and reactive flush failed",
+    );
   }
   if (callbackFailed) throw callbackFailure;
   if (flushFailed) throw flushFailure;
@@ -207,10 +210,11 @@ function reactive<T extends object>(target: T): T {
   const proxy = new Proxy(target, {
     get(object, key, receiver) {
       if (Array.isArray(object) && typeof key === "string" && mutatingArrayMethods.has(key)) {
-        return (...args: unknown[]) => batch(() => {
-          const method = Reflect.get(object, key, receiver) as (...values: unknown[]) => unknown;
-          return method.apply(receiver, args);
-        });
+        return (...args: unknown[]) =>
+          batch(() => {
+            const method = Reflect.get(object, key, receiver) as (...values: unknown[]) => unknown;
+            return method.apply(receiver, args);
+          });
       }
       track(object, key);
       const value = Reflect.get(object, key, receiver) as unknown;
@@ -376,7 +380,7 @@ export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Blo
     dispose() {
       if (disposed) return;
       disposed = true;
-      for (const cleanup of cleanups.reverse()) cleanup();
+      for (const cleanup of cleanups.toReversed()) cleanup();
       for (const node of nodes) node.parentNode?.removeChild(node);
     },
   };
@@ -396,9 +400,13 @@ export function valueBlock(getValue: () => unknown): Block {
   return block(fragment, [cleanup]);
 }
 
-export function component<Props extends object>(factory: ComponentFactory<Props>): Component<Props> {
+export function component<Props extends object>(
+  factory: ComponentFactory<Props>,
+): Component<Props> {
   const compiled = (() => {
-    throw new Error("Compiled components cannot be called directly; pass them to mount() or render them in JSX");
+    throw new Error(
+      "Compiled components cannot be called directly; pass them to mount() or render them in JSX",
+    );
   }) as unknown as CompiledComponent<Props>;
   const ownedFactory: ComponentFactory<Props> = (props) => {
     const owner: Cleanup[] = [];
@@ -408,7 +416,7 @@ export function component<Props extends object>(factory: ComponentFactory<Props>
     try {
       rendered = factory(props);
     } catch (error) {
-      for (const cleanup of owner.reverse()) cleanup();
+      for (const cleanup of owner.toReversed()) cleanup();
       throw error;
     } finally {
       activeOwner = previousOwner;
@@ -422,7 +430,7 @@ export function component<Props extends object>(factory: ComponentFactory<Props>
         if (disposed) return;
         disposed = true;
         rendered.dispose();
-        for (const cleanup of owner.reverse()) cleanup();
+        for (const cleanup of owner.toReversed()) cleanup();
       },
     };
   };
@@ -470,7 +478,7 @@ export function mount<Props extends object>(
   }
   if (props != null && !isObject(props)) throw new TypeError("mount() props must be an object");
   const factory = getFactory(candidate);
-  const initialProps = readonlyProps(reactive({ ...(props ?? {}) }) as Props & object);
+  const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
   const mounted = factory(initialProps);
   target.replaceChildren();
   mounted.mount(target);
@@ -545,11 +553,15 @@ export function attribute(
   cleanups: Cleanup[],
 ): void {
   const isClass = name === "class" || name === "className" || name === "classNames";
-  cleanups.push(runtimeEffect(() => {
-    setDomValue(element, isClass ? "class" : name, isClass
-      ? normalizeClass(getValue() as ClassValue)
-      : getValue());
-  }));
+  cleanups.push(
+    runtimeEffect(() => {
+      setDomValue(
+        element,
+        isClass ? "class" : name,
+        isClass ? normalizeClass(getValue() as ClassValue) : getValue(),
+      );
+    }),
+  );
 }
 
 export function event(
@@ -574,14 +586,17 @@ export function bindValue(
   setValue: (value: unknown) => void,
   cleanups: Cleanup[],
 ): void {
-  const eventName = property === "checked" || element instanceof HTMLSelectElement ? "change" : "input";
+  const eventName =
+    property === "checked" || element instanceof HTMLSelectElement ? "change" : "input";
   const stopEffect = runtimeEffect(() => {
     const next = getValue();
     if (property === "checked") (element as HTMLInputElement).checked = Boolean(next);
     else if (element.value !== displayValue(next)) element.value = displayValue(next);
   });
   const listener = (): void => {
-    batch(() => setValue(property === "checked" ? (element as HTMLInputElement).checked : element.value));
+    batch(() =>
+      setValue(property === "checked" ? (element as HTMLInputElement).checked : element.value),
+    );
   };
   element.addEventListener(eventName, listener);
   cleanups.push(stopEffect, () => element.removeEventListener(eventName, listener));
@@ -670,9 +685,11 @@ export function child<Props extends object>(
   mounted.mount(region.end.parentNode!, region.end);
   cleanups.push(() => mounted.dispose());
   for (const [name, getter] of Object.entries(propGetters)) {
-    cleanups.push(runtimeEffect(() => {
-      state[name] = getter();
-    }));
+    cleanups.push(
+      runtimeEffect(() => {
+        state[name] = getter();
+      }),
+    );
   }
 }
 import type { JSX } from "./jsx-runtime.ts";

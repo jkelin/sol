@@ -12,7 +12,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await new Promise<void>((resolve, reject) => {
-    previewServer.httpServer.close((error) => error ? reject(error) : resolve());
+    previewServer.httpServer.close((error) => (error ? reject(error) : resolve()));
   });
 });
 
@@ -22,37 +22,62 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
   const originalRow = page.getByTestId("todo-2");
   const originalRowHandle = await originalRow.elementHandle();
   await page.getByRole("button", { name: "Edit Prove nested proxy updates", exact: true }).click();
-  const editor = page.getByRole("textbox", { name: "Edit Prove nested proxy updates", exact: true });
+  const editor = page.getByRole("textbox", {
+    name: "Edit Prove nested proxy updates",
+    exact: true,
+  });
   await expect(editor).toBeFocused();
   await expect(editor).toHaveValue("Prove nested proxy updates");
   await editor.fill("Prove transparent local updates");
   await editor.press("Enter");
-  await expect(page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true }),
+  ).toBeVisible();
   const renamedRowHandle = await originalRow.elementHandle();
-  expect(await page.evaluate(([before, after]) => before === after, [originalRowHandle, renamedRowHandle])).toBe(true);
+  expect(
+    await page.evaluate(
+      ([before, after]) => before === after,
+      [originalRowHandle, renamedRowHandle],
+    ),
+  ).toBe(true);
 
-  await page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Edit Prove transparent local updates", exact: true })
+    .click();
   const cancelEditor = originalRow.locator(".todo-editor");
   await cancelEditor.fill("Discard this");
   await expect(cancelEditor).toBeVisible();
   await cancelEditor.press("Escape");
-  await expect(page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true }),
+  ).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Edit Prove transparent local updates", exact: true })
+    .click();
   const blankEditor = originalRow.locator(".todo-editor");
   await blankEditor.fill("   ");
   await blankEditor.blur();
-  await expect(page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true }),
+  ).toBeVisible();
 
-  const titleButton = page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true });
+  const titleButton = page.getByRole("button", {
+    name: "Edit Prove transparent local updates",
+    exact: true,
+  });
   await titleButton.focus();
   await titleButton.press("Enter");
   const blurEditor = originalRow.locator(".todo-editor");
   await expect(blurEditor).toBeFocused();
   await blurEditor.fill("Save edits on blur");
   await blurEditor.blur();
-  await expect(page.getByRole("button", { name: "Edit Save edits on blur", exact: true })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__frontendFrameworkDemo)).toEqual({ app: 1, row: 3 });
+  await expect(
+    page.getByRole("button", { name: "Edit Save edits on blur", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.frontendFrameworkDemo))
+    .toEqual({ app: 1, row: 3 });
 
   const draft = page.getByLabel("New note", { exact: true });
   const add = page.getByRole("button", { name: "Add task", exact: true });
@@ -63,14 +88,18 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
 
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeVisible();
   await expect(draft).toHaveValue("");
-  await page.getByRole("checkbox", {
-    name: "Mark Verify fine-grained updates as completed",
-    exact: true,
-  }).check({ force: true });
+  await page
+    .getByRole("checkbox", {
+      name: "Mark Verify fine-grained updates as completed",
+      exact: true,
+    })
+    .check({ force: true });
 
   await expect(page.locator(".completion-margin strong")).toHaveText("2");
   await expect(page.locator(".remaining-count strong")).toHaveText("2");
-  await expect.poll(() => page.evaluate(() => window.__frontendFrameworkDemo)).toEqual({ app: 1, row: 4 });
+  await expect
+    .poll(() => page.evaluate(() => window.frontendFrameworkDemo))
+    .toEqual({ app: 1, row: 4 });
 
   await page.getByRole("button", { name: "Active", exact: true }).click();
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeHidden();
@@ -88,10 +117,14 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
 
   await page.getByRole("button", { name: "Remove Save edits on blur", exact: true }).click();
   await expect(page.locator(".todo-row")).toHaveCount(1);
-  await page.getByRole("button", { name: "Remove Ship without a virtual DOM", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Remove Ship without a virtual DOM", exact: true })
+    .click();
   await expect(page.locator(".todo-row")).toHaveCount(0);
   await expect(page.getByText("No notes on this page.", { exact: true })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__frontendFrameworkDemo)).toEqual({ app: 1, row: 8 });
+  await expect
+    .poll(() => page.evaluate(() => window.frontendFrameworkDemo))
+    .toEqual({ app: 1, row: 8 });
 });
 
 test("stays usable and overflow-free at desktop and mobile sizes", async ({ page }) => {
@@ -99,11 +132,19 @@ test("stays usable and overflow-free at desktop and mobile sizes", async ({ page
   await page.goto("/");
   await page.getByLabel("New note", { exact: true }).focus();
   await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth),
+    )
+    .toBe(true);
   await page.screenshot({ path: "test-results/todo-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("navigation", { name: "Filter tasks" })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth),
+    )
+    .toBe(true);
   await page.screenshot({ path: "test-results/todo-mobile.png", fullPage: true });
 });

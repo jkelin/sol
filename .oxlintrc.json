@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "perf": "error",
+    "suspicious": "error"
+  },
+  "env": {
+    "browser": true,
+    "builtin": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "out/**",
+    "playwright-report/**",
+    "test-results/**"
+  ],
+  "options": {
+    "reportUnusedDisableDirectives": "error"
+  },
+  "plugins": ["oxc", "typescript", "unicorn"],
+  "rules": {
+    "typescript/await-thenable": "error",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-unnecessary-type-assertion": "off",
+    "typescript/no-unsafe-type-assertion": "off"
+  }
+}

@@ -17,7 +17,6 @@ import {
   normalizeClass,
   template,
   text,
-  type Region,
   type Signal,
   when,
 } from "../src/runtime.ts";
@@ -40,15 +39,19 @@ afterEach(() => window.close());
 
 describe("reactivity", () => {
   test("validates the public compiler boundary and class values", () => {
-    expect(() => $component(function Example() {
-      return undefined as never;
-    })).toThrow("reached runtime");
-    expect(normalizeClass([
-      "todo-row",
-      [null, false, "ledger-line"],
-      { "todo-row--completed": true, hidden: 0 },
-      2,
-    ])).toBe("todo-row ledger-line todo-row--completed 2");
+    expect(() =>
+      $component(function Example() {
+        return undefined as never;
+      }),
+    ).toThrow("reached runtime");
+    expect(
+      normalizeClass([
+        "todo-row",
+        [null, false, "ledger-line"],
+        { "todo-row--completed": true, hidden: 0 },
+        2,
+      ]),
+    ).toBe("todo-row ledger-line todo-row--completed 2");
   });
 
   test("tracks primitives, computed values, and batches writes", () => {
@@ -95,8 +98,13 @@ describe("reactivity", () => {
 
   test("settles transitive computed chains before running consumers", () => {
     for (const update of [
-      (source: Signal<number>) => { source.value = 2; },
-      (source: Signal<number>) => batch(() => { source.value = 2; }),
+      (source: Signal<number>) => {
+        source.value = 2;
+      },
+      (source: Signal<number>) =>
+        batch(() => {
+          source.value = 2;
+        }),
     ]) {
       const source = $signal(1);
       const doubled = $computed(() => source.value * 2);
@@ -134,18 +142,22 @@ describe("reactivity", () => {
   test("unsubscribes effects and computed values whose initial evaluation throws", () => {
     const source = $signal(0);
     let effectRuns = 0;
-    expect(() => runtimeEffect(() => {
-      effectRuns += 1;
-      void source.value;
-      throw new Error("effect failed");
-    })).toThrow("effect failed");
+    expect(() =>
+      runtimeEffect(() => {
+        effectRuns += 1;
+        void source.value;
+        throw new Error("effect failed");
+      }),
+    ).toThrow("effect failed");
 
     let computedRuns = 0;
-    expect(() => $computed(() => {
-      computedRuns += 1;
-      void source.value;
-      throw new Error("computed failed");
-    })).toThrow("computed failed");
+    expect(() =>
+      $computed(() => {
+        computedRuns += 1;
+        void source.value;
+        throw new Error("computed failed");
+      }),
+    ).toThrow("computed failed");
 
     source.value = 1;
     expect(effectRuns).toBe(1);
@@ -155,7 +167,9 @@ describe("reactivity", () => {
   test("tracks deep object writes and array mutators", () => {
     const state = $signal({ todos: [{ done: false }] });
     const observations: string[] = [];
-    runtimeEffect(() => observations.push(`${state.value.todos.length}:${state.value.todos[0]?.done}`));
+    runtimeEffect(() =>
+      observations.push(`${state.value.todos.length}:${state.value.todos[0]?.done}`),
+    );
 
     state.value.todos[0]!.done = true;
     state.value.todos.push({ done: false });
@@ -185,12 +199,12 @@ describe("reactivity", () => {
     const state = $signal({ child: { value: 1 } });
     const observations: number[] = [];
     runtimeEffect(() => observations.push(state.value.child.value));
-    const child = state.value.child;
+    const childProxy = state.value.child;
 
-    state.value.child = child;
-    child.value = 2;
+    state.value.child = childProxy;
+    childProxy.value = 2;
 
-    expect(state.value.child).toBe(child);
+    expect(state.value.child).toBe(childProxy);
     expect(observations).toEqual([1, 2]);
   });
 
@@ -229,7 +243,7 @@ describe("compiled DOM runtime", () => {
     expect(element.className).toBe("todo-row");
     classes.value = ["todo-row", { "todo-row--completed": true }];
     expect(element.className).toBe("todo-row todo-row--completed");
-    for (const cleanup of cleanups.reverse()) cleanup();
+    for (const cleanup of cleanups.toReversed()) cleanup();
   });
 
   test("mounts once and patches text without rerunning setup", () => {
@@ -258,7 +272,9 @@ describe("compiled DOM runtime", () => {
     const target = document.createElement("main");
     expect(() => mount((() => undefined) as never, target)).toThrow("uncompiled component");
     expect(() => mount((() => undefined) as never, null as never)).toThrow("DOM Element target");
-    expect(() => mount((() => undefined) as never, target, "bad props" as never)).toThrow("props must be an object");
+    expect(() => mount((() => undefined) as never, target, "bad props" as never)).toThrow(
+      "props must be an object",
+    );
   });
 
   test("rejects every reflective mutation of readonly component props", () => {
@@ -270,8 +286,12 @@ describe("compiled DOM runtime", () => {
     mount(Example, document.createElement("main"), { label: "original" });
     const props = receivedProps!;
 
-    expect(() => Object.defineProperty(props, "label", { value: "changed" })).toThrow("Component props are readonly");
-    expect(() => Reflect.defineProperty(props, "label", { value: "changed" })).toThrow("Component props are readonly");
+    expect(() => Object.defineProperty(props, "label", { value: "changed" })).toThrow(
+      "Component props are readonly",
+    );
+    expect(() => Reflect.defineProperty(props, "label", { value: "changed" })).toThrow(
+      "Component props are readonly",
+    );
     expect(() => Object.setPrototypeOf(props, null)).toThrow("Component props are readonly");
     expect(() => Reflect.setPrototypeOf(props, null)).toThrow("Component props are readonly");
     expect(() => Object.preventExtensions(props)).toThrow("Component props are readonly");
@@ -307,9 +327,15 @@ describe("compiled DOM runtime", () => {
     const view = instantiate(definition);
     const cleanups: (() => void)[] = [];
     const input = view.elements[0] as HTMLInputElement;
-    bindValue(input, "value", () => draft.value, (value) => {
-      draft.value = String(value);
-    }, cleanups);
+    bindValue(
+      input,
+      "value",
+      () => draft.value,
+      (value) => {
+        draft.value = String(value);
+      },
+      cleanups,
+    );
 
     expect(input.value).toBe("first");
     input.value = "second";
@@ -317,7 +343,7 @@ describe("compiled DOM runtime", () => {
     expect(draft.value).toBe("second");
     draft.value = "third";
     expect(input.value).toBe("third");
-    for (const cleanup of cleanups.reverse()) cleanup();
+    for (const cleanup of cleanups.toReversed()) cleanup();
     input.value = "ignored";
     input.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
     expect(draft.value).toBe("third");
@@ -329,9 +355,15 @@ describe("compiled DOM runtime", () => {
     const view = instantiate(definition);
     const cleanups: (() => void)[] = [];
     const input = view.elements[0] as HTMLInputElement;
-    bindValue(input, "checked", () => completed.value, (value) => {
-      completed.value = Boolean(value);
-    }, cleanups);
+    bindValue(
+      input,
+      "checked",
+      () => completed.value,
+      (value) => {
+        completed.value = Boolean(value);
+      },
+      cleanups,
+    );
 
     expect(input.checked).toBe(false);
     input.checked = true;
@@ -339,7 +371,7 @@ describe("compiled DOM runtime", () => {
     expect(completed.value).toBe(true);
     completed.value = false;
     expect(input.checked).toBe(false);
-    for (const cleanup of cleanups.reverse()) cleanup();
+    for (const cleanup of cleanups.toReversed()) cleanup();
   });
 
   test("disposes effects owned by removed conditional branches", () => {
@@ -356,10 +388,12 @@ describe("compiled DOM runtime", () => {
         () => {
           const fragment = document.createDocumentFragment();
           fragment.append(document.createTextNode("visible"));
-          const branchCleanups = [runtimeEffect(() => {
-            branchReads += 1;
-            void branchValue.value;
-          })];
+          const branchCleanups = [
+            runtimeEffect(() => {
+              branchReads += 1;
+              void branchValue.value;
+            }),
+          ];
           return block(fragment, branchCleanups);
         },
         () => block(document.createDocumentFragment()),
@@ -408,10 +442,14 @@ describe("compiled DOM runtime", () => {
       childSetups += 1;
       const view = instantiate(childTemplate);
       const cleanups: (() => void)[] = [];
-      text(view.regions[0]!, () => {
-        childReads += 1;
-        return props.label;
-      }, cleanups);
+      text(
+        view.regions[0]!,
+        () => {
+          childReads += 1;
+          return props.label;
+        },
+        cleanups,
+      );
       return block(view.fragment, cleanups);
     });
     const parentTemplate = template("<div><!--ff:s:0--><!--ff:e:0--></div>");
@@ -434,7 +472,10 @@ describe("compiled DOM runtime", () => {
   });
 
   test("reorders keyed blocks while preserving their nodes", () => {
-    const values = $signal([{ id: 1, label: "One" }, { id: 2, label: "Two" }]);
+    const values = $signal([
+      { id: 1, label: "One" },
+      { id: 2, label: "Two" },
+    ]);
     const definition = template("<ol><!--ff:s:0--><!--ff:e:0--></ol>");
     const rowDefinition = template("<li><!--ff:s:0--><!--ff:e:0--></li>");
     const List = component(() => {
@@ -460,7 +501,10 @@ describe("compiled DOM runtime", () => {
 
     values.value.reverse();
 
-    expect([...target.querySelectorAll("li")].map((node) => node.textContent)).toEqual(["Two", "One"]);
+    expect([...target.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+      "Two",
+      "One",
+    ]);
     expect(target.querySelectorAll("li")[1]).toBe(firstNode);
   });
 
@@ -479,10 +523,12 @@ describe("compiled DOM runtime", () => {
         (item) => {
           const fragment = document.createDocumentFragment();
           fragment.append(document.createTextNode("row"));
-          const rowCleanups = [runtimeEffect(() => {
-            rowReads += 1;
-            void item.value.value;
-          })];
+          const rowCleanups = [
+            runtimeEffect(() => {
+              rowReads += 1;
+              void item.value.value;
+            }),
+          ];
           return block(fragment, rowCleanups);
         },
         cleanups,

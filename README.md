@@ -81,6 +81,34 @@ Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()`
 
 `class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, nested arrays, and object maps. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 
+## Transitions
+
+Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string, so the application can define animation details with Tailwind, another CSS framework, or its own stylesheet. Transitions run only for updates after the initial render:
+
+```tsx
+import { $component, type Transition } from "frontend-framework";
+
+const fade: Transition = {
+  enter: "animate-in fade-in duration-150",
+  leave: "animate-out fade-out duration-100",
+};
+
+const List = $component(function List() {
+  let items = [{ id: 1, label: "First" }];
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.id} $transition={fade}>
+          {item.label}
+        </li>
+      ))}
+    </ul>
+  );
+});
+```
+
+The runtime adds the phase classes temporarily and waits for the CSS animations or transitions they create. Leave animations keep their DOM mounted until every transitioned descendant finishes. Re-adding the same conditional branch or keyed-list key cancels its leave and reuses the existing DOM. Route pages use the same directive on their intrinsic root. Reduced-motion preferences and browsers without `Element.getAnimations()` fall back to immediate insertion and removal.
+
 Enable compilation in Vite:
 
 ```ts

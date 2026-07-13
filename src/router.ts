@@ -225,8 +225,10 @@ export const Route = component(() => {
   const view = instantiate(routeTemplate);
   const cleanups: Array<() => void> = [];
   let active: Block | undefined;
+  let outgoing: Block | undefined;
   let activeDefinition: RouteDefinition | undefined;
   let activePathname: string | undefined;
+  let initialized = false;
 
   cleanups.push(listenForNavigation());
   cleanups.push(
@@ -236,11 +238,27 @@ export const Route = component(() => {
       if (activeDefinition === match?.definition && activePathname === location.pathname) return;
       activeDefinition = match?.definition;
       activePathname = location.pathname;
-      active?.dispose();
+      outgoing?.dispose();
+      outgoing = undefined;
+      if (active) {
+        const previous = active;
+        const finished = previous.retire();
+        if (finished) {
+          outgoing = previous;
+          void finished.then(() => {
+            if (outgoing === previous) outgoing = undefined;
+          });
+        }
+      }
       active = match ? renderComponent(match.definition.component) : undefined;
       active?.mount(view.regions[0]!.end.parentNode!, view.regions[0]!.end);
+      if (initialized) active?.enter();
+      initialized = true;
     }),
-    () => active?.dispose(),
+    () => {
+      active?.dispose();
+      outgoing?.dispose();
+    },
   );
   return block(view.fragment, cleanups);
 });

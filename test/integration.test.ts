@@ -18,6 +18,7 @@ let window: Window;
 
 beforeEach(() => {
   window = new Window();
+  delete (window.Element.prototype as { getAnimations?: unknown }).getAnimations;
   globalThis.integrationSetups = { app: 0, child: 0 };
   Object.assign(globalThis, {
     integrationForm: $form,
@@ -31,6 +32,41 @@ beforeEach(() => {
 });
 
 afterEach(() => window.close());
+
+function installAnimations(): Array<{ cancelled: boolean; finish(): void }> {
+  const animations: Array<{ cancelled: boolean; finish(): void }> = [];
+  const current = new WeakMap<
+    Element,
+    { signature: string; animation: Animation; controlled: { cancelled: boolean; finish(): void } }
+  >();
+  Object.defineProperty(window.Element.prototype, "getAnimations", {
+    configurable: true,
+    value(this: Element): Animation[] {
+      const signature = [...this.classList]
+        .filter((className) => className.startsWith("transition-"))
+        .join(" ");
+      if (!signature) return [];
+      const existing = current.get(this);
+      if (existing?.signature === signature) return [existing.animation];
+      let finish!: () => void;
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const controlled = { cancelled: false, finish };
+      animations.push(controlled);
+      const animation = {
+        finished,
+        cancel() {
+          controlled.cancelled = true;
+          finish();
+        },
+      } as unknown as Animation;
+      current.set(this, { signature, animation, controlled });
+      return [animation];
+    },
+  });
+  return animations;
+}
 
 async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const result = compile(source, "Integration.tsx");
@@ -104,6 +140,91 @@ test("compiled components update fine-grained DOM without rerunning setup", asyn
 
   dispose();
   expect(target.childNodes).toHaveLength(0);
+});
+
+test("compiled conditionals and keyed lists transition dynamic blocks", async () => {
+  const animations = installAnimations();
+  const module = await loadCompiled(`
+    const fade = {
+      enter: "transition-enter duration-100",
+      leave: "transition-leave duration-100",
+    };
+    export const App = $component(function App() {
+      let visible = true;
+      let items = [{ id: 1 }, { id: 2 }];
+      return <main>
+        <button id="toggle" onClick={() => visible = !visible}>Toggle</button>
+        <button id="remove" onClick={() => items.splice(0, 1)}>Remove</button>
+        <button id="restore" onClick={() => items.unshift({ id: 1 })}>Restore</button>
+        <button id="add" onClick={() => items.push({ id: 3 })}>Add</button>
+        {visible && <p $transition={fade}>Visible</p>}
+        <ul>{items.map(item => <li key={item.id} data-id={item.id} $transition={fade}>{item.id}</li>)}</ul>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  mount(module.App as Component, target);
+  const initialParagraph = target.querySelector("p");
+
+  expect(animations).toHaveLength(0);
+  target.querySelector<HTMLButtonElement>("#toggle")!.click();
+  expect(target.querySelector("p")).toBe(initialParagraph);
+  expect(animations).toHaveLength(1);
+  target.querySelector<HTMLButtonElement>("#toggle")!.click();
+  expect(animations[0]!.cancelled).toBe(true);
+  expect(target.querySelector("p")).toBe(initialParagraph);
+  expect(animations).toHaveLength(2);
+
+  const firstRow = target.querySelector('[data-id="1"]');
+  target.querySelector<HTMLButtonElement>("#remove")!.click();
+  expect(target.querySelector('[data-id="1"]')).toBe(firstRow);
+  expect(animations).toHaveLength(3);
+  target.querySelector<HTMLButtonElement>("#restore")!.click();
+  expect(animations[2]!.cancelled).toBe(true);
+  expect(target.querySelector('[data-id="1"]')).toBe(firstRow);
+  expect([...target.querySelectorAll("li")].map((row) => row.textContent)).toEqual(["1", "2"]);
+  expect(animations).toHaveLength(4);
+
+  target.querySelector<HTMLButtonElement>("#remove")!.click();
+  expect(animations[3]!.cancelled).toBe(true);
+  expect(animations).toHaveLength(5);
+  animations[4]!.finish();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(target.querySelector('[data-id="1"]')).toBeNull();
+
+  target.querySelector<HTMLButtonElement>("#add")!.click();
+  expect(target.querySelector('[data-id="3"]')).not.toBeNull();
+  expect(animations).toHaveLength(6);
+});
+
+test("compiled ternaries transition and reuse both branches", async () => {
+  const animations = installAnimations();
+  const module = await loadCompiled(`
+    const fade = { enter: "transition-enter", leave: "transition-leave" };
+    export const App = $component(function App() {
+      let left = true;
+      return <main>
+        <button onClick={() => left = !left}>Swap</button>
+        {left
+          ? <p data-side="left" $transition={fade}>Left</p>
+          : <p data-side="right" $transition={fade}>Right</p>}
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  mount(module.App as Component, target);
+  const left = target.querySelector('[data-side="left"]');
+
+  target.querySelector("button")!.click();
+  expect(animations).toHaveLength(2);
+  expect(target.querySelector('[data-side="left"]')).toBe(left);
+  expect(target.querySelector('[data-side="right"]')).not.toBeNull();
+
+  target.querySelector("button")!.click();
+  expect(animations[0]!.cancelled).toBe(true);
+  expect(animations[1]!.cancelled).toBe(true);
+  expect(animations).toHaveLength(4);
+  expect(target.querySelector('[data-side="left"]')).toBe(left);
 });
 
 test("compiled forms bind controller values and patch validation errors", async () => {

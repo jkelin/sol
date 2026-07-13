@@ -29,6 +29,7 @@ const RUNTIME_IMPORT = `import {
   suspense as __ff_suspense,
   template as __ff_template,
   text as __ff_text,
+  transition as __ff_transition,
   valueBlock as __ff_value_block,
   when as __ff_when
 } from "frontend-framework/runtime";`;
@@ -728,6 +729,8 @@ function compileComponentElement(
     if (name === "key") continue;
     if (name === "$bind")
       codeFrame(compiler, attribute, "$bind is only valid on intrinsic form elements");
+    if (name === "$transition")
+      codeFrame(compiler, attribute, "$transition is only valid on intrinsic elements");
     const value = staticAttributeValue(compiler, attribute);
     const getter =
       value !== undefined
@@ -847,6 +850,17 @@ function compileIntrinsicElement(
           compiler,
           attribute,
           `__ff_bind(__ff_view.elements[${element}], ${JSON.stringify(property)}, () => (${binding.read}), (__ff_value: unknown) => { ${binding.write}; }, __ff_cleanups);`,
+        ),
+      );
+      continue;
+    }
+    if (sourceName === "$transition") {
+      const value = expressionCode(expressionAttribute(compiler, attribute), scope);
+      deferredOperations.push((element) =>
+        mappedCode(
+          compiler,
+          attribute,
+          `__ff_transition(__ff_view.elements[${element}], () => (${value}));`,
         ),
       );
       continue;

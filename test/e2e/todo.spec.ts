@@ -179,6 +179,17 @@ test("stays usable and overflow-free at desktop and mobile sizes", async ({ page
 test("navigates compiled blog routes and creates a shared entry", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "getAnimations");
+    if (typeof descriptor?.value !== "function") return;
+    const getAnimations = descriptor.value as Element["getAnimations"];
+    Element.prototype.getAnimations = function (options) {
+      const animations = Reflect.apply(getAnimations, this, [options]) as Animation[];
+      const count = Number(sessionStorage.getItem("transition-animation-count") ?? 0);
+      sessionStorage.setItem("transition-animation-count", String(count + animations.length));
+      return animations;
+    };
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
   expect(pageErrors).toEqual([]);
@@ -187,6 +198,9 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   await page.getByRole("link", { name: "New entry", exact: true }).click();
   await expect(page).toHaveURL(/\/blog\/new$/);
   await expect(page.getByRole("heading", { name: "Put the thought on paper." })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Number(sessionStorage.getItem("transition-animation-count"))))
+    .toBeGreaterThanOrEqual(2);
   await expect(page.getByRole("link", { name: /The compiler keeps the map/ })).toBeVisible();
   await page.screenshot({ path: "test-results/blog-new-desktop.png", fullPage: true });
 

@@ -82,6 +82,50 @@
   transform: rotate(-1deg);
 }
 
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+}
+
+@keyframes page-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+}
+
+@keyframes todo-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-0.5rem);
+  }
+}
+
+@keyframes todo-leave {
+  to {
+    opacity: 0;
+    transform: translateX(0.5rem);
+  }
+}
+
+.page-enter {
+  animation: page-enter 180ms ease-out both;
+}
+
+.page-leave {
+  animation: page-leave 140ms ease-in both;
+}
+
+.todo-enter {
+  animation: todo-enter 140ms ease-out;
+}
+
+.todo-leave {
+  animation: todo-leave 120ms ease-in both;
+}
+
 @media (max-width: 639px) {
   .completion-margin::after {
     display: none;

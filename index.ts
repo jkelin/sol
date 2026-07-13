@@ -27,5 +27,6 @@ export {
   type ReadonlySignal,
   type Signal,
   type SuspenseProps,
+  type Transition,
 } from "./src/runtime.ts";
 export { Route, router, type Router } from "./src/router.ts";

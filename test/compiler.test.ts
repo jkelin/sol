@@ -152,6 +152,32 @@ describe("compiler", () => {
     expect(result.code).toContain("__ff_child");
   });
 
+  test("compiles intrinsic transition directives and rejects invalid placements", () => {
+    const result = compile(
+      `
+      const fade = { enter: "fade-in duration-100" };
+      const App = $component(function App() { return <main $transition={fade}>Ready</main>; });
+    `,
+      "Transitions.tsx",
+    );
+
+    expect(result.code).toContain("__ff_transition(__ff_view.elements[0], () => (fade))");
+    expect(result.code).not.toContain('$transition="');
+    expect(() =>
+      compile(
+        `const Child = $component(function Child() { return <p>Child</p>; });
+         const App = $component(function App() { return <Child $transition={{}} />; });`,
+        "InvalidTransition.tsx",
+      ),
+    ).toThrow("$transition is only valid on intrinsic elements");
+    expect(() =>
+      compile(
+        `const App = $component(function App() { return <p $transition="fade">Child</p>; });`,
+        "InvalidTransition.tsx",
+      ),
+    ).toThrow("requires an expression");
+  });
+
   test("keeps outer row state distinct in nested keyed lists", () => {
     const result = compile(
       `

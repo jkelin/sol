@@ -1,5 +1,6 @@
 import { $component, $form, type FormController } from "frontend-framework";
 import * as v from "valibot";
+import { pageTransition, todoTransition } from "./transitions.ts";
 
 type Filter = "all" | "active" | "completed";
 
@@ -127,6 +128,7 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
 
   return (
     <li
+      $transition={todoTransition}
       classNames={[
         "todo-row group relative grid min-h-14 grid-cols-[2.125rem_1fr_auto] items-center gap-2.5 px-6 sm:px-11",
         { "bg-paper-inset/60": editing },
@@ -221,7 +223,8 @@ export const App = $component(function App() {
 
   return (
     <section
-      class="relative w-full overflow-hidden rounded-[6px_14px_10px_5px] border border-rule-strong bg-paper shadow-ledger max-sm:min-h-screen max-sm:rounded-none max-sm:border-x-0"
+      class="relative col-start-1 row-start-1 w-full overflow-hidden rounded-[6px_14px_10px_5px] border border-rule-strong bg-paper shadow-ledger max-sm:min-h-screen max-sm:rounded-none max-sm:border-x-0"
+      $transition={pageTransition}
       aria-labelledby="page-title"
     >
       <div

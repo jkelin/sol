@@ -6,6 +6,11 @@ export interface ReadonlySignal<T> {
   readonly value: T;
 }
 
+export interface Transition {
+  readonly enter?: string;
+  readonly leave?: string;
+}
+
 export type FormValidationStrategy = "onSubmit" | "onBlur" | "onInput";
 
 export type FormParser<TValues extends Record<string, unknown>, TOutput> =
@@ -697,6 +702,9 @@ export interface Block {
   readonly nodes: Node[];
   mount(parent: Node, before?: Node | null): void;
   move(parent: Node, before?: Node | null): void;
+  enter(): void;
+  leave(): Promise<void> | undefined;
+  retire(): Promise<void> | undefined;
   dispose(): void;
 }
 
@@ -791,12 +799,110 @@ export function instantiate(definition: TemplateDefinition): View {
   return { fragment, elements, regions };
 }
 
+type TransitionPhase = keyof Transition;
+type TransitionGetter = () => Transition;
+
+const transitionGetters = new WeakMap<Element, TransitionGetter>();
+const runningTransitions = new WeakMap<
+  Element,
+  { animations: readonly Animation[]; classes: readonly string[] }
+>();
+
+export function transition(element: Element, getTransition: TransitionGetter): void {
+  if (!element || element.nodeType !== Node.ELEMENT_NODE) {
+    throw new TypeError("$transition expects a DOM Element");
+  }
+  if (typeof getTransition !== "function") {
+    throw new TypeError("$transition expects a transition getter");
+  }
+  transitionGetters.set(element, getTransition);
+}
+
+function transitionClasses(value: unknown, phase: TransitionPhase): string[] | undefined {
+  if (!isObject(value) || Array.isArray(value) || !isReactiveTarget(value)) {
+    throw new TypeError("$transition expects an object with enter and/or leave class names");
+  }
+  const className = (value as Record<TransitionPhase, unknown>)[phase];
+  if (className === undefined) return undefined;
+  if (typeof className !== "string" || className.trim() === "") {
+    throw new TypeError(`$transition ${phase} must be a non-empty class name string`);
+  }
+  return className.trim().split(/\s+/);
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function transitionedElements(nodes: readonly Node[]): Element[] {
+  const elements: Element[] = [];
+  for (const node of nodes) {
+    if (!(node instanceof Element)) continue;
+    if (transitionGetters.has(node)) elements.push(node);
+    for (const descendant of node.querySelectorAll("*")) {
+      if (transitionGetters.has(descendant)) elements.push(descendant);
+    }
+  }
+  return elements;
+}
+
+function cancelTransitions(nodes: readonly Node[]): void {
+  for (const element of transitionedElements(nodes)) {
+    const running = runningTransitions.get(element);
+    if (!running) continue;
+    runningTransitions.delete(element);
+    for (const animation of running.animations) animation.cancel();
+    element.classList.remove(...running.classes);
+  }
+}
+
+function runTransitions(nodes: readonly Node[], phase: TransitionPhase): Promise<void> | undefined {
+  const configured: Array<{ element: Element; classes: string[] }> = [];
+  for (const element of transitionedElements(nodes)) {
+    const getter = transitionGetters.get(element)!;
+    const classes = transitionClasses(getter(), phase);
+    if (classes) configured.push({ element, classes });
+  }
+  cancelTransitions(nodes);
+  if (configured.length === 0 || prefersReducedMotion()) return undefined;
+
+  const finished: Promise<unknown>[] = [];
+  for (const { element, classes } of configured) {
+    if (typeof element.getAnimations !== "function") continue;
+    const existing = new Set(element.getAnimations());
+    const addedClasses = classes.filter((className) => !element.classList.contains(className));
+    element.classList.add(...classes);
+    const animations = element.getAnimations().filter((animation) => !existing.has(animation));
+    if (animations.length === 0) {
+      element.classList.remove(...addedClasses);
+      continue;
+    }
+    const running = { animations, classes: addedClasses };
+    runningTransitions.set(element, running);
+    finished.push(
+      Promise.all(animations.map((animation) => animation.finished.catch(() => undefined))).finally(
+        () => {
+          if (runningTransitions.get(element) !== running) return;
+          runningTransitions.delete(element);
+          element.classList.remove(...addedClasses);
+        },
+      ),
+    );
+  }
+  return finished.length > 0 ? Promise.all(finished).then(() => undefined) : undefined;
+}
+
 export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Block {
   const start = document.createComment("ff:block:start");
   const end = document.createComment("ff:block:end");
   fragment.prepend(start);
   fragment.append(end);
   let disposed = false;
+  let cleaned = false;
   const nodes = (): Node[] => {
     const result: Node[] = [];
     let node: Node | null = start;
@@ -812,17 +918,47 @@ export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Blo
     for (const node of nodes()) moving.append(node);
     parent.insertBefore(moving, before);
   };
+  const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
+    for (const registered of cleanups.toReversed()) registered();
+  };
+  const remove = (): void => {
+    for (const node of nodes()) node.parentNode?.removeChild(node);
+  };
   return {
     get nodes() {
       return nodes();
     },
     mount: move,
     move,
+    enter() {
+      if (!disposed) void runTransitions(nodes(), "enter");
+    },
+    leave() {
+      return disposed ? undefined : runTransitions(nodes(), "leave");
+    },
+    retire() {
+      if (disposed) return undefined;
+      const leaving = runTransitions(nodes(), "leave");
+      cleanup();
+      if (!leaving) {
+        disposed = true;
+        remove();
+        return undefined;
+      }
+      return leaving.then(() => {
+        if (disposed) return;
+        disposed = true;
+        remove();
+      });
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
-      for (const cleanup of cleanups.toReversed()) cleanup();
-      for (const node of nodes()) node.parentNode?.removeChild(node);
+      cancelTransitions(nodes());
+      cleanup();
+      remove();
     },
   };
 }
@@ -885,12 +1021,30 @@ export function component<Props extends object>(
 
 function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
   let disposed = false;
+  let retired = false;
+  let retirement: Promise<void> | undefined;
   return {
     get nodes() {
       return rendered.nodes;
     },
     mount: (parent, before) => rendered.mount(parent, before),
     move: (parent, before) => rendered.move(parent, before),
+    enter: () => rendered.enter(),
+    leave: () => rendered.leave(),
+    retire() {
+      if (disposed || retired) return retirement;
+      retired = true;
+      disposeOwner(owner);
+      const leaving = rendered.retire();
+      if (!leaving) {
+        disposed = true;
+        return undefined;
+      }
+      retirement = leaving.then(() => {
+        disposed = true;
+      });
+      return retirement;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -1223,15 +1377,44 @@ export function when(
 ): void {
   let current: Block | undefined;
   let currentCondition: boolean | undefined;
+  let initialized = false;
+  const leaving = new Map<boolean, Block>();
   const stop = runtimeEffect(() => {
     const nextCondition = Boolean(getCondition());
     if (nextCondition === currentCondition) return;
+    const previousCondition = currentCondition;
     currentCondition = nextCondition;
-    current?.dispose();
-    current = nextCondition ? consequent() : alternate();
-    current.mount(region.end.parentNode!, region.end);
+    if (current && previousCondition !== undefined) {
+      const previous = current;
+      const finished = previous.leave();
+      if (finished) {
+        leaving.set(previousCondition, previous);
+        void finished.then(() => {
+          if (leaving.get(previousCondition) !== previous) return;
+          leaving.delete(previousCondition);
+          previous.dispose();
+        });
+      } else {
+        previous.dispose();
+      }
+    }
+    current = leaving.get(nextCondition);
+    if (current) {
+      leaving.delete(nextCondition);
+      current.move(region.end.parentNode!, region.end);
+      current.enter();
+    } else {
+      current = nextCondition ? consequent() : alternate();
+      current.mount(region.end.parentNode!, region.end);
+      if (initialized) current.enter();
+    }
+    initialized = true;
   });
-  cleanups.push(stop, () => current?.dispose());
+  cleanups.push(stop, () => {
+    current?.dispose();
+    for (const leavingBlock of leaving.values()) leavingBlock.dispose();
+    leaving.clear();
+  });
 }
 
 interface ListRow<T> {
@@ -1239,6 +1422,16 @@ interface ListRow<T> {
   item: Signal<T>;
   index: Signal<number>;
   block: Block;
+}
+
+function sameKey(left: unknown, right: unknown): boolean {
+  return (
+    left === right ||
+    (typeof left === "number" &&
+      typeof right === "number" &&
+      Number.isNaN(left) &&
+      Number.isNaN(right))
+  );
 }
 
 export function list<T>(
@@ -1249,6 +1442,9 @@ export function list<T>(
   cleanups: Cleanup[],
 ): void {
   let rows = new Map<unknown, ListRow<T>>();
+  const leavingRows = new Map<unknown, ListRow<T>>();
+  let order: unknown[] = [];
+  let initialized = false;
   const stop = runtimeEffect(() => {
     const items = [...getItems()];
     const entries = items.map((item, index) => ({ item, index, key: getKey(item, index) }));
@@ -1256,10 +1452,15 @@ export function list<T>(
     if (uniqueKeys.size !== entries.length) throw new Error("Keyed JSX lists require unique keys");
 
     const nextRows = new Map<unknown, ListRow<T>>();
+    const entering = new Set<unknown>();
     batch(() => {
       for (const entry of entries) {
-        let row = rows.get(entry.key);
+        let row = rows.get(entry.key) ?? leavingRows.get(entry.key);
         if (row) {
+          if (leavingRows.get(entry.key) === row) {
+            leavingRows.delete(entry.key);
+            entering.add(entry.key);
+          }
           row.item.value = entry.item;
           row.index.value = entry.index;
         } else {
@@ -1271,16 +1472,52 @@ export function list<T>(
       }
     });
     for (const [key, row] of rows) {
-      if (!nextRows.has(key)) row.block.dispose();
+      if (nextRows.has(key)) continue;
+      const finished = row.block.leave();
+      if (!finished) {
+        row.block.dispose();
+        order = order.filter((candidate) => !sameKey(candidate, key));
+        continue;
+      }
+      leavingRows.set(key, row);
+      void finished.then(() => {
+        if (leavingRows.get(key) !== row) return;
+        leavingRows.delete(key);
+        order = order.filter((candidate) => !sameKey(candidate, key));
+        row.block.dispose();
+      });
     }
-    for (const row of nextRows.values()) {
-      row.block.move(region.end.parentNode!, region.end);
+
+    const activeKeys = [...nextRows.keys()];
+    let activeIndex = 0;
+    order = order.flatMap((key) => {
+      if (leavingRows.has(key)) return [key];
+      if (activeIndex >= activeKeys.length) return [];
+      const activeKey = activeKeys[activeIndex];
+      activeIndex += 1;
+      return [activeKey];
+    });
+    order.push(...activeKeys.slice(activeIndex));
+
+    for (const key of order) {
+      const row = nextRows.get(key) ?? leavingRows.get(key);
+      row?.block.move(region.end.parentNode!, region.end);
+    }
+    if (initialized) {
+      for (const key of entering) nextRows.get(key)!.block.enter();
+      for (const [key, row] of nextRows) {
+        if (!rows.has(key) && !entering.has(key)) row.block.enter();
+      }
     }
     rows = nextRows;
+    initialized = true;
   });
   cleanups.push(stop, () => {
     for (const row of rows.values()) row.block.dispose();
+    for (const row of leavingRows.values()) row.block.dispose();
     rows.clear();
+    leavingRows.clear();
+    order = [];
   });
 }
 

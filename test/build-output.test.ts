@@ -14,4 +14,6 @@ test("the demo build keeps compiler output readable", async () => {
   expect(output).toContain('path: "/blog/:id"');
   expect(output).toContain("function matchRoute(pathname)");
   expect(output).toContain("function cleanupEffect(effect)");
+  expect(output).toContain("function runTransitions(");
+  expect(output).toContain("element.getAnimations(");
 });

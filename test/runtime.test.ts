@@ -20,10 +20,12 @@ import {
   mount,
   isRouteDefinition,
   route,
+  renderComponent,
   runtimeEffect,
   normalizeClass,
   template,
   text,
+  transition,
   type Signal,
   when,
 } from "../src/runtime.ts";
@@ -32,6 +34,7 @@ let window: Window;
 
 beforeEach(() => {
   window = new Window();
+  delete (window.Element.prototype as { getAnimations?: unknown }).getAnimations;
   Object.assign(globalThis, {
     window,
     document: window.document,
@@ -45,6 +48,48 @@ beforeEach(() => {
 afterEach(() => window.close());
 
 function noopSubmit(): void {}
+
+interface ControlledAnimation {
+  animation: Animation;
+  cancelled: boolean;
+  finish(): void;
+}
+
+function installAnimations(): ControlledAnimation[] {
+  const animations: ControlledAnimation[] = [];
+  const current = new WeakMap<Element, { signature: string; controlled: ControlledAnimation }>();
+  Object.defineProperty(window.Element.prototype, "getAnimations", {
+    configurable: true,
+    value(this: Element): Animation[] {
+      const signature = [...this.classList]
+        .filter((className) => className.startsWith("transition-"))
+        .join(" ");
+      if (!signature) return [];
+      const existing = current.get(this);
+      if (existing?.signature === signature) return [existing.controlled.animation];
+      let finish!: () => void;
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const controlled: ControlledAnimation = {
+        animation: undefined as unknown as Animation,
+        cancelled: false,
+        finish,
+      };
+      controlled.animation = {
+        finished,
+        cancel() {
+          controlled.cancelled = true;
+          finish();
+        },
+      } as unknown as Animation;
+      animations.push(controlled);
+      current.set(this, { signature, controlled });
+      return [controlled.animation];
+    },
+  });
+  return animations;
+}
 
 describe("forms", () => {
   test("validates its public boundary", () => {
@@ -276,6 +321,137 @@ describe("forms", () => {
     expect(await submission).toBe(false);
     expect(form.values.title).toBe("default");
     expect(submissions).toEqual([]);
+  });
+});
+
+describe("transitions", () => {
+  test("validates transition definitions when a phase starts", () => {
+    const element = document.createElement("div");
+    const fragment = document.createDocumentFragment();
+    fragment.append(element);
+    transition(element, () => null as never);
+    const rendered = block(fragment);
+
+    expect(() => rendered.enter()).toThrow("expects an object");
+
+    const other = document.createElement("div");
+    const otherFragment = document.createDocumentFragment();
+    otherFragment.append(other);
+    transition(other, () => ({ leave: "" }));
+    expect(() => block(otherFragment).leave()).toThrow("non-empty class name string");
+  });
+
+  test("runs descendant animations together and retires after every leave finishes", async () => {
+    const animations = installAnimations();
+    const parent = document.createElement("section");
+    const descendant = document.createElement("p");
+    parent.classList.add("duration-100");
+    parent.append(descendant);
+    const fragment = document.createDocumentFragment();
+    fragment.append(parent);
+    const fade = { leave: "transition-leave duration-100" };
+    transition(parent, () => fade);
+    transition(descendant, () => fade);
+    let cleanups = 0;
+    const rendered = block(fragment, [() => (cleanups += 1)]);
+    const target = document.createElement("main");
+    rendered.mount(target);
+
+    const retired = rendered.retire();
+
+    expect(animations).toHaveLength(2);
+    expect(parent.classList.contains("transition-leave")).toBe(true);
+    expect(cleanups).toBe(1);
+    expect(target.contains(parent)).toBe(true);
+    animations[0]!.finish();
+    await Promise.resolve();
+    expect(target.contains(parent)).toBe(true);
+    animations[1]!.finish();
+    await retired;
+    expect(parent.classList.contains("transition-leave")).toBe(false);
+    expect(parent.classList.contains("duration-100")).toBe(true);
+    expect(target.contains(parent)).toBe(false);
+  });
+
+  test("cancels a leave when a block re-enters and cancels animations on disposal", () => {
+    const animations = installAnimations();
+    const element = document.createElement("div");
+    const fragment = document.createDocumentFragment();
+    fragment.append(element);
+    transition(element, () => ({
+      enter: "transition-enter",
+      leave: "transition-leave",
+    }));
+    const rendered = block(fragment);
+    const target = document.createElement("main");
+    rendered.mount(target);
+
+    rendered.enter();
+    void rendered.leave();
+    expect(animations[0]!.cancelled).toBe(true);
+    rendered.enter();
+    expect(animations[1]!.cancelled).toBe(true);
+    rendered.dispose();
+    expect(animations[2]!.cancelled).toBe(true);
+    expect(target.childNodes).toHaveLength(0);
+  });
+
+  test("falls back to immediate lifecycle behavior without animation support or with reduced motion", () => {
+    const element = document.createElement("div");
+    const fragment = document.createDocumentFragment();
+    fragment.append(element);
+    transition(element, () => ({ leave: "transition-leave" }));
+    const rendered = block(fragment);
+    const target = document.createElement("main");
+    rendered.mount(target);
+
+    expect(rendered.retire()).toBeUndefined();
+    expect(target.childNodes).toHaveLength(0);
+
+    const animations = installAnimations();
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: () => ({ matches: true }),
+    });
+    const reducedElement = document.createElement("div");
+    const reducedFragment = document.createDocumentFragment();
+    reducedFragment.append(reducedElement);
+    transition(reducedElement, () => ({ enter: "transition-enter" }));
+    block(reducedFragment).enter();
+    expect(animations).toHaveLength(0);
+  });
+
+  test("freezes a retiring component while its DOM finishes leaving", async () => {
+    const animations = installAnimations();
+    const source = $signal("first");
+    let reads = 0;
+    const definition = template('<p data-ff-e="0"><!--ff:s:0--><!--ff:e:0--></p>');
+    const Page = component(() => {
+      const view = instantiate(definition);
+      const cleanups: Array<() => void> = [];
+      transition(view.elements[0]!, () => ({ leave: "transition-leave" }));
+      text(
+        view.regions[0]!,
+        () => {
+          reads += 1;
+          return source.value;
+        },
+        cleanups,
+      );
+      return block(view.fragment, cleanups);
+    });
+    const rendered = renderComponent(Page);
+    const target = document.createElement("main");
+    rendered.mount(target);
+
+    const retirement = rendered.retire();
+    source.value = "second";
+
+    expect(reads).toBe(1);
+    expect(target.textContent).toBe("first");
+    animations[0]!.finish();
+    await retirement;
+    expect(target.childNodes).toHaveLength(0);
   });
 });
 

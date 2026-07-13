@@ -2,6 +2,7 @@ import { $component, $route } from "frontend-framework";
 import { BlogList } from "./BlogList.tsx";
 import { blogDetailRoute } from "./blog-detail.route.tsx";
 import { blogEntries, createBlogEntry } from "./blog-store.ts";
+import { pageTransition } from "./transitions.ts";
 
 const NewBlogPage = $component(function NewBlogPage() {
   let name = "";
@@ -22,7 +23,8 @@ const NewBlogPage = $component(function NewBlogPage() {
 
   return (
     <section
-      class="w-full overflow-hidden rounded-[6px_14px_10px_5px] border border-rule-strong bg-paper shadow-ledger max-sm:rounded-none max-sm:border-x-0"
+      class="col-start-1 row-start-1 w-full overflow-hidden rounded-[6px_14px_10px_5px] border border-rule-strong bg-paper shadow-ledger max-sm:rounded-none max-sm:border-x-0"
+      $transition={pageTransition}
       aria-labelledby="new-entry-title"
     >
       <header class="border-b border-rule-strong px-6 py-8 sm:px-11 sm:py-10">

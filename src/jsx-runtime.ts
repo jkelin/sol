@@ -1,4 +1,4 @@
-import type { ClassValue } from "./runtime.ts";
+import type { ClassValue, Transition } from "./runtime.ts";
 
 export namespace JSX {
   export interface Element {
@@ -19,6 +19,7 @@ export namespace JSX {
 
   export interface IntrinsicElementAttributes {
     $bind?: unknown;
+    $transition?: Transition;
     class?: ClassValue;
     className?: ClassValue;
     classNames?: ClassValue;

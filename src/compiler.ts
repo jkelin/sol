@@ -512,12 +512,48 @@ function compileIntrinsicElement(
       "Use only one of class, className, or classNames on an element",
     );
   }
+  const formAttribute = node.openingElement.attributes.find(
+    (attribute) =>
+      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "$form" }),
+  );
+  if (formAttribute) {
+    if (tag !== "form") codeFrame(compiler, formAttribute, "$form is only valid on form elements");
+    const conflictingHandler = node.openingElement.attributes.find(
+      (attribute) =>
+        t.isJSXAttribute(attribute) &&
+        t.isJSXIdentifier(attribute.name) &&
+        ["onSubmit", "onInput"].includes(attribute.name.name),
+    );
+    if (
+      conflictingHandler &&
+      t.isJSXAttribute(conflictingHandler) &&
+      t.isJSXIdentifier(conflictingHandler.name)
+    ) {
+      codeFrame(
+        compiler,
+        conflictingHandler,
+        `$form already handles ${conflictingHandler.name.name}`,
+      );
+    }
+  }
 
   for (const attribute of node.openingElement.attributes) {
     if (t.isJSXSpreadAttribute(attribute))
       codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
     const sourceName = getAttributeName(compiler, attribute.name);
     if (sourceName === "key") continue;
+    if (sourceName === "$form") {
+      const controller = expressionCode(expressionAttribute(compiler, attribute), scope);
+      deferredOperations.push(
+        (element) =>
+          `__ff_event(__ff_view.elements[${element}], "submit", () => ((${controller}).submit), __ff_cleanups);`,
+        (element) =>
+          `__ff_event(__ff_view.elements[${element}], "input", () => ((${controller}).handleInput), __ff_cleanups);`,
+        (element) =>
+          `__ff_event(__ff_view.elements[${element}], "focusout", () => ((${controller}).handleBlur), __ff_cleanups);`,
+      );
+      continue;
+    }
     if (sourceName === "$bind") {
       if (!["input", "textarea", "select"].includes(tag)) {
         codeFrame(

@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
+import * as v from "valibot";
+import { z } from "zod";
 import {
   $component,
   $computed,
+  $form,
   $signal,
   attribute,
   batch,
@@ -39,6 +42,241 @@ beforeEach(() => {
 });
 
 afterEach(() => window.close());
+
+function noopSubmit(): void {}
+
+describe("forms", () => {
+  test("validates its public boundary", () => {
+    expect(() => $form(undefined as never, noopSubmit)).toThrow("expects a config object");
+    expect(() => $form({ schema: {} as never, defaultValues: { title: "" } }, noopSubmit)).toThrow(
+      "schema must be callable",
+    );
+    expect(() =>
+      $form(
+        {
+          schema: (values: { title: string }) => values,
+          defaultValues: { title: "" },
+          validationStrategy: "later" as never,
+        },
+        noopSubmit,
+      ),
+    ).toThrow("validationStrategy");
+  });
+
+  test("submits transformed Valibot output and resets controller-owned values", async () => {
+    const schema = v.object({
+      title: v.pipe(
+        v.string(),
+        v.trim(),
+        v.minLength(1, "A title is required."),
+        v.maxLength(5, "Use at most five characters."),
+      ),
+    });
+    const submissions: { title: string }[] = [];
+    const form = $form({ schema: v.parser(schema), defaultValues: { title: "" } }, (values) => {
+      submissions.push(values);
+    });
+
+    expect(await form.submit()).toBe(false);
+    expect(form.errors.title).toEqual(["A title is required."]);
+    form.values.title = "  note  ";
+    expect(await form.submit()).toBe(true);
+    expect(submissions).toEqual([{ title: "note" }]);
+
+    form.reset({ title: "other" });
+    form.values.title = "changed";
+    form.reset();
+    expect(form.values).toEqual({ title: "" });
+    expect(form.errors).toEqual({});
+  });
+
+  test("uses Zod parseAsync and normalizes field and form issues", async () => {
+    const form = $form(
+      {
+        schema: z.object({
+          profile: z.object({ name: z.string().min(2, "Name is too short.") }),
+        }),
+        defaultValues: { profile: { name: "" } },
+      },
+      () => {},
+    );
+
+    expect(await form.submit()).toBe(false);
+    expect(form.errors["profile.name"]).toEqual(["Name is too short."]);
+
+    const rootForm = $form(
+      {
+        schema: z.object({ title: z.string() }).refine(() => false, "Form is invalid."),
+        defaultValues: { title: "ok" },
+      },
+      () => {},
+    );
+    expect(await rootForm.submit()).toBe(false);
+    expect(rootForm.formErrors).toEqual(["Form is invalid."]);
+  });
+
+  test("preserves multiple messages and rethrows non-validation errors", async () => {
+    const failure = {
+      issues: [
+        { path: ["title"], message: "First problem." },
+        { path: [{ key: "title" }], message: "Second problem." },
+        { path: [], message: "Form problem." },
+      ],
+    };
+    const form = $form(
+      {
+        schema: { parse: (_values: { title: string }) => Promise.reject(failure) } as never,
+        defaultValues: { title: "" },
+      },
+      () => {},
+    );
+    expect(await form.submit()).toBe(false);
+    expect(form.errors.title).toEqual(["First problem.", "Second problem."]);
+    expect(form.formErrors).toEqual(["Form problem."]);
+
+    const unexpected = new Error("Network failed");
+    const broken = $form(
+      { schema: () => Promise.reject(unexpected), defaultValues: { title: "" } },
+      () => {},
+    );
+    expect(broken.submit()).rejects.toBe(unexpected);
+  });
+
+  test("tracks submission state and prevents duplicate submissions", async () => {
+    let release: (() => void) | undefined;
+    const waiting = new Promise<void>((resolve) => (release = resolve));
+    let submissions = 0;
+    const form = $form(
+      { schema: (values: { title: string }) => values, defaultValues: { title: "ready" } },
+      async () => {
+        submissions += 1;
+        await waiting;
+      },
+    );
+
+    const first = form.submit();
+    await Promise.resolve();
+    expect(form.isSubmitting).toBe(true);
+    expect(await form.submit()).toBe(false);
+    release?.();
+    expect(await first).toBe(true);
+    expect(form.isSubmitting).toBe(false);
+    expect(submissions).toBe(1);
+  });
+
+  test("prefers parseAsync and runs the configured validation handlers", async () => {
+    let synchronousCalls = 0;
+    let asynchronousCalls = 0;
+    const form = $form(
+      {
+        schema: {
+          parse: (values: { title: string }) => {
+            synchronousCalls += 1;
+            return values;
+          },
+          parseAsync: async (values: { title: string }) => {
+            asynchronousCalls += 1;
+            return values;
+          },
+        },
+        defaultValues: { title: "" },
+        validationStrategy: "onBlur",
+      },
+      () => {},
+    );
+
+    await form.handleInput({ target: { name: "title" } } as unknown as Event);
+    expect(asynchronousCalls).toBe(0);
+    await form.handleBlur({ target: { name: "title" } } as unknown as FocusEvent);
+    expect(asynchronousCalls).toBe(1);
+    expect(synchronousCalls).toBe(0);
+  });
+
+  test("ignores stale asynchronous validation results", async () => {
+    const pending = new Map<
+      string,
+      {
+        resolve: (value: { title: string }) => void;
+        reject: (reason: unknown) => void;
+      }
+    >();
+    const form = $form(
+      {
+        schema: (values: { title: string }) =>
+          new Promise<{ title: string }>((resolve, reject) =>
+            pending.set(values.title, { resolve, reject }),
+          ),
+        defaultValues: { title: "" },
+        validationStrategy: "onInput",
+      },
+      () => {},
+    );
+    const event = { target: { name: "title" } } as unknown as Event;
+
+    form.values.title = "first";
+    const first = form.handleInput(event);
+    form.values.title = "second";
+    const second = form.handleInput(event);
+    pending.get("second")!.resolve({ title: "second" });
+    await second;
+    pending.get("first")!.reject({ issues: [{ path: ["title"], message: "Stale." }] });
+    await first;
+
+    expect(form.errors).toEqual({});
+  });
+
+  test("does not submit stale output after an input change", async () => {
+    let resolveValidation: ((value: { title: string }) => void) | undefined;
+    const submissions: { title: string }[] = [];
+    const form = $form(
+      {
+        schema: (values: { title: string }) =>
+          new Promise<{ title: string }>((resolve) => {
+            resolveValidation = resolve;
+            expect(values.title).toBe("before");
+          }),
+        defaultValues: { title: "before" },
+      },
+      (values) => {
+        submissions.push(values);
+      },
+    );
+
+    const submission = form.submit();
+    form.values.title = "after";
+    await form.handleInput({ target: { name: "title" } } as unknown as Event);
+    resolveValidation?.({ title: "before" });
+
+    expect(await submission).toBe(false);
+    expect(submissions).toEqual([]);
+  });
+
+  test("does not submit stale output after reset", async () => {
+    let resolveValidation: ((value: { title: string }) => void) | undefined;
+    const submissions: { title: string }[] = [];
+    const form = $form(
+      {
+        schema: () =>
+          new Promise<{ title: string }>((resolve) => {
+            resolveValidation = resolve;
+          }),
+        defaultValues: { title: "default" },
+      },
+      (values) => {
+        submissions.push(values);
+      },
+    );
+
+    form.values.title = "pending";
+    const submission = form.submit();
+    form.reset();
+    resolveValidation?.({ title: "pending" });
+
+    expect(await submission).toBe(false);
+    expect(form.values.title).toBe("default");
+    expect(submissions).toEqual([]);
+  });
+});
 
 describe("reactivity", () => {
   test("validates the public compiler boundary and class values", () => {

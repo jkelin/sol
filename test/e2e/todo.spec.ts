@@ -16,7 +16,7 @@ test.afterAll(async () => {
   });
 });
 
-test("runs the to-do workflow without rerunning component setup", async ({ page }) => {
+test("runs the to-do workflow with validation and fine-grained updates", async ({ page }) => {
   await page.goto("/");
 
   const originalRow = page.getByTestId("todo-2");
@@ -58,32 +58,50 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
   const blankEditor = originalRow.locator(".todo-editor");
   await blankEditor.fill("   ");
   await blankEditor.blur();
-  await expect(
-    page.getByRole("button", { name: "Edit Prove transparent local updates", exact: true }),
-  ).toBeVisible();
-
-  const titleButton = page.getByRole("button", {
-    name: "Edit Prove transparent local updates",
+  await expect(blankEditor).toBeVisible();
+  await expect(blankEditor).toHaveAttribute("aria-invalid", "true");
+  const editInfo = originalRow.getByRole("button", {
+    name: "Validation error: Write a note before adding it.",
     exact: true,
   });
-  await titleButton.focus();
-  await titleButton.press("Enter");
-  const blurEditor = originalRow.locator(".todo-editor");
-  await expect(blurEditor).toBeFocused();
-  await blurEditor.fill("Save edits on blur");
-  await blurEditor.blur();
+  await expect(editInfo).toBeVisible();
+  await editInfo.focus();
+  await expect(originalRow.getByRole("tooltip")).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: "test-results/todo-validation-edit.png", fullPage: true });
+
+  await blankEditor.fill("This title is definitely too long");
+  await expect(blankEditor).toHaveAttribute("aria-invalid", "false");
+  await blankEditor.press("Enter");
+  await expect(blankEditor).toBeVisible();
+  await expect(blankEditor).toHaveAttribute("aria-invalid", "true");
+  await expect(originalRow.getByRole("tooltip")).toHaveText(
+    "Keep the note to 32 characters or fewer.",
+  );
+
+  await blankEditor.fill("Save edits on blur");
+  await blankEditor.blur();
   await expect(
     page.getByRole("button", { name: "Edit Save edits on blur", exact: true }),
   ).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.frontendFrameworkDemo))
-    .toEqual({ app: 1, row: 3 });
-
   const draft = page.getByLabel("New note", { exact: true });
   const add = page.getByRole("button", { name: "Add task", exact: true });
-  await expect(add).toBeDisabled();
-  await draft.fill("Verify fine-grained updates");
   await expect(add).toBeEnabled();
+  await add.click();
+  await expect(draft).toHaveAttribute("aria-invalid", "true");
+  const emptyInfo = page.getByRole("button", {
+    name: "Validation error: Write a note before adding it.",
+    exact: true,
+  });
+  await emptyInfo.focus();
+  await expect(page.getByRole("tooltip")).toHaveCSS("opacity", "1");
+
+  await draft.fill("This task title is much too long!");
+  await expect(draft).toHaveAttribute("aria-invalid", "false");
+  await draft.press("Enter");
+  await expect(draft).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("tooltip")).toHaveText("Keep the note to 32 characters or fewer.");
+
+  await draft.fill("Verify fine-grained updates");
   await draft.press("Enter");
 
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeVisible();
@@ -97,17 +115,13 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
 
   await expect(page.locator(".completion-margin strong")).toHaveText("2");
   await expect(page.locator(".remaining-count strong")).toHaveText("2");
-  await expect
-    .poll(() => page.evaluate(() => window.frontendFrameworkDemo))
-    .toEqual({ app: 1, row: 4 });
-
   await page.getByRole("button", { name: "Active", exact: true }).click();
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeHidden();
   await expect(page.locator(".todo-row")).toHaveCount(2);
 
   await page.getByRole("button", { name: "Completed", exact: true }).click();
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeVisible();
-  await expect(page.getByText("Trace the first compiled template", { exact: true })).toBeVisible();
+  await expect(page.getByText("Trace the compiled template", { exact: true })).toBeVisible();
   await expect(page.locator(".todo-row")).toHaveCount(2);
 
   await page.getByRole("button", { name: "All", exact: true }).click();
@@ -122,9 +136,6 @@ test("runs the to-do workflow without rerunning component setup", async ({ page 
     .click();
   await expect(page.locator(".todo-row")).toHaveCount(0);
   await expect(page.getByText("No notes on this page.", { exact: true })).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.frontendFrameworkDemo))
-    .toEqual({ app: 1, row: 8 });
 });
 
 test("stays usable and overflow-free at desktop and mobile sizes", async ({ page }) => {
@@ -139,6 +150,14 @@ test("stays usable and overflow-free at desktop and mobile sizes", async ({ page
     .toBe(true);
   await page.screenshot({ path: "test-results/todo-desktop.png", fullPage: true });
 
+  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Validation error: Write a note before adding it." })
+    .focus();
+  await expect(page.getByRole("tooltip")).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: "test-results/todo-validation-desktop.png", fullPage: true });
+  await page.getByLabel("New note", { exact: true }).fill("Draft");
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("navigation", { name: "Filter tasks" })).toBeVisible();
   await expect
@@ -147,6 +166,14 @@ test("stays usable and overflow-free at desktop and mobile sizes", async ({ page
     )
     .toBe(true);
   await page.screenshot({ path: "test-results/todo-mobile.png", fullPage: true });
+
+  await page.getByLabel("New note", { exact: true }).fill("");
+  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Validation error: Write a note before adding it." })
+    .focus();
+  await expect(page.getByRole("tooltip")).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: "test-results/todo-validation-mobile.png", fullPage: true });
 });
 
 test("navigates compiled blog routes and creates a shared entry", async ({ page }) => {

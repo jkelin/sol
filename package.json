@@ -47,7 +47,9 @@
     "oxlint-tsgolint": "^0.24.0",
     "source-map-js": "^1.2.1",
     "tailwindcss": "^4.1.14",
-    "vite": "^8.0.10"
+    "valibot": "^1.4.2",
+    "vite": "^8.0.10",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "typescript": "^5"

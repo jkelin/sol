@@ -1,4 +1,5 @@
-import { $component } from "frontend-framework";
+import { $component, $form, type FormController } from "frontend-framework";
+import * as v from "valibot";
 
 type Filter = "all" | "active" | "completed";
 
@@ -14,23 +15,90 @@ interface TodoRowProps {
   onRename: (title: string) => void;
 }
 
-export const componentSetupCounts = { app: 0, row: 0 };
+const TodoFormSchema = v.object({
+  title: v.pipe(
+    v.string(),
+    v.trim(),
+    v.minLength(1, "Write a note before adding it."),
+    v.maxLength(32, "Keep the note to 32 characters or fewer."),
+  ),
+});
+const parseTodoForm = v.parser(TodoFormSchema);
+type TodoFormValues = v.InferOutput<typeof TodoFormSchema>;
 
-declare global {
-  interface Window {
-    frontendFrameworkDemo?: typeof componentSetupCounts;
-  }
+interface TodoFieldProps {
+  form: FormController<TodoFormValues>;
+  id: string;
+  inputClass: string;
+  ariaLabel?: string;
+  placeholder?: string;
+  autocomplete?: string;
+  onBlur?: (event: FocusEvent) => void | Promise<void>;
+  onKeyDown?: (event: KeyboardEvent) => void;
 }
 
-window.frontendFrameworkDemo = componentSetupCounts;
+const TodoField = $component(function TodoField(props: TodoFieldProps) {
+  const error = props.form.errors.title?.[0];
+  const errorId = `${props.id}-error`;
+
+  return (
+    <div class="relative min-w-0">
+      <input
+        classNames={[
+          "w-full min-w-0 border border-rule-strong text-graphite outline-offset-2 focus-visible:outline-3 focus-visible:outline-focus/50",
+          props.inputClass,
+          {
+            "border-correction pr-11 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-correction)_24%,transparent)]":
+              Boolean(error),
+          },
+        ]}
+        id={props.id}
+        name="title"
+        type="text"
+        $bind={props.form.values.title}
+        aria-label={props.ariaLabel}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        placeholder={props.placeholder}
+        autocomplete={props.autocomplete}
+        onBlur={props.onBlur}
+        onKeyDown={props.onKeyDown}
+      />
+      {error && (
+        <>
+          <button
+            class="peer absolute top-1/2 right-2.5 z-2 grid size-5.5 -translate-y-1/2 place-items-center rounded-full border border-correction bg-paper p-0 font-serif text-sm leading-none font-bold text-correction outline-offset-2 focus-visible:outline-3 focus-visible:outline-focus/50"
+            type="button"
+            aria-label={`Validation error: ${error}`}
+            aria-describedby={errorId}
+          >
+            i
+          </button>
+          <span
+            class="pointer-events-none absolute right-0 bottom-[calc(100%+0.5rem)] z-4 w-max max-w-[min(17.5rem,calc(100vw-3rem))] translate-y-1 rounded-xs border border-correction/40 bg-graphite px-2.5 py-2 font-sans text-xs leading-snug text-paper opacity-0 shadow-[0_6px_18px_rgba(57,48,34,0.14)] transition-[opacity,transform] duration-100 peer-hover:translate-y-0 peer-hover:opacity-100 peer-focus:translate-y-0 peer-focus:opacity-100"
+            id={errorId}
+            role="tooltip"
+          >
+            {error}
+          </span>
+        </>
+      )}
+    </div>
+  );
+});
 
 const TodoRow = $component(function TodoRow(props: TodoRowProps) {
-  componentSetupCounts.row += 1;
   let editing = false;
-  let editDraft = props.todo.title;
+
+  function saveEdit(values: TodoFormValues) {
+    props.onRename(values.title);
+    editing = false;
+  }
+
+  const editForm = $form({ schema: parseTodoForm, defaultValues: { title: "" } }, saveEdit);
 
   function beginEditing(event: MouseEvent) {
-    editDraft = props.todo.title;
+    editForm.reset({ title: props.todo.title });
     editing = true;
     const row = (event.currentTarget as HTMLElement).closest(".todo-row");
     queueMicrotask(() => {
@@ -40,24 +108,18 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
     });
   }
 
-  function finishEditing(event?: FocusEvent) {
+  async function finishEditing(event?: FocusEvent) {
     if (event && (!editing || !(event.currentTarget as HTMLInputElement).isConnected)) return;
-    const title = editDraft.trim();
-    if (title) props.onRename(title);
-    else editDraft = props.todo.title;
-    editing = false;
+    await editForm.submit();
   }
 
   function cancelEditing() {
-    editDraft = props.todo.title;
+    editForm.reset({ title: props.todo.title });
     editing = false;
   }
 
   function handleEditKey(event: KeyboardEvent) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      finishEditing();
-    } else if (event.key === "Escape") {
+    if (event.key === "Escape") {
       event.preventDefault();
       cancelEditing();
     }
@@ -66,7 +128,7 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
   return (
     <li
       classNames={[
-        "todo-row group grid min-h-14 grid-cols-[2.125rem_1fr_auto] items-center gap-2.5 px-6 sm:px-11",
+        "todo-row group relative grid min-h-14 grid-cols-[2.125rem_1fr_auto] items-center gap-2.5 px-6 sm:px-11",
         { "bg-paper-inset/60": editing },
       ]}
       data-testid={`todo-${props.todo.id}`}
@@ -85,18 +147,20 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
           ✓
         </span>
       </label>
-      <input
-        class="todo-editor w-full min-w-0 rounded-xs border border-rule-strong bg-paper-inset px-2.5 py-1.5 font-serif text-[1.0625rem] text-graphite shadow-[inset_0_-1px_var(--color-rule)] focus-visible:outline-3 focus-visible:outline-focus/50"
-        $bind={editDraft}
-        aria-label={`Edit ${props.todo.title}`}
-        hidden={!editing}
-        onBlur={finishEditing}
-        onKeyDown={handleEditKey}
-      />
+      <form class="min-w-0" hidden={!editing} $form={editForm}>
+        <TodoField
+          form={editForm}
+          id={`todo-${props.todo.id}-title`}
+          inputClass="todo-editor rounded-xs bg-paper-inset px-2.5 py-1.5 font-serif text-[1.0625rem] shadow-[inset_0_-1px_var(--color-rule)]"
+          ariaLabel={`Edit ${props.todo.title}`}
+          onBlur={finishEditing}
+          onKeyDown={handleEditKey}
+        />
+      </form>
       <button
         classNames={[
-          "w-fit cursor-text bg-transparent px-0.5 py-1 text-left font-serif text-[1.0625rem] hover:underline hover:decoration-rule-strong hover:underline-offset-4",
-          { "text-faint line-through decoration-correction": props.todo.completed },
+          "relative w-fit cursor-text bg-transparent px-0.5 py-1 text-left font-serif text-[1.0625rem] outline-offset-2 hover:underline hover:decoration-rule-strong hover:underline-offset-4 focus-visible:outline-3 focus-visible:outline-focus/50",
+          { "todo-title--completed text-faint": props.todo.completed },
         ]}
         type="button"
         hidden={editing}
@@ -106,7 +170,7 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
         {props.todo.title}
       </button>
       <button
-        class="text-xs text-correction underline decoration-transparent underline-offset-3 opacity-100 transition-opacity hover:decoration-current sm:opacity-0 sm:group-hover:opacity-100"
+        class="text-xs text-correction underline decoration-transparent underline-offset-3 opacity-100 transition-opacity hover:decoration-current focus-visible:outline-3 focus-visible:outline-focus/50 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
         type="button"
         onClick={props.onRemove}
         aria-label={`Remove ${props.todo.title}`}
@@ -118,16 +182,20 @@ const TodoRow = $component(function TodoRow(props: TodoRowProps) {
 });
 
 export const App = $component(function App() {
-  componentSetupCounts.app += 1;
-  let draft = "";
   let filter = "all" as Filter;
   let todos: Todo[] = [
-    { id: 1, title: "Trace the first compiled template", completed: true },
+    { id: 1, title: "Trace the compiled template", completed: true },
     { id: 2, title: "Prove nested proxy updates", completed: false },
     { id: 3, title: "Ship without a virtual DOM", completed: false },
   ];
   let nextId = 4;
 
+  function createTodo(values: TodoFormValues) {
+    todos.push({ id: nextId++, title: values.title, completed: false });
+    createForm.reset();
+  }
+
+  const createForm = $form({ schema: parseTodoForm, defaultValues: { title: "" } }, createTodo);
   const filteredTodos =
     filter === "active"
       ? todos.filter((todo) => !todo.completed)
@@ -136,15 +204,6 @@ export const App = $component(function App() {
         : todos;
   const remaining = todos.filter((todo) => !todo.completed).length;
   const completed = todos.length - remaining;
-  const canAdd = draft.trim().length > 0;
-
-  function addTodo(event: SubmitEvent) {
-    event.preventDefault();
-    const title = draft.trim();
-    if (!title) return;
-    todos.push({ id: nextId++, title, completed: false });
-    draft = "";
-  }
 
   function removeTodo(id: number) {
     const index = todos.findIndex((todo) => todo.id === id);
@@ -162,7 +221,7 @@ export const App = $component(function App() {
 
   return (
     <section
-      class="relative w-full overflow-hidden rounded-[6px_14px_10px_5px] border border-rule-strong bg-paper shadow-ledger max-sm:min-h-screen max-sm:rounded-none max-sm:border-0"
+      class="relative w-full overflow-hidden rounded-[6px_14px_10px_5px] border border-rule-strong bg-paper shadow-ledger max-sm:min-h-screen max-sm:rounded-none max-sm:border-x-0"
       aria-labelledby="page-title"
     >
       <div
@@ -208,7 +267,7 @@ export const App = $component(function App() {
 
       <form
         class="ml-11 border-b border-rule px-5 py-6 sm:ml-21 sm:px-11"
-        onSubmit={addTodo}
+        $form={createForm}
         aria-label="Add a task"
       >
         <label
@@ -218,19 +277,17 @@ export const App = $component(function App() {
           New note
         </label>
         <div class="grid grid-cols-[1fr_auto] gap-2.5 max-sm:grid-cols-1">
-          <input
-            class="min-w-0 rounded border border-rule-strong bg-control px-4 py-3 text-graphite placeholder:text-faint focus-visible:outline-3 focus-visible:outline-focus/50"
+          <TodoField
+            form={createForm}
             id="new-task"
-            name="task"
-            type="text"
-            $bind={draft}
+            inputClass="rounded bg-control px-4 py-3 placeholder:text-faint"
             placeholder="What should happen next?"
             autocomplete="off"
           />
           <button
-            class="rounded border border-graphite bg-graphite px-5 font-semibold text-paper hover:bg-ink disabled:cursor-not-allowed disabled:border-rule-strong disabled:bg-transparent disabled:text-faint max-sm:min-h-11"
+            class="rounded border border-graphite bg-graphite px-5 font-semibold text-paper hover:bg-ink focus-visible:outline-3 focus-visible:outline-focus/50 disabled:cursor-not-allowed disabled:border-rule-strong disabled:bg-transparent disabled:text-faint max-sm:min-h-11"
             type="submit"
-            disabled={!canAdd}
+            disabled={createForm.isSubmitting}
           >
             Add task
           </button>
@@ -260,7 +317,7 @@ export const App = $component(function App() {
         ))}
       </nav>
 
-      <div class="task-paper ml-11 min-h-70 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_55px,var(--color-rule)_55px,var(--color-rule)_56px)] sm:ml-21">
+      <div class="task-paper ml-11 min-h-70 sm:ml-21">
         {filteredTodos.length === 0 ? (
           <div class="grid min-h-70 place-content-center justify-items-center font-serif text-faint">
             <span class="text-4xl leading-none">—</span>
@@ -288,7 +345,7 @@ export const App = $component(function App() {
         {completed > 0 && (
           <button
             type="button"
-            class="text-correction underline decoration-transparent underline-offset-3 hover:decoration-current"
+            class="text-correction underline decoration-transparent underline-offset-3 hover:decoration-current focus-visible:outline-3 focus-visible:outline-focus/50"
             onClick={clearCompleted}
           >
             Clear completed

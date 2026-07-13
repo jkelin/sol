@@ -38,6 +38,47 @@ Derived inference follows direct reads in the initializer. When a helper functio
 
 Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static checkbox/radio inputs and `value` for other supported controls. Signal arrays and plain-object values are deep proxies, so nested assignments and mutating array methods are reactive. Dates, collections, and class instances retain their original identity.
 
+## Form validation
+
+`$form()` owns a form's values, validation errors, and submission state. It accepts a callable parser or a schema with `parse()` or `parseAsync()`, so Valibot and Zod can share the same controller API.
+
+```tsx
+import { $component, $form } from "frontend-framework";
+import * as v from "valibot";
+
+const TodoSchema = v.object({
+  title: v.pipe(v.string(), v.trim(), v.minLength(1, "Enter a title.")),
+});
+
+const TodoForm = $component(function TodoForm() {
+  function save(values: v.InferOutput<typeof TodoSchema>) {
+    console.log(values);
+    form.reset();
+  }
+
+  const form = $form(
+    {
+      schema: v.parser(TodoSchema),
+      defaultValues: { title: "" },
+      validationStrategy: "onSubmit",
+    },
+    save,
+  );
+
+  return (
+    <form $form={form}>
+      <input name="title" $bind={form.values.title} aria-invalid={Boolean(form.errors.title)} />
+      {form.errors.title?.[0]}
+      <button disabled={form.isSubmitting}>Save</button>
+    </form>
+  );
+});
+```
+
+The `$form` property connects the controller to the form's submit, input, and focus-out events. The default `onSubmit` strategy validates on submit and clears a field error when that named field emits `input`. Use `onBlur` or `onInput` to validate the complete schema from the corresponding event. Field issues are grouped into message arrays by dotted path; pathless issues are available through `form.formErrors`. Successful submissions receive only parsed output and do not reset automatically.
+
+Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()` when both methods exist, making async refinements work without a separate controller API.
+
 `class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, nested arrays, and object maps. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 
 Enable compilation in Vite:

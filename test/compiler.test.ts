@@ -216,6 +216,24 @@ describe("compiler", () => {
     expect(result.code.match(/__ff_bind\([^\n]+"checked"/g)?.length).toBe(1);
   });
 
+  test("connects form controllers through the $form element property", () => {
+    const result = compile(
+      `
+      import { $component, $form } from "frontend-framework";
+      const Form = $component(function Form() {
+        const controller = $form({ schema: value => value, defaultValues: { title: "" } }, () => {});
+        return <form $form={controller}><input name="title" $bind={controller.values.title} /></form>;
+      });
+    `,
+      "Form.tsx",
+    );
+
+    expect(result.code).toContain('"submit", () => ((controller.value).submit)');
+    expect(result.code).toContain('"input", () => ((controller.value).handleInput)');
+    expect(result.code).toContain('"focusout", () => ((controller.value).handleBlur)');
+    expect(result.code).not.toContain('$form="');
+  });
+
   test("resolves component declarations independently of capitalization", () => {
     const result = compile(
       `
@@ -232,6 +250,30 @@ describe("compiler", () => {
   });
 
   test("reports invalid component, binding, class, and list interfaces with locations", () => {
+    expect(() =>
+      compile(
+        `
+      const App = $component(function App() {
+        let controller = {};
+        return <input $form={controller} />;
+      });
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("$form is only valid on form elements");
+
+    expect(() =>
+      compile(
+        `
+      const App = $component(function App() {
+        let controller = {};
+        return <form $form={controller} onSubmit={() => {}}></form>;
+      });
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("$form already handles onSubmit");
+
     expect(() =>
       compile(
         `

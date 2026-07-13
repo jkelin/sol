@@ -12,6 +12,7 @@ import {
   type Block,
   type Component,
   type NavigateOptions,
+  type RawRouteParams,
   type RouteConfig,
   type RouteDefinition,
   type RouteValues,
@@ -22,8 +23,8 @@ export interface Router {
   readonly search: string;
   readonly hash: string;
   readonly searchParams: URLSearchParams;
-  readonly params: Readonly<Record<string, string | number>>;
-  readonly query: Readonly<Record<string, string | number>>;
+  readonly params: Readonly<Record<string, string | number | undefined>>;
+  readonly query: Readonly<Record<string, string | number | undefined>>;
   readonly route: RouteConfig | null;
   navigate(path: string, options?: NavigateOptions): void;
 }
@@ -42,7 +43,7 @@ interface RouterState {
 
 interface RouteMatch {
   definition: RouteDefinition;
-  params: Readonly<Record<string, string>>;
+  params: RawRouteParams;
 }
 
 function readLocation(): RouterState {
@@ -98,7 +99,7 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
   for (const definition of preparedRoutes) {
     const match = new RegExp(definition.compiled.pattern).exec(pathname);
     if (!match) continue;
-    const params: Record<string, string> = {};
+    const params: Record<string, string | undefined> = {};
     for (const [index, name] of definition.compiled.pathnameParameterNames.entries()) {
       params[name] = decodeParameter(match[index + 1] ?? "");
     }
@@ -107,13 +108,14 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
       for (const queryParameter of definition.compiled.queryParameters) {
         const value = searchParams.getAll(queryParameter.key).at(-1);
         if (
-          value === undefined ||
-          (queryParameter.name in params && params[queryParameter.name] !== value)
+          value !== undefined &&
+          queryParameter.name in params &&
+          params[queryParameter.name] !== value
         ) {
           queryMatches = false;
           break;
         }
-        params[queryParameter.name] = value;
+        if (!(queryParameter.name in params)) params[queryParameter.name] = value;
       }
       if (!queryMatches) continue;
     }

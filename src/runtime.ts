@@ -88,8 +88,8 @@ export interface NavigateOptions {
 }
 
 export type RouteValue = string | number;
-export type RawRouteParams = Readonly<Record<string, string>>;
-export type RouteValues = Readonly<Record<string, RouteValue>>;
+export type RawRouteParams = Readonly<Record<string, string | undefined>>;
+export type RouteValues = Readonly<Record<string, RouteValue | undefined>>;
 
 type RouteSchemaParameterCheck<Path extends string, Values extends RouteValues> =
   Exclude<keyof Values, keyof RouteParams<Path>> extends never
@@ -129,13 +129,16 @@ type QueryParameterName<Query extends string> = Query extends `${infer Part}&${i
     ? Parameter
     : never;
 
-type RouteParameterName<Path extends string> =
-  | PathParameterName<RoutePathname<Path>>
-  | QueryParameterName<RouteQuery<Path>>;
-
 export type RouteParams<Path extends string> = string extends Path
-  ? Readonly<Record<string, string>>
-  : Readonly<{ [Parameter in RouteParameterName<Path>]: string }>;
+  ? Readonly<Record<string, string | undefined>>
+  : Readonly<
+      { [Parameter in PathParameterName<RoutePathname<Path>>]: string } & {
+        [Parameter in Exclude<
+          QueryParameterName<RouteQuery<Path>>,
+          PathParameterName<RoutePathname<Path>>
+        >]?: string;
+      }
+    >;
 
 export type DefaultRouteValues<Path extends string> = RouteParams<Path>;
 
@@ -1203,20 +1206,30 @@ export function renderComponent<Props extends object>(
   return resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
 }
 
-function validateRouteValues(values: unknown, parameterNames: readonly string[]): RouteValues {
+function validateRouteValues(
+  values: unknown,
+  parameterNames: readonly string[],
+  pathnameParameterNames: readonly string[],
+): RouteValues {
   if (!isObject(values) || Array.isArray(values)) {
     throw new TypeError("Route schema output must be an object");
   }
   const paramKeys = Object.keys(values);
-  const missing = parameterNames.find((name) => !(name in values));
+  const missing = pathnameParameterNames.find((name) => !(name in values));
   if (missing) throw new TypeError(`Route schema output is missing parameter ${missing}`);
   const unexpected = paramKeys.find((name) => !parameterNames.includes(name));
   if (unexpected)
     throw new TypeError(`Route schema output contains unknown parameter ${unexpected}`);
   for (const name of parameterNames) {
     const value = (values as Record<string, unknown>)[name];
-    if (typeof value !== "string" && typeof value !== "number") {
-      throw new TypeError(`Route schema output parameter ${name} must be a string or number`);
+    if (
+      typeof value !== "string" &&
+      typeof value !== "number" &&
+      !(value === undefined && !pathnameParameterNames.includes(name))
+    ) {
+      throw new TypeError(
+        `Route schema output parameter ${name} must be a string, number, or undefined query value`,
+      );
     }
   }
   return Object.freeze({ ...values }) as RouteValues;
@@ -1234,7 +1247,11 @@ export function resolveRoute<Path extends string, Values extends RouteValues>(
   if (!schema) {
     return {
       matched: true,
-      values: validateRouteValues(raw, definition.compiled.parameterNames),
+      values: validateRouteValues(
+        raw,
+        definition.compiled.parameterNames,
+        definition.compiled.pathnameParameterNames,
+      ),
     };
   }
   try {
@@ -1243,7 +1260,11 @@ export function resolveRoute<Path extends string, Values extends RouteValues>(
       return Promise.resolve(result).then(
         (values) => ({
           matched: true as const,
-          values: validateRouteValues(values, definition.compiled.parameterNames),
+          values: validateRouteValues(
+            values,
+            definition.compiled.parameterNames,
+            definition.compiled.pathnameParameterNames,
+          ),
         }),
         (error: unknown) => {
           if (validationFailure(error)) return { matched: false as const };
@@ -1253,7 +1274,11 @@ export function resolveRoute<Path extends string, Values extends RouteValues>(
     }
     return {
       matched: true,
-      values: validateRouteValues(result, definition.compiled.parameterNames),
+      values: validateRouteValues(
+        result,
+        definition.compiled.parameterNames,
+        definition.compiled.pathnameParameterNames,
+      ),
     };
   } catch (error) {
     if (validationFailure(error)) return { matched: false };
@@ -1292,17 +1317,27 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
   const [pathnameTemplate] = definition.config.path.split("?", 1);
   let path = pathnameTemplate!;
-  for (const name of definition.compiled.parameterNames) {
+  for (const name of definition.compiled.pathnameParameterNames) {
     if (!(name in candidateParams)) throw new TypeError(`Missing route parameter ${name}`);
     const value = candidateParams[name];
     if (typeof value !== "string" && typeof value !== "number") {
       throw new TypeError(`Route parameter ${name} must be a string or number`);
     }
-    path = path.replaceAll(`:${name}`, encodeURIComponent(String(value)));
+    path = path
+      .split("/")
+      .map((segment) => (segment === `:${name}` ? encodeURIComponent(String(value)) : segment))
+      .join("/");
   }
   const search = new URLSearchParams();
   for (const queryParameter of definition.compiled.queryParameters) {
-    search.set(queryParameter.key, String(candidateParams[queryParameter.name]));
+    const value = candidateParams[queryParameter.name];
+    if (value === undefined) continue;
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new TypeError(
+        `Route parameter ${queryParameter.name} must be a string, number, or undefined`,
+      );
+    }
+    search.set(queryParameter.key, String(value));
   }
   const serialized = search.toString();
   return serialized ? `${path}?${serialized}` : path;
@@ -1387,7 +1422,7 @@ export function route<
       const pathname = routeRuntime?.getPathname();
       if (!pathname) return false;
       return staticPrefix === "/"
-        ? compiled.parameterNames.length > 0 || pathname === "/"
+        ? compiled.pathnameParameterNames.length > 0 || pathname === "/"
         : pathname === staticPrefix || pathname.startsWith(`${staticPrefix}/`);
     },
     navigate(destination: RouteDestination<Values>, options?: NavigateOptions) {

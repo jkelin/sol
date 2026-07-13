@@ -712,6 +712,13 @@ describe("compiled DOM runtime", () => {
       queryParameters: [],
       specificity: [],
     });
+    const rootQuery = route({ path: "/?filter=:filter" }, Empty, {
+      pattern: "^/$",
+      parameterNames: ["filter"],
+      pathnameParameterNames: [],
+      queryParameters: [{ key: "filter", name: "filter" }],
+      specificity: [],
+    });
     let active: object = detail;
     let pathname = "/blog/first";
     const activeParams = { id: "first" } as const;
@@ -734,6 +741,7 @@ describe("compiled DOM runtime", () => {
     expect(detail.isActivePrefix).toBe(true);
     expect(todo.isActive).toBe(false);
     expect(todo.isActivePrefix).toBe(false);
+    expect(rootQuery.isActivePrefix).toBe(false);
     detail.navigate({ params: { id: "hello world" } }, { replace: true });
     expect(navigations).toEqual([{ path: "/blog/hello%20world", replace: true }]);
     expect(() => detail.navigate({} as never)).toThrow("Missing route parameter id");
@@ -781,7 +789,7 @@ describe("compiled DOM runtime", () => {
     ).toBe("/blog/42?page=3&filter=recent");
     expect(() =>
       routeHref(detail, { params: { id: 42, page: true, filter: "recent" } } as never),
-    ).toThrow("must be a string or number");
+    ).toThrow("must be a string, number, or undefined");
     expect(() => routeHref(detail, { params: { id: 42 }, extra: true })).toThrow(
       "unknown property extra",
     );
@@ -796,6 +804,28 @@ describe("compiled DOM runtime", () => {
     expect(routeHref(repeated, { params: { id: "hello world" } })).toBe(
       "/blog/hello%20world?selected=hello+world",
     );
+
+    const prefixedNames = route({ path: "/blog/:id/:id2" }, Empty, {
+      pattern: "^/blog/([^/]+)/([^/]+)$",
+      parameterNames: ["id", "id2"],
+      pathnameParameterNames: ["id", "id2"],
+      queryParameters: [],
+      specificity: [1, 0, 0],
+    });
+    expect(routeHref(prefixedNames, { params: { id: 1, id2: 2 } })).toBe("/blog/1/2");
+
+    const optionalQuery = route({ path: "/search?filter=:filter" }, Empty, {
+      pattern: "^/search$",
+      parameterNames: ["filter"],
+      pathnameParameterNames: [],
+      queryParameters: [{ key: "filter", name: "filter" }],
+      specificity: [1],
+    });
+    expect(routeHref(optionalQuery, { params: {} })).toBe("/search");
+    expect(await resolveRoute(optionalQuery, { filter: undefined })).toEqual({
+      matched: true,
+      values: { filter: undefined },
+    });
   });
 
   test("validates routes with Standard Schema implementations", async () => {

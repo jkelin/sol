@@ -188,7 +188,7 @@ export const blogDetailRoute = $route(
 );
 ```
 
-Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. A query template such as `?page=:page` declares a required query parameter. The same logical parameter may appear in both places, as in `/blog/:id?selected=:id`; incoming values must then agree. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
+Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. A query template such as `?page=:page` declares a query parameter. The same logical parameter may appear in both places, as in `/blog/:id?selected=:id`; when both incoming values are present, they must agree. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
 
 Each compiled route is a typed handle. Its optional `schema` accepts the same callable, `parse()`, `parseAsync()`, and Standard Schema formats as `$form`, including Valibot schemas directly. The parser receives one decoded string record containing both path and declared query parameters; repeated query keys use their final value. Its output must contain exactly the route's declared parameters as strings or numbers. Parsed output types flow through the handle and every typed destination:
 
@@ -201,7 +201,7 @@ blogDetailRoute.isActive; // exact route match
 blogDetailRoute.isActivePrefix; // true anywhere below /blog
 ```
 
-Routes without a schema retain inferred string values for all declared parameters. `query` is a compatibility alias for the same object exposed by `params`. Reading either property from an inactive, pending, or invalid route throws instead of returning stale values. A recognized schema validation failure makes the route not match; other parser errors remain visible. Async validation ignores stale results after newer navigation.
+Routes without a schema retain inferred string values for path parameters and optional strings for query-only parameters. A schema may likewise return `undefined` for a query-only value; `Link` and `navigate()` omit it from the generated URL. `query` is a compatibility alias for the same object exposed by `params`. Reading either property from an inactive, pending, or invalid route throws instead of returning stale values. A recognized schema validation failure makes the route not match; other parser errors remain visible. Async validation ignores stale results after newer navigation.
 
 Use `Link` when the destination is represented by a route handle. It requires exactly one anchor child, supplies that anchor's `href`, and intercepts eligible same-tab clicks without adding a wrapper element:
 

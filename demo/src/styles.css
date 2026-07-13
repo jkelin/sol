@@ -345,8 +345,37 @@ h1 {
 .todo-title {
   position: relative;
   width: fit-content;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: text;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 17px;
+  text-align: left;
+}
+
+.todo-title:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+}
+
+.todo-editor {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  background: var(--paper-inset);
+  color: var(--graphite);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  box-shadow: inset 0 -1px var(--rule);
+}
+
+.todo-row--editing {
+  background: color-mix(in srgb, var(--paper-inset) 58%, transparent);
 }
 
 .todo-row--completed .todo-title {

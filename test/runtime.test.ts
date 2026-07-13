@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import {
+  $component,
+  $computed,
+  $signal,
+  attribute,
   batch,
   bindValue,
   block,
   child,
   component,
-  computed,
   instantiate,
   list,
   mount,
   runtimeEffect,
-  signal,
+  normalizeClass,
   template,
   text,
   type Region,
@@ -35,9 +38,21 @@ beforeEach(() => {
 afterEach(() => window.close());
 
 describe("reactivity", () => {
+  test("validates the public compiler boundary and class values", () => {
+    expect(() => $component(function Example() {
+      return undefined as never;
+    })).toThrow("reached runtime");
+    expect(normalizeClass([
+      "todo-row",
+      [null, false, "ledger-line"],
+      { "todo-row--completed": true, hidden: 0 },
+      2,
+    ])).toBe("todo-row ledger-line todo-row--completed 2");
+  });
+
   test("tracks primitives, computed values, and batches writes", () => {
-    const count = signal(1);
-    const doubled = computed(() => count.value * 2);
+    const count = $signal(1);
+    const doubled = $computed(() => count.value * 2);
     const values: number[] = [];
     const stop = runtimeEffect(() => values.push(doubled.value));
 
@@ -53,7 +68,7 @@ describe("reactivity", () => {
   });
 
   test("tracks deep object writes and array mutators", () => {
-    const state = signal({ todos: [{ done: false }] });
+    const state = $signal({ todos: [{ done: false }] });
     const observations: string[] = [];
     runtimeEffect(() => observations.push(`${state.value.todos.length}:${state.value.todos[0]?.done}`));
 
@@ -65,7 +80,7 @@ describe("reactivity", () => {
   });
 
   test("tracks property iteration and deletion", () => {
-    const state = signal<Record<string, number>>({ first: 1, second: 2 });
+    const state = $signal<Record<string, number>>({ first: 1, second: 2 });
     const keys: string[] = [];
     runtimeEffect(() => keys.push(Object.keys(state.value).join(",")));
 
@@ -75,9 +90,9 @@ describe("reactivity", () => {
   });
 
   test("cleans stale conditional dependencies", () => {
-    const useLeft = signal(true);
-    const left = signal("left");
-    const right = signal("right");
+    const useLeft = $signal(true);
+    const left = $signal("left");
+    const right = $signal("right");
     const values: string[] = [];
     runtimeEffect(() => values.push(useLeft.value ? left.value : right.value));
 
@@ -90,8 +105,20 @@ describe("reactivity", () => {
 });
 
 describe("compiled DOM runtime", () => {
+  test("updates normalized DOM classes reactively", () => {
+    const classes = $signal(["todo-row", { "todo-row--completed": false }]);
+    const element = document.createElement("div");
+    const cleanups: (() => void)[] = [];
+    attribute(element, "classNames", () => classes.value, cleanups);
+
+    expect(element.className).toBe("todo-row");
+    classes.value = ["todo-row", { "todo-row--completed": true }];
+    expect(element.className).toBe("todo-row todo-row--completed");
+    for (const cleanup of cleanups.reverse()) cleanup();
+  });
+
   test("mounts once and patches text without rerunning setup", () => {
-    const count = signal(0);
+    const count = $signal(0);
     let setups = 0;
     const definition = template("<p><!--ff:s:0--><!--ff:e:0--></p>");
     const Counter = component(() => {
@@ -120,10 +147,10 @@ describe("compiled DOM runtime", () => {
   });
 
   test("cleans setup-owned effects when component setup throws", () => {
-    const source = signal(1);
+    const source = $signal(1);
     let derivations = 0;
     const Broken = component(() => {
-      computed(() => {
+      $computed(() => {
         derivations += 1;
         return source.value;
       });
@@ -138,7 +165,7 @@ describe("compiled DOM runtime", () => {
   });
 
   test("synchronizes form bindings in both directions", () => {
-    const draft = signal("first");
+    const draft = $signal("first");
     const definition = template('<input data-ff-e="0">');
     const view = instantiate(definition);
     const cleanups: (() => void)[] = [];
@@ -159,9 +186,28 @@ describe("compiled DOM runtime", () => {
     expect(draft.value).toBe("third");
   });
 
+  test("synchronizes inferred checked bindings in both directions", () => {
+    const completed = $signal(false);
+    const definition = template('<input type="checkbox" data-ff-e="0">');
+    const view = instantiate(definition);
+    const cleanups: (() => void)[] = [];
+    const input = view.elements[0] as HTMLInputElement;
+    bindValue(input, "checked", () => completed.value, (value) => {
+      completed.value = Boolean(value);
+    }, cleanups);
+
+    expect(input.checked).toBe(false);
+    input.checked = true;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    expect(completed.value).toBe(true);
+    completed.value = false;
+    expect(input.checked).toBe(false);
+    for (const cleanup of cleanups.reverse()) cleanup();
+  });
+
   test("disposes effects owned by removed conditional branches", () => {
-    const visible = signal(true);
-    const branchValue = signal("first");
+    const visible = $signal(true);
+    const branchValue = $signal("first");
     let branchReads = 0;
     const parentTemplate = template("<div><!--ff:s:0--><!--ff:e:0--></div>");
     const Parent = component(() => {
@@ -194,11 +240,11 @@ describe("compiled DOM runtime", () => {
   });
 
   test("disposes setup-owned computed effects", () => {
-    const source = signal(1);
+    const source = $signal(1);
     let derivations = 0;
     const definition = template("<p><!--ff:s:0--><!--ff:e:0--></p>");
     const Derived = component(() => {
-      const value = computed(() => {
+      const value = $computed(() => {
         derivations += 1;
         return source.value * 2;
       });
@@ -217,7 +263,7 @@ describe("compiled DOM runtime", () => {
   });
 
   test("updates reactive child props without rerunning child setup", () => {
-    const label = signal("First");
+    const label = $signal("First");
     let childSetups = 0;
     let childReads = 0;
     const childTemplate = template("<span><!--ff:s:0--><!--ff:e:0--></span>");
@@ -251,7 +297,7 @@ describe("compiled DOM runtime", () => {
   });
 
   test("reorders keyed blocks while preserving their nodes", () => {
-    const values = signal([{ id: 1, label: "One" }, { id: 2, label: "Two" }]);
+    const values = $signal([{ id: 1, label: "One" }, { id: 2, label: "Two" }]);
     const definition = template("<ol><!--ff:s:0--><!--ff:e:0--></ol>");
     const rowDefinition = template("<li><!--ff:s:0--><!--ff:e:0--></li>");
     const List = component(() => {
@@ -282,7 +328,7 @@ describe("compiled DOM runtime", () => {
   });
 
   test("disposes effects owned by removed keyed rows", () => {
-    const items = signal([{ id: 1, value: "first" }]);
+    const items = $signal([{ id: 1, value: "first" }]);
     const removed = items.value[0]!;
     let rowReads = 0;
     const definition = template("<div><!--ff:s:0--><!--ff:e:0--></div>");

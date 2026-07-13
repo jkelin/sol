@@ -1,3 +1,5 @@
+import type { ClassValue } from "./runtime.ts";
+
 export namespace JSX {
   export interface Element {
     readonly __frontendFrameworkElement: unique symbol;
@@ -7,8 +9,17 @@ export namespace JSX {
     key?: PropertyKey;
   }
 
+  export interface IntrinsicElementAttributes {
+    $bind?: unknown;
+    class?: ClassValue;
+    className?: ClassValue;
+    classNames?: ClassValue;
+    key?: PropertyKey;
+    [property: string]: unknown;
+  }
+
   export interface IntrinsicElements {
-    [elementName: string]: Record<string, unknown>;
+    [elementName: string]: IntrinsicElementAttributes;
   }
 }
 

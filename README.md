@@ -1,6 +1,6 @@
 # frontend-framework
 
-An experimental JSX framework that compiles components into static HTML templates and fine-grained DOM operations. Component setup runs once per mounted instance; signals patch only the DOM that depends on them.
+An experimental JSX framework that compiles components into static HTML templates and fine-grained DOM operations. Component setup runs once per mounted instance; reactive changes patch only the DOM that depends on them.
 
 ## Run the demo
 
@@ -9,22 +9,37 @@ bun install
 bun run dev
 ```
 
-The notebook-style to-do app demonstrates deep reactive proxies, computed state, child props, keyed lists, conditional regions, events, and two-way form bindings.
+The notebook-style to-do app demonstrates compiler-managed component state, derived values, deep proxies, child props, keyed lists, conditionals, editable rows, class composition, and two-way bindings.
 
 ## Authoring model
 
 ```tsx
-import { mount, signal } from "frontend-framework";
+import { $component, mount } from "frontend-framework";
 
-function Counter() {
-  const count = signal(0);
-  return <button onClick={() => count.value++}>{count.value}</button>;
-}
+const Counter = $component(function Counter() {
+  let count = 0;
+  const doubled = count * 2;
+
+  return (
+    <button
+      classNames={["counter", { "counter--active": count > 0 }]}
+      onClick={() => count++}
+    >
+      {count} / {doubled}
+    </button>
+  );
+});
 
 mount(Counter, document.querySelector("#app")!);
 ```
 
-Use `bind:value={reference}` for text-like fields and `bind:checked={object.done}` for checkbox/radio state. Object and array signal values are deep proxies, so nested assignments and mutating array methods are reactive.
+Direct component-body data variables are reactive automatically. Writable declarations become signals, derived `const` declarations become computed values, and component code uses normal reads and assignments without `.value`.
+
+Derived inference follows direct reads in the initializer. When a helper function closes over reactive state and the initializer only calls that helper, use an explicit `$computed(() => helper())` override; interprocedural dependency analysis is intentionally outside v1.
+
+Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static checkbox/radio inputs and `value` for other supported controls. Signal object and array values are deep proxies, so nested assignments and mutating array methods are reactive.
+
+`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, nested arrays, and object maps. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 
 Enable compilation in Vite:
 

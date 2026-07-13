@@ -181,7 +181,7 @@ function wrap<T>(value: T): T {
   return isObject(value) ? (reactive(value) as T) : value;
 }
 
-export function signal<T>(initial: T): Signal<T> {
+export function $signal<T>(initial: T): Signal<T> {
   let value = wrap(initial);
   const reference = {
     [SIGNAL]: true,
@@ -198,9 +198,9 @@ export function signal<T>(initial: T): Signal<T> {
   return reference;
 }
 
-export function computed<T>(derive: () => T): ReadonlySignal<T> {
-  if (typeof derive !== "function") throw new TypeError("computed() expects a function");
-  const value = signal<T>(undefined as T);
+export function $computed<T>(derive: () => T): ReadonlySignal<T> {
+  if (typeof derive !== "function") throw new TypeError("$computed() expects a function");
+  const value = $signal<T>(undefined as T);
   runtimeEffect(() => {
     value.value = derive();
   });
@@ -209,6 +209,14 @@ export function computed<T>(derive: () => T): ReadonlySignal<T> {
       return value.value;
     },
   });
+}
+
+export function $component<Props extends object>(
+  _setup: (props: Readonly<Props>) => JSX.Element,
+): Component<Props> {
+  throw new Error(
+    "$component() reached runtime. Add frontendFramework() before Vite's JSX transform.",
+  );
 }
 
 export interface Region {
@@ -389,6 +397,37 @@ function displayValue(value: unknown): string {
   return value == null || typeof value === "boolean" ? "" : String(value);
 }
 
+export type ClassValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ClassValue[]
+  | { readonly [className: string]: unknown };
+
+export function normalizeClass(value: ClassValue): string {
+  const classes: string[] = [];
+  const append = (part: ClassValue): void => {
+    if (!part) return;
+    if (typeof part === "string" || typeof part === "number") {
+      classes.push(String(part));
+      return;
+    }
+    if (Array.isArray(part)) {
+      for (const item of part) append(item);
+      return;
+    }
+    if (typeof part === "object") {
+      for (const className of Object.keys(part)) {
+        if (part[className]) classes.push(className);
+      }
+    }
+  };
+  append(value);
+  return classes.join(" ");
+}
+
 export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[]): void {
   const textNode = document.createTextNode("");
   region.end.parentNode?.insertBefore(textNode, region.end);
@@ -421,7 +460,12 @@ export function attribute(
   getValue: () => unknown,
   cleanups: Cleanup[],
 ): void {
-  cleanups.push(runtimeEffect(() => setDomValue(element, name, getValue())));
+  const isClass = name === "class" || name === "className" || name === "classNames";
+  cleanups.push(runtimeEffect(() => {
+    setDomValue(element, isClass ? "class" : name, isClass
+      ? normalizeClass(getValue() as ClassValue)
+      : getValue());
+  }));
 }
 
 export function event(
@@ -508,8 +552,8 @@ export function list<T>(
           row.item.value = entry.item;
           row.index.value = entry.index;
         } else {
-          const item = signal(entry.item);
-          const index = signal(entry.index);
+          const item = $signal(entry.item);
+          const index = $signal(entry.index);
           row = { key: entry.key, item, index, block: render(item, index) };
         }
         nextRows.set(entry.key, row);

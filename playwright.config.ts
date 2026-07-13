@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: false,
   timeout: 20_000,
   use: {
-    baseURL: "http://127.0.0.1:5174",
+    baseURL: "http://127.0.0.1:4173",
     headless: true,
   },
 });

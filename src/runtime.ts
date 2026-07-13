@@ -35,7 +35,7 @@ export interface FormController<TValues extends Record<string, unknown>> {
 
 export type Component<Props extends object = Record<string, never>> = (
   props: Readonly<Props>,
-) => JSX.Element;
+) => JSX.Element | Promise<JSX.Element>;
 
 export interface Context<TShape extends object> {
   readonly Provider: Component<{ data: TShape; children?: JSX.Element | readonly JSX.Element[] }>;
@@ -138,6 +138,13 @@ let activeFrame: RenderFrame | undefined;
 let batchDepth = 0;
 let flushingEffects = false;
 const pendingEffects = new Set<ReactiveEffect>();
+const disposedOwners = new WeakSet<Cleanup[]>();
+
+function disposeOwner(owner: Cleanup[]): void {
+  if (disposedOwners.has(owner)) return;
+  disposedOwners.add(owner);
+  for (const cleanup of owner.toReversed()) cleanup();
+}
 
 function cleanupEffect(effect: ReactiveEffect): void {
   for (const dependency of effect.dependencies) dependency.delete(effect);
@@ -268,12 +275,14 @@ function createReactiveEffect(
     cleanupEffect(effect);
   };
   const owner = explicitOwner ?? activeOwner;
-  owner?.push(stop);
+  const ownerWasDisposed = owner ? disposedOwners.has(owner) : false;
+  if (owner && !ownerWasDisposed) owner.push(stop);
   try {
     effect.run();
+    if (ownerWasDisposed) stop();
   } catch (error) {
     stop();
-    if (owner) {
+    if (owner && !ownerWasDisposed) {
       const index = owner.lastIndexOf(stop);
       if (index >= 0) owner.splice(index, 1);
     }
@@ -696,7 +705,11 @@ export interface TemplateDefinition {
   element?: HTMLTemplateElement;
 }
 
-type MaybeBlock = Block | PromiseLike<Block>;
+interface PendingBlock extends PromiseLike<Block> {
+  cancel?: () => void;
+}
+
+type MaybeBlock = Block | PendingBlock;
 type RenderFactory = (frame: RenderFrame) => Block;
 type ErrorRenderFactory = (error: unknown, frame: RenderFrame) => Block;
 
@@ -847,20 +860,22 @@ export function component<Props extends object>(
     try {
       rendered = factory(props, frame);
     } catch (error) {
-      for (const cleanup of owner.toReversed()) cleanup();
+      disposeOwner(owner);
       throw error;
     } finally {
       activeOwner = previousOwner;
       activeFrame = previousFrame;
     }
     if (isPromiseLike(rendered)) {
-      return Promise.resolve(rendered).then(
+      const pending = Promise.resolve(rendered).then(
         (resolved) => ownedBlock(resolved, owner),
         (error) => {
-          for (const cleanup of owner.toReversed()) cleanup();
+          disposeOwner(owner);
           throw error;
         },
       );
+      void Object.defineProperty(pending, "cancel", { value: () => disposeOwner(owner) });
+      return pending;
     }
     return ownedBlock(rendered, owner);
   };
@@ -880,7 +895,7 @@ function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
       if (disposed) return;
       disposed = true;
       rendered.dispose();
-      for (const cleanup of owner.toReversed()) cleanup();
+      disposeOwner(owner);
     },
   };
 }
@@ -1032,6 +1047,11 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return isObject(value) && typeof (value as { then?: unknown }).then === "function";
 }
 
+function cancelPendingBlock(value: PromiseLike<unknown>): void {
+  const cancel = (value as PendingBlock).cancel;
+  if (typeof cancel === "function") cancel();
+}
+
 function surfaceAsyncError(error: unknown): void {
   queueMicrotask(() => {
     throw error;
@@ -1070,6 +1090,8 @@ function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block {
   return block(fragment, [
     () => {
       disposed = true;
+      cancelPendingBlock(candidate);
+      finish?.();
       resolved?.dispose();
     },
   ]);
@@ -1359,7 +1381,10 @@ export function suspense(
       if (failed) return;
       failed = true;
       if (renderError) {
-        if (content && visible !== content) content.dispose();
+        if (content) {
+          content.dispose();
+          if (visible === content) visible = undefined;
+        }
         try {
           show(renderError(error, frame));
         } catch (renderFailure) {

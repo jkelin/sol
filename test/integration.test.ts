@@ -369,3 +369,121 @@ test("Await replaces stale promises and re-enters its Suspense fallback", async 
   expect(target.querySelector("#replacement-value")?.textContent).toBe("fresh");
   dispose();
 });
+
+test("nested and sibling providers select the nearest context value", async () => {
+  const module = await loadCompiled(`
+    import { $component, $context } from "frontend-framework";
+    const context = $context<{ value: string }>();
+    const Consumer = $component(function Consumer(props: { id: string }) {
+      const data = context.use();
+      return <p id={props.id}>{data.value}</p>;
+    });
+    export const App = $component(function App() {
+      const outer = { value: "outer" };
+      const inner = { value: "inner" };
+      const sibling = { value: "sibling" };
+      return <main>
+        <context.Provider data={outer}>
+          <Consumer id="outer-context" />
+          <context.Provider data={inner}><Consumer id="inner-context" /></context.Provider>
+        </context.Provider>
+        <context.Provider data={sibling}><Consumer id="sibling-context" /></context.Provider>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(target.querySelector("#outer-context")?.textContent).toBe("outer");
+  expect(target.querySelector("#inner-context")?.textContent).toBe("inner");
+  expect(target.querySelector("#sibling-context")?.textContent).toBe("sibling");
+  dispose();
+});
+
+test("nested Suspense owns its work while a parent waits for multiple promises", async () => {
+  const module = await loadCompiled(`
+    import { $component, Await, Suspense } from "frontend-framework";
+    let resolveFirst!: (value: string) => void;
+    let resolveSecond!: (value: string) => void;
+    let resolveNested!: (value: string) => void;
+    const first = new Promise<string>(resolve => resolveFirst = resolve);
+    const second = new Promise<string>(resolve => resolveSecond = resolve);
+    const nested = new Promise<string>(resolve => resolveNested = resolve);
+    export function settleFirst() { resolveFirst("first"); }
+    export function settleSecond() { resolveSecond("second"); }
+    export function settleNested() { resolveNested("nested"); }
+    export const App = $component(function App() {
+      return <Suspense fallback={<p id="outer-loading">Outer loading</p>}>
+        <section id="outer-content">
+          <Await $promise={first}>{value => <p id="first-value">{value}</p>}</Await>
+          <Await $promise={second}>{value => <p id="second-value">{value}</p>}</Await>
+          <Suspense fallback={<p id="nested-loading">Nested loading</p>}>
+            <Await $promise={nested}>{value => <p id="nested-value">{value}</p>}</Await>
+          </Suspense>
+        </section>
+      </Suspense>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  const settle = async (name: "settleFirst" | "settleSecond" | "settleNested") => {
+    (module[name] as () => void)();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  expect(target.querySelector("#outer-loading")).not.toBeNull();
+  await settle("settleFirst");
+  expect(target.querySelector("#outer-loading")).not.toBeNull();
+  await settle("settleSecond");
+  expect(target.querySelector("#outer-content")).not.toBeNull();
+  expect(target.querySelector("#first-value")?.textContent).toBe("first");
+  expect(target.querySelector("#second-value")?.textContent).toBe("second");
+  expect(target.querySelector("#nested-loading")).not.toBeNull();
+  await settle("settleNested");
+  expect(target.querySelector("#nested-value")?.textContent).toBe("nested");
+  dispose();
+});
+
+test("async rejections prefer Await, then Suspense, then ErrorBoundary", async () => {
+  const module = await loadCompiled(`
+    import { $component, Await, ErrorBoundary, Suspense } from "frontend-framework";
+    export const App = $component(function App() {
+      const localFailure = Promise.reject(new Error("local"));
+      const suspenseFailure = Promise.reject(new Error("suspense"));
+      const boundaryFailure = Promise.reject(new Error("boundary"));
+      return <main>
+        <ErrorBoundary fallback={error => <p id="unexpected-local-boundary">{String(error)}</p>}>
+          <Suspense fallback={<p>Loading</p>} error={error => <p id="unexpected-local-suspense">{String(error)}</p>}>
+            <Await $promise={localFailure} error={error => <p id="local-error">{String(error)}</p>}>
+              {value => <p>{value}</p>}
+            </Await>
+          </Suspense>
+        </ErrorBoundary>
+        <ErrorBoundary fallback={error => <p id="unexpected-suspense-boundary">{String(error)}</p>}>
+          <Suspense fallback={<p>Loading</p>} error={error => <p id="suspense-error">{String(error)}</p>}>
+            <Await $promise={suspenseFailure}>{value => <p>{value}</p>}</Await>
+          </Suspense>
+        </ErrorBoundary>
+        <ErrorBoundary fallback={error => <p id="boundary-error">{String(error)}</p>}>
+          <Suspense fallback={<p>Loading</p>}>
+            <Await $promise={boundaryFailure}>{value => <p>{value}</p>}</Await>
+          </Suspense>
+        </ErrorBoundary>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(target.querySelector("#local-error")?.textContent).toContain("local");
+  expect(target.querySelector("#unexpected-local-suspense")).toBeNull();
+  expect(target.querySelector("#unexpected-local-boundary")).toBeNull();
+  expect(target.querySelector("#suspense-error")?.textContent).toContain("suspense");
+  expect(target.querySelector("#unexpected-suspense-boundary")).toBeNull();
+  expect(target.querySelector("#boundary-error")?.textContent).toContain("boundary");
+  dispose();
+});

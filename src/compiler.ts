@@ -568,6 +568,19 @@ function validateBuiltinAttributes(
   }
 }
 
+function isDefinitelyPrimitive(expression: Expression): boolean {
+  return (
+    t.isNullLiteral(expression) ||
+    t.isStringLiteral(expression) ||
+    t.isNumericLiteral(expression) ||
+    t.isBooleanLiteral(expression) ||
+    t.isBigIntLiteral(expression) ||
+    t.isDecimalLiteral(expression) ||
+    t.isTemplateLiteral(expression) ||
+    t.isUnaryExpression(expression)
+  );
+}
+
 function compileBuiltinElement(
   compiler: CompilerContext,
   kind: "Suspense" | "Await" | "ErrorBoundary",
@@ -619,7 +632,12 @@ function compileBuiltinElement(
     compiler,
     namedAttribute(compiler, node, "$promise", true)!,
   );
-  if (t.isJSXElement(promise) || t.isJSXFragment(promise)) {
+  if (
+    t.isJSXElement(promise) ||
+    t.isJSXFragment(promise) ||
+    t.isRegExpLiteral(promise) ||
+    isDefinitelyPrimitive(promise)
+  ) {
     codeFrame(compiler, promise, "Await $promise must be a promise expression");
   }
   const children = meaningfulChildren(node);
@@ -663,7 +681,15 @@ function compileProviderElement(
     return false;
   validateBuiltinAttributes(compiler, node, new Set(["data"]));
   const data = jsxAttributeExpression(compiler, namedAttribute(compiler, node, "data", true)!);
-  if (t.isJSXElement(data) || t.isJSXFragment(data))
+  if (
+    t.isJSXElement(data) ||
+    t.isJSXFragment(data) ||
+    isDefinitelyPrimitive(data) ||
+    t.isArrayExpression(data) ||
+    t.isFunctionExpression(data) ||
+    t.isArrowFunctionExpression(data) ||
+    t.isClassExpression(data)
+  )
     codeFrame(compiler, data, "Context Provider data must be an object expression");
   const contextName = expressionCode(t.identifier(name.object.name), scope);
   const index = region(context);

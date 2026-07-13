@@ -749,6 +749,32 @@ describe("compiled DOM runtime", () => {
     expect(derivations).toBe(1);
   });
 
+  test("disposes setup-owned effects while an async component is pending", async () => {
+    const source = $signal(0);
+    const observations: number[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const Async = component(async () => {
+      runtimeEffect(() => observations.push(source.value));
+      await gate;
+      return block(document.createDocumentFragment());
+    });
+    const target = document.createElement("div");
+    const dispose = mount(Async, target);
+
+    expect(observations).toEqual([0]);
+    dispose();
+    source.value = 1;
+    expect(observations).toEqual([0]);
+
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(target.childNodes).toHaveLength(0);
+  });
+
   test("updates reactive child props without rerunning child setup", () => {
     const label = $signal("First");
     let childSetups = 0;

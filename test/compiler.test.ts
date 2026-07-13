@@ -304,11 +304,26 @@ describe("compiler", () => {
         source: `import { $component, $context } from "frontend-framework"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider><p>Child</p></context.Provider>; });`,
         message: "JSX property data is required",
       },
+      {
+        source: `import { $component, Await } from "frontend-framework"; const App = $component(function App() { return <Await $promise={123}>{value => <p>{value}</p>}</Await>; });`,
+        message: "Await $promise must be a promise expression",
+      },
+      {
+        source: `import { $component, $context } from "frontend-framework"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider data={123}><p>Child</p></context.Provider>; });`,
+        message: "Context Provider data must be an object expression",
+      },
     ];
 
     for (const fixture of cases) {
       expect(() => compile(fixture.source, "AsyncBoundary.tsx")).toThrow(fixture.message);
     }
+
+    expect(() =>
+      compile(
+        `import { $component, $context } from "frontend-framework"; const context = $context<RegExp>(); const App = $component(function App() { return <context.Provider data={/valid object/}><p>Child</p></context.Provider>; });`,
+        "RegexContext.tsx",
+      ),
+    ).not.toThrow();
   });
 
   test("reports invalid component, binding, class, and list interfaces with locations", () => {

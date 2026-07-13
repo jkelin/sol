@@ -10,6 +10,22 @@ export type Component<Props extends object = Record<string, never>> = (
   props: Readonly<Props>,
 ) => JSX.Element;
 
+export interface RouteConfig {
+  readonly path: `/${string}`;
+}
+
+export interface CompiledRoutePattern {
+  readonly pattern: string;
+  readonly parameterNames: readonly string[];
+  readonly specificity: readonly number[];
+}
+
+export interface RouteDefinition {
+  readonly config: RouteConfig;
+  readonly component: Component;
+  readonly compiled: CompiledRoutePattern;
+}
+
 type Cleanup = () => void;
 type Dependency = Set<ReactiveEffect>;
 
@@ -24,6 +40,7 @@ interface ReactiveEffect {
 const ITERATE = Symbol("frontend-framework.iterate");
 const SIGNAL = Symbol("frontend-framework.signal");
 const COMPONENT = Symbol("frontend-framework.component");
+const ROUTE = Symbol("frontend-framework.route");
 const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
 const proxyCache = new WeakMap<object, object>();
 const proxyTargets = new WeakMap<object, object>();
@@ -298,6 +315,12 @@ export function $component<Props extends object>(
   );
 }
 
+export function $route(_config: RouteConfig, _candidate: Component): RouteDefinition {
+  throw new Error(
+    "$route() reached runtime. Define exported routes in a *.route.js, .jsx, .ts, or .tsx file and add frontendFramework() to Vite.",
+  );
+}
+
 export interface Region {
   start: Comment;
   end: Comment;
@@ -325,6 +348,8 @@ type ComponentFactory<Props extends object> = (props: Readonly<Props>) => Block;
 type CompiledComponent<Props extends object> = Component<Props> & {
   [COMPONENT]: ComponentFactory<Props>;
 };
+
+type CompiledRouteDefinition = RouteDefinition & { [ROUTE]: true };
 
 export function template(html: string): TemplateDefinition {
   return { html };
@@ -446,6 +471,50 @@ function getFactory<Props extends object>(candidate: Component<Props>): Componen
     );
   }
   return factory;
+}
+
+export function renderComponent<Props extends object>(
+  candidate: Component<Props>,
+  props?: Props,
+): Block {
+  if (props != null && !isObject(props)) {
+    throw new TypeError("renderComponent() props must be an object");
+  }
+  const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
+  return getFactory(candidate)(initialProps);
+}
+
+export function route(
+  config: RouteConfig,
+  candidate: Component,
+  compiled: CompiledRoutePattern,
+): RouteDefinition {
+  if (!config || typeof config !== "object" || typeof config.path !== "string") {
+    throw new TypeError("Compiled route config must contain a path");
+  }
+  getFactory(candidate);
+  if (
+    !compiled ||
+    typeof compiled.pattern !== "string" ||
+    !Array.isArray(compiled.parameterNames) ||
+    !Array.isArray(compiled.specificity)
+  ) {
+    throw new TypeError("Compiled route metadata is invalid");
+  }
+  return Object.freeze({
+    [ROUTE]: true,
+    config: Object.freeze({ ...config }),
+    component: candidate,
+    compiled: Object.freeze({
+      pattern: compiled.pattern,
+      parameterNames: Object.freeze([...compiled.parameterNames]),
+      specificity: Object.freeze([...compiled.specificity]),
+    }),
+  }) as CompiledRouteDefinition;
+}
+
+export function isRouteDefinition(value: unknown): value is RouteDefinition {
+  return Boolean(value && typeof value === "object" && (value as CompiledRouteDefinition)[ROUTE]);
 }
 
 function readonlyProps<Props extends object>(props: Props): Readonly<Props> {

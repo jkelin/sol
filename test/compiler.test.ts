@@ -3,6 +3,73 @@ import { SourceMapConsumer } from "source-map-js";
 import { compile } from "../src/compiler.ts";
 
 describe("compiler", () => {
+  test("compiles exported route declarations and path parameters", () => {
+    const result = compile(
+      `
+      import { $component, $route } from "frontend-framework";
+      const Blog = $component(function Blog() { return <main>Blog</main>; });
+      export const blog = $route({ path: "/blog/:id" }, Blog);
+    `,
+      "blog.route.tsx",
+    );
+
+    expect(result.code).toContain("export const blog = __ff_route");
+    expect(result.code).toContain('"pattern":"^/blog/([^/]+)$"');
+    expect(result.code).toContain('"parameterNames":["id"]');
+    expect(result.code).toContain('"specificity":[1,0]');
+
+    for (const extension of ["js", "jsx", "ts", "tsx"]) {
+      const routeModule = compile(
+        `import { Page } from "./Page";
+         export const page = $route({ path: "/page" }, Page);`,
+        `page.route.${extension}`,
+      );
+      expect(routeModule.code).toContain("export const page = __ff_route");
+    }
+  });
+
+  test("validates the compile-time route boundary", () => {
+    const component = `
+      const Blog = $component(function Blog() { return <main>Blog</main>; });
+    `;
+    expect(() =>
+      compile(`${component} export const blog = $route({ path: "/blog/:id" }, Blog);`, "Blog.tsx"),
+    ).toThrow("only valid in *.route.[jt]sx? files");
+    expect(() =>
+      compile(`${component} const blog = $route({ path: "/blog/:id" }, Blog);`, "blog.route.tsx"),
+    ).toThrow("must be exported");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "blog/:id" }, Blog);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("start with exactly one slash");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "/blog/:id/:id" }, Blog);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("Duplicate route parameter id");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "/blog/" }, Blog);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("empty or trailing segments");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "/blog?draft=1" }, Blog);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("must not contain a query string or hash");
+    expect(() =>
+      compile(
+        `${component} export const blog = $route({ path: "/blog" }, Missing);`,
+        "blog.route.tsx",
+      ),
+    ).toThrow("must reference a compiled component");
+  });
+
   test("compiles $component setup into inferred signals, computeds, and DOM effects", () => {
     const source = `
       import { $component } from "frontend-framework";

@@ -22,6 +22,7 @@ const RUNTIME_IMPORT = `import {
   event as __ff_event,
   instantiate as __ff_instantiate,
   list as __ff_list,
+  route as __ff_route,
   template as __ff_template,
   text as __ff_text,
   valueBlock as __ff_value_block,
@@ -147,6 +148,58 @@ function escapeAttribute(value: string): string {
 
 function escapeTemplate(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("`", "\\`").replaceAll("${", "\\${");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface ParsedRoutePath {
+  pattern: string;
+  parameterNames: string[];
+  specificity: number[];
+}
+
+function parseRoutePath(context: CompilerContext, node: t.StringLiteral): ParsedRoutePath {
+  const path = node.value;
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    codeFrame(context, node, "Route paths must start with exactly one slash");
+  }
+  if (path.includes("?") || path.includes("#")) {
+    codeFrame(context, node, "Route paths must not contain a query string or hash");
+  }
+  if (path !== "/" && (path.endsWith("/") || path.includes("//"))) {
+    codeFrame(context, node, "Route paths must not contain empty or trailing segments");
+  }
+  if (path === "/") return { pattern: "^/$", parameterNames: [], specificity: [] };
+
+  const parameterNames: string[] = [];
+  const specificity: number[] = [];
+  const pattern = path
+    .slice(1)
+    .split("/")
+    .map((segment) => {
+      if (!segment.startsWith(":")) {
+        specificity.push(1);
+        return escapeRegExp(segment);
+      }
+      const name = segment.slice(1);
+      if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+        codeFrame(context, node, `Invalid route parameter ${segment}`);
+      }
+      if (parameterNames.includes(name)) {
+        codeFrame(context, node, `Duplicate route parameter ${name}`);
+      }
+      parameterNames.push(name);
+      specificity.push(0);
+      return "([^/]+)";
+    })
+    .join("/");
+  return { pattern: `^/${pattern}$`, parameterNames, specificity };
+}
+
+function isRouteFilename(filename: string): boolean {
+  return /\.route\.[jt]sx?$/i.test(filename.replaceAll("\\", "/"));
 }
 
 function normalizeJsxText(value: string): string {
@@ -1163,6 +1216,7 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
   const edits: Edit[] = [];
   const compiledJsxRanges: Array<{ start: number; end: number }> = [];
   const componentCallRanges = new Set<string>();
+  const routeCallRanges = new Set<string>();
 
   traverse(ast, {
     Program(path) {
@@ -1197,6 +1251,15 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
         for (const specifier of statement.specifiers) {
           if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;
           compiler.componentNames.add(specifier.local.name);
+        }
+      } else if (statement.source.value === "frontend-framework") {
+        for (const specifier of statement.specifiers) {
+          if (
+            t.isImportSpecifier(specifier) &&
+            t.isIdentifier(specifier.imported, { name: "Route" })
+          ) {
+            compiler.componentNames.add(specifier.local.name);
+          }
         }
       }
     }
@@ -1247,14 +1310,82 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     }
   }
 
+  for (const statement of ast.program.body) {
+    const exported = t.isExportNamedDeclaration(statement);
+    const declaration = exported ? statement.declaration : statement;
+    if (!t.isVariableDeclaration(declaration)) continue;
+    const routeVariables = declaration.declarations.filter(
+      (variable) =>
+        t.isCallExpression(variable.init) &&
+        t.isIdentifier(variable.init.callee, { name: "$route" }),
+    );
+    if (routeVariables.length === 0) continue;
+    const variable = routeVariables[0]!;
+    if (!isRouteFilename(filename)) {
+      codeFrame(compiler, variable, "$route() is only valid in *.route.[jt]sx? files");
+    }
+    if (!exported) codeFrame(compiler, declaration, "$route() declarations must be exported");
+    if (declaration.kind !== "const" || declaration.declarations.length !== 1) {
+      codeFrame(
+        compiler,
+        declaration,
+        "$route() must be the sole initializer in an exported top-level const declaration",
+      );
+    }
+    if (!t.isIdentifier(variable.id)) {
+      codeFrame(compiler, variable.id, "$route() declarations require an identifier");
+    }
+    const call = variable.init;
+    if (!t.isCallExpression(call) || call.arguments.length !== 2) {
+      codeFrame(compiler, variable, "$route() expects a config object and a component");
+    }
+    const config = call.arguments[0]!;
+    const candidate = call.arguments[1]!;
+    if (!t.isObjectExpression(config)) {
+      codeFrame(compiler, call, "$route() config must be an object literal");
+    }
+    if (config.properties.length !== 1) {
+      codeFrame(compiler, config, "$route() config must contain only a path property");
+    }
+    const property = config.properties[0];
+    if (
+      !t.isObjectProperty(property) ||
+      property.computed ||
+      !t.isIdentifier(property.key, { name: "path" }) ||
+      !t.isStringLiteral(property.value)
+    ) {
+      codeFrame(compiler, config, "$route() path must be a string literal");
+    }
+    if (!t.isIdentifier(candidate) || !compiler.componentNames.has(candidate.name)) {
+      codeFrame(compiler, candidate, "$route() component must reference a compiled component");
+    }
+    const parsedPath = parseRoutePath(compiler, property.value);
+    edits.push({
+      start: statement.start!,
+      end: statement.end!,
+      code: `export const ${variable.id.name} = __ff_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
+    });
+    routeCallRanges.add(`${call.start}:${call.end}`);
+  }
+
   traverse(ast, {
     CallExpression(path: NodePath<t.CallExpression>) {
-      if (!t.isIdentifier(path.node.callee, { name: "$component" })) return;
-      if (!componentCallRanges.has(`${path.node.start}:${path.node.end}`)) {
+      if (t.isIdentifier(path.node.callee, { name: "$component" })) {
+        if (componentCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(
           compiler,
           path.node,
           "$component() is only valid as a direct top-level const initializer",
+        );
+      }
+      if (t.isIdentifier(path.node.callee, { name: "$route" })) {
+        if (routeCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
+        codeFrame(
+          compiler,
+          path.node,
+          isRouteFilename(filename)
+            ? "$route() is only valid as an exported top-level const initializer"
+            : "$route() is only valid in *.route.[jt]sx? files",
         );
       }
     },

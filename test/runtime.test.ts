@@ -13,6 +13,8 @@ import {
   instantiate,
   list,
   mount,
+  isRouteDefinition,
+  route,
   runtimeEffect,
   normalizeClass,
   template,
@@ -234,6 +236,24 @@ describe("reactivity", () => {
 });
 
 describe("compiled DOM runtime", () => {
+  test("validates and brands compiled route records", () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const definition = route({ path: "/entry/:id" }, Empty, {
+      pattern: "^/entry/([^/]+)$",
+      parameterNames: ["id"],
+      specificity: [1, 0],
+    });
+
+    expect(isRouteDefinition(definition)).toBe(true);
+    expect(definition.config.path).toBe("/entry/:id");
+    expect(() => route(null as never, Empty, definition.compiled)).toThrow(
+      "config must contain a path",
+    );
+    expect(() => route({ path: "/bad" }, (() => undefined) as never, definition.compiled)).toThrow(
+      "uncompiled component",
+    );
+  });
+
   test("updates normalized DOM classes reactively", () => {
     const classes = $signal(["todo-row", { "todo-row--completed": false }]);
     const element = document.createElement("div");

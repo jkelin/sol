@@ -148,3 +148,45 @@ test("stays usable and overflow-free at desktop and mobile sizes", async ({ page
     .toBe(true);
   await page.screenshot({ path: "test-results/todo-mobile.png", fullPage: true });
 });
+
+test("navigates compiled blog routes and creates a shared entry", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await expect(page.getByTestId("global-header")).toBeVisible();
+
+  await page.getByRole("link", { name: "New entry", exact: true }).click();
+  await expect(page).toHaveURL(/\/blog\/new$/);
+  await expect(page.getByRole("heading", { name: "Put the thought on paper." })).toBeVisible();
+  await expect(page.getByRole("link", { name: /The compiler keeps the map/ })).toBeVisible();
+  await page.screenshot({ path: "test-results/blog-new-desktop.png", fullPage: true });
+
+  await page.getByRole("button", { name: "File entry" }).click();
+  await expect(page.getByText("Give the entry a name.")).toBeVisible();
+  await expect(page.getByText("Add some content before filing.")).toBeVisible();
+
+  await page.getByLabel("Entry name").fill("Routes written in the margin");
+  await page
+    .getByLabel("Content")
+    .fill("Static route declarations can still drive a responsive browser history.");
+  await page.getByRole("button", { name: "File entry" }).click();
+
+  await expect(page).toHaveURL(/\/blog\/3$/);
+  await expect(page.getByRole("heading", { name: "Routes written in the margin" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Routes written in the margin/ })).toBeVisible();
+  await expect(page.getByTestId("global-header")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth),
+    )
+    .toBe(true);
+  await page.screenshot({ path: "test-results/blog-detail-mobile.png", fullPage: true });
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/blog\/new$/);
+  await expect(page.getByRole("link", { name: /Routes written in the margin/ })).toBeVisible();
+
+  await page.getByRole("link", { name: "Todo", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
+});

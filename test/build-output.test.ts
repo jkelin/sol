@@ -10,5 +10,8 @@ test("the demo build keeps compiler output readable", async () => {
   ).join("\n");
   expect(output).toContain("__ff_template");
   expect(output).toContain("//#region demo/src/App.tsx");
+  expect(output).toContain('path: "/blog/new"');
+  expect(output).toContain('path: "/blog/:id"');
+  expect(output).toContain("function matchRoute(pathname)");
   expect(output).toContain("function cleanupEffect(effect)");
 });

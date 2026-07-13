@@ -1,0 +1,60 @@
+import { $component, Route, router } from "frontend-framework";
+
+const Header = $component(function Header() {
+  return (
+    <header class="border-b border-rule-strong bg-parchment/95" data-testid="global-header">
+      <div class="mx-auto flex w-full max-w-6xl items-end justify-between gap-6 px-6 py-5 max-sm:items-start max-sm:flex-col sm:px-8">
+        <a class="group" href="/" aria-label="Margin home">
+          <span class="block font-mono text-[0.625rem] tracking-[0.18em] text-correction uppercase">
+            Compiled notes
+          </span>
+          <strong class="mt-1 block font-serif text-2xl font-normal tracking-tight group-hover:underline group-hover:decoration-correction/50 group-hover:underline-offset-4">
+            Margin
+          </strong>
+        </a>
+        <nav
+          class="flex gap-2 font-mono text-xs tracking-[0.05em] uppercase"
+          aria-label="Primary navigation"
+        >
+          <a
+            classNames={[
+              "rounded px-3 py-2 transition-colors hover:bg-paper-inset",
+              {
+                "bg-paper text-graphite shadow-[inset_0_0_0_1px_var(--color-rule-strong)]":
+                  router.pathname === "/",
+                "text-pencil": router.pathname !== "/",
+              },
+            ]}
+            href="/"
+          >
+            Todo
+          </a>
+          <a
+            classNames={[
+              "rounded px-3 py-2 transition-colors hover:bg-paper-inset",
+              {
+                "bg-paper text-graphite shadow-[inset_0_0_0_1px_var(--color-rule-strong)]":
+                  router.pathname.startsWith("/blog"),
+                "text-pencil": !router.pathname.startsWith("/blog"),
+              },
+            ]}
+            href="/blog/new"
+          >
+            New entry
+          </a>
+        </nav>
+      </div>
+    </header>
+  );
+});
+
+export const Shell = $component(function Shell() {
+  return (
+    <div class="min-h-screen">
+      <Header />
+      <main class="mx-auto grid min-h-[calc(100vh-5.5rem)] w-full max-w-6xl place-items-start px-0 py-8 sm:px-8 sm:py-12">
+        <Route />
+      </main>
+    </div>
+  );
+});

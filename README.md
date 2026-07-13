@@ -9,7 +9,7 @@ bun install
 bun run dev
 ```
 
-The notebook-style to-do app demonstrates compiler-managed component state, derived values, deep proxies, child props, keyed lists, conditionals, editable rows, class composition, and two-way bindings.
+The Tailwind-powered notebook app demonstrates compiler-managed state, keyed lists, bindings, compile-time routes, path parameters, browser history, and shared blog entries.
 
 `bun run build` (or `bun run build:demo`) creates an unminified production demo in `dist/`. Use `bun run build:demo:inspect` to create the same readable output in `out/demo-inspect/` without replacing the normal build.
 
@@ -48,6 +48,43 @@ import { frontendFramework } from "frontend-framework/vite";
 
 export default defineConfig({ plugins: [frontendFramework()] });
 ```
+
+## Routing
+
+Routes are discovered automatically below the Vite project root. Define each route as an exported top-level constant in a `*.route.js`, `.jsx`, `.ts`, or `.tsx` file:
+
+```tsx
+import { $component, $route } from "frontend-framework";
+
+const BlogDetail = $component(function BlogDetail() {
+  return <article>Blog entry</article>;
+});
+
+export const blogDetail = $route({ path: "/blog/:id" }, BlogDetail);
+```
+
+Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
+
+Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
+
+```tsx
+import { $component, Route, router } from "frontend-framework";
+
+const App = $component(function App() {
+  return (
+    <main>
+      <p>Current path: {router.pathname}</p>
+      <p>Entry: {router.params.id}</p>
+      <button onClick={() => router.navigate("/")}>Home</button>
+      <Route />
+    </main>
+  );
+});
+```
+
+`router` exposes `pathname`, `search`, `hash`, `searchParams`, `params`, the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are handled through browser history while external, downloaded, targeted, and modified-click links retain their native behavior.
+
+The demo uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
 
 ## Verification
 

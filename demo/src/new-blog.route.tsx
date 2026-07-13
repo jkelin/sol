@@ -1,5 +1,6 @@
-import { $component, $route, router } from "frontend-framework";
+import { $component, $route } from "frontend-framework";
 import { BlogList } from "./BlogList.tsx";
+import { blogDetailRoute } from "./blog-detail.route.tsx";
 import { blogEntries, createBlogEntry } from "./blog-store.ts";
 
 const NewBlogPage = $component(function NewBlogPage() {
@@ -16,7 +17,7 @@ const NewBlogPage = $component(function NewBlogPage() {
     const cleanContent = content.trim();
     if (!cleanName || !cleanContent) return;
     const entry = createBlogEntry(cleanName, cleanContent);
-    router.navigate(`/blog/${entry.id}`);
+    blogDetailRoute.navigate({ id: entry.id });
   }
 
   return (

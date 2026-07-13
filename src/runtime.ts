@@ -10,9 +10,27 @@ export type Component<Props extends object = Record<string, never>> = (
   props: Readonly<Props>,
 ) => JSX.Element;
 
-export interface RouteConfig {
-  readonly path: `/${string}`;
+export interface NavigateOptions {
+  readonly replace?: boolean;
 }
+
+export interface RouteConfig<Path extends string = string> {
+  readonly path: Path & `/${string}`;
+}
+
+type RouteParameterName<Path extends string> = Path extends `${infer Segment}/${infer Rest}`
+  ? RouteParameterName<Segment> | RouteParameterName<Rest>
+  : Path extends `:${infer Parameter}`
+    ? Parameter
+    : never;
+
+export type RouteParams<Path extends string> = string extends Path
+  ? Readonly<Record<string, string>>
+  : Readonly<{ [Parameter in RouteParameterName<Path>]: string }>;
+
+export type RouteNavigationParams<Path extends string> = {
+  readonly [Parameter in keyof RouteParams<Path>]: string | number;
+};
 
 export interface CompiledRoutePattern {
   readonly pattern: string;
@@ -20,10 +38,18 @@ export interface CompiledRoutePattern {
   readonly specificity: readonly number[];
 }
 
-export interface RouteDefinition {
-  readonly config: RouteConfig;
+type RouteNavigateArguments<Path extends string> = keyof RouteParams<Path> extends never
+  ? [options?: NavigateOptions]
+  : [params: RouteNavigationParams<Path>, options?: NavigateOptions];
+
+export interface RouteDefinition<Path extends string = string> {
+  readonly config: RouteConfig<Path>;
   readonly component: Component;
   readonly compiled: CompiledRoutePattern;
+  readonly params: RouteParams<Path>;
+  readonly isActive: boolean;
+  readonly isActivePrefix: boolean;
+  navigate(...arguments_: RouteNavigateArguments<Path>): void;
 }
 
 type Cleanup = () => void;
@@ -315,7 +341,10 @@ export function $component<Props extends object>(
   );
 }
 
-export function $route(_config: RouteConfig, _candidate: Component): RouteDefinition {
+export function $route<const Path extends `/${string}`>(
+  _config: RouteConfig<Path>,
+  _candidate: Component,
+): RouteDefinition<Path> {
   throw new Error(
     "$route() reached runtime. Define exported routes in a *.route.js, .jsx, .ts, or .tsx file and add frontendFramework() to Vite.",
   );
@@ -349,7 +378,24 @@ type CompiledComponent<Props extends object> = Component<Props> & {
   [COMPONENT]: ComponentFactory<Props>;
 };
 
-type CompiledRouteDefinition = RouteDefinition & { [ROUTE]: true };
+type CompiledRouteDefinition<Path extends string = string> = RouteDefinition<Path> & {
+  [ROUTE]: true;
+};
+
+type RouteRuntimeDefinition = Pick<RouteDefinition, "compiled" | "config">;
+
+interface RouteRuntimeAdapter {
+  getParams(definition: RouteRuntimeDefinition): Readonly<Record<string, string>>;
+  getPathname(): string;
+  isActive(definition: RouteRuntimeDefinition): boolean;
+  navigate(path: string, options?: NavigateOptions): void;
+}
+
+let routeRuntime: RouteRuntimeAdapter | undefined;
+
+export function configureRouteRuntime(adapter: RouteRuntimeAdapter): void {
+  routeRuntime = adapter;
+}
 
 export function template(html: string): TemplateDefinition {
   return { html };
@@ -484,11 +530,11 @@ export function renderComponent<Props extends object>(
   return getFactory(candidate)(initialProps);
 }
 
-export function route(
-  config: RouteConfig,
+export function route<const Path extends `/${string}`>(
+  config: RouteConfig<Path>,
   candidate: Component,
   compiled: CompiledRoutePattern,
-): RouteDefinition {
+): RouteDefinition<Path> {
   if (!config || typeof config !== "object" || typeof config.path !== "string") {
     throw new TypeError("Compiled route config must contain a path");
   }
@@ -501,7 +547,21 @@ export function route(
   ) {
     throw new TypeError("Compiled route metadata is invalid");
   }
-  return Object.freeze({
+  let definition: CompiledRouteDefinition<Path>;
+  const staticPrefix = config.path.split("/:", 1)[0] || "/";
+  const buildPath = (params: Readonly<Record<string, string | number>>): string => {
+    let path = config.path as string;
+    for (const name of compiled.parameterNames) {
+      if (!(name in params)) throw new TypeError(`Missing route parameter ${name}`);
+      const value = params[name];
+      if (typeof value !== "string" && typeof value !== "number") {
+        throw new TypeError(`Route parameter ${name} must be a string or number`);
+      }
+      path = path.replace(`:${name}`, encodeURIComponent(String(value)));
+    }
+    return path;
+  };
+  definition = Object.freeze({
     [ROUTE]: true,
     config: Object.freeze({ ...config }),
     component: candidate,
@@ -510,7 +570,39 @@ export function route(
       parameterNames: Object.freeze([...compiled.parameterNames]),
       specificity: Object.freeze([...compiled.specificity]),
     }),
-  }) as CompiledRouteDefinition;
+    get params() {
+      if (!routeRuntime) throw new Error("Route runtime is not initialized");
+      return routeRuntime.getParams(definition) as RouteParams<Path>;
+    },
+    get isActive() {
+      return routeRuntime?.isActive(definition) ?? false;
+    },
+    get isActivePrefix() {
+      const pathname = routeRuntime?.getPathname();
+      if (!pathname) return false;
+      return staticPrefix === "/"
+        ? compiled.parameterNames.length > 0 || pathname === "/"
+        : pathname === staticPrefix || pathname.startsWith(`${staticPrefix}/`);
+    },
+    navigate(...arguments_: RouteNavigateArguments<Path>) {
+      if (!routeRuntime) throw new Error("Route runtime is not initialized");
+      const hasParams = compiled.parameterNames.length > 0;
+      const candidateParams = arguments_[0];
+      if (hasParams && (!candidateParams || typeof candidateParams !== "object")) {
+        throw new TypeError("Route navigation params must be an object");
+      }
+      const params = hasParams
+        ? (candidateParams as Readonly<Record<string, string | number>>)
+        : {};
+      const unexpected = Object.keys(params).find(
+        (name) => !compiled.parameterNames.includes(name),
+      );
+      if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
+      const options = (hasParams ? arguments_[1] : arguments_[0]) as NavigateOptions | undefined;
+      routeRuntime.navigate(buildPath(params), options);
+    },
+  }) as CompiledRouteDefinition<Path>;
+  return definition;
 }
 
 export function isRouteDefinition(value: unknown): value is RouteDefinition {

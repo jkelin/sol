@@ -3,18 +3,16 @@ import {
   $signal,
   block,
   component,
+  configureRouteRuntime,
   instantiate,
   renderComponent,
   runtimeEffect,
   template,
   type Block,
+  type NavigateOptions,
   type RouteConfig,
   type RouteDefinition,
 } from "./runtime.ts";
-
-export interface NavigateOptions {
-  readonly replace?: boolean;
-}
 
 export interface Router {
   readonly pathname: string;
@@ -33,6 +31,7 @@ interface RouterState {
   searchParams: URLSearchParams;
   params: Readonly<Record<string, string>>;
   route: RouteConfig | null;
+  pattern: string | null;
 }
 
 interface RouteMatch {
@@ -49,6 +48,7 @@ function readLocation(): RouterState {
       searchParams: new URLSearchParams(),
       params: Object.freeze({}),
       route: null,
+      pattern: null,
     };
   }
   return {
@@ -58,6 +58,7 @@ function readLocation(): RouterState {
     searchParams: new URLSearchParams(window.location.search),
     params: Object.freeze({}),
     route: null,
+    pattern: null,
   };
 }
 
@@ -113,6 +114,7 @@ function matchLocation(location: RouterState): RouterState {
     ...location,
     params: match?.params ?? Object.freeze({}),
     route: match?.definition.config ?? null,
+    pattern: match?.definition.compiled.pattern ?? null,
   };
 }
 
@@ -163,6 +165,23 @@ export const router: Router = Object.freeze({
   },
   get route() {
     return state.value.route;
+  },
+  navigate,
+});
+
+configureRouteRuntime({
+  getParams(definition) {
+    const current = state.value;
+    if (current.pattern !== definition.compiled.pattern) {
+      throw new Error("Cannot read params from an inactive route");
+    }
+    return current.params;
+  },
+  getPathname() {
+    return state.value.pathname;
+  },
+  isActive(definition) {
+    return state.value.pattern === definition.compiled.pattern;
   },
   navigate,
 });

@@ -60,10 +60,22 @@ const BlogDetail = $component(function BlogDetail() {
   return <article>Blog entry</article>;
 });
 
-export const blogDetail = $route({ path: "/blog/:id" }, BlogDetail);
+export const blogDetailRoute = $route({ path: "/blog/:id" }, BlogDetail);
 ```
 
 Paths are exact and case-sensitive. A segment beginning with `:` captures one required path parameter. Static routes take precedence over parameter routes, so `/blog/new` is matched before `/blog/:id`.
+
+Each compiled route is a typed handle. Parameter names are inferred from its literal path, navigation fills and URL-encodes those parameters, and active-state getters remain reactive inside compiled components:
+
+```tsx
+const id = blogDetailRoute.params.id; // string
+blogDetailRoute.navigate({ id: 42 });
+
+blogDetailRoute.isActive; // exact route match
+blogDetailRoute.isActivePrefix; // true anywhere below /blog
+```
+
+Reading `params` from an inactive route throws instead of returning stale values. `navigate()` validates missing, unknown, and non-string/number parameters at runtime as well as through TypeScript.
 
 Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
 
@@ -82,7 +94,7 @@ const App = $component(function App() {
 });
 ```
 
-`router` exposes `pathname`, `search`, `hash`, `searchParams`, `params`, the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are handled through browser history while external, downloaded, targeted, and modified-click links retain their native behavior.
+The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped matched `params`, the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are handled through browser history while external, downloaded, targeted, and modified-click links retain their native behavior.
 
 The demo uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
 

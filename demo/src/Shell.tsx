@@ -1,4 +1,6 @@
-import { $component, Route, router } from "frontend-framework";
+import { $component, Route } from "frontend-framework";
+import { blogDetailRoute } from "./blog-detail.route.tsx";
+import { todoRoute } from "./todo.route.tsx";
 
 const Header = $component(function Header() {
   return (
@@ -21,8 +23,8 @@ const Header = $component(function Header() {
               "rounded px-3 py-2 transition-colors hover:bg-paper-inset",
               {
                 "bg-paper text-graphite shadow-[inset_0_0_0_1px_var(--color-rule-strong)]":
-                  router.pathname === "/",
-                "text-pencil": router.pathname !== "/",
+                  todoRoute.isActive,
+                "text-pencil": !todoRoute.isActive,
               },
             ]}
             href="/"
@@ -34,8 +36,8 @@ const Header = $component(function Header() {
               "rounded px-3 py-2 transition-colors hover:bg-paper-inset",
               {
                 "bg-paper text-graphite shadow-[inset_0_0_0_1px_var(--color-rule-strong)]":
-                  router.pathname.startsWith("/blog"),
-                "text-pencil": !router.pathname.startsWith("/blog"),
+                  blogDetailRoute.isActivePrefix,
+                "text-pencil": !blogDetailRoute.isActivePrefix,
               },
             ]}
             href="/blog/new"

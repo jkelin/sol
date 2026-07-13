@@ -150,8 +150,11 @@ test("stays usable and overflow-free at desktop and mobile sizes", async ({ page
 });
 
 test("navigates compiled blog routes and creates a shared entry", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
+  expect(pageErrors).toEqual([]);
   await expect(page.getByTestId("global-header")).toBeVisible();
 
   await page.getByRole("link", { name: "New entry", exact: true }).click();
@@ -171,6 +174,7 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   await page.getByRole("button", { name: "File entry" }).click();
 
   await expect(page).toHaveURL(/\/blog\/3$/);
+  expect(pageErrors).toEqual([]);
   await expect(page.getByRole("heading", { name: "Routes written in the margin" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Routes written in the margin/ })).toBeVisible();
   await expect(page.getByTestId("global-header")).toBeVisible();

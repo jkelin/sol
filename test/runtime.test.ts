@@ -10,6 +10,7 @@ import {
   block,
   child,
   component,
+  configureRouteRuntime,
   instantiate,
   list,
   mount,
@@ -252,6 +253,53 @@ describe("compiled DOM runtime", () => {
     expect(() => route({ path: "/bad" }, (() => undefined) as never, definition.compiled)).toThrow(
       "uncompiled component",
     );
+  });
+
+  test("provides typed route params, navigation, and active state", () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const detail = route({ path: "/blog/:id" }, Empty, {
+      pattern: "^/blog/([^/]+)$",
+      parameterNames: ["id"],
+      specificity: [1, 0],
+    });
+    const todo = route({ path: "/" }, Empty, {
+      pattern: "^/$",
+      parameterNames: [],
+      specificity: [],
+    });
+    let active: object = detail;
+    let pathname = "/blog/first";
+    const navigations: Array<{ path: string; replace: boolean | undefined }> = [];
+    configureRouteRuntime({
+      getParams(definition) {
+        if (definition !== active) throw new Error("inactive");
+        return { id: "first" };
+      },
+      getPathname: () => pathname,
+      isActive: (definition) => definition === active,
+      navigate(path, options) {
+        navigations.push({ path, replace: options?.replace });
+      },
+    });
+
+    expect(detail.params.id).toBe("first");
+    expect(detail.isActive).toBe(true);
+    expect(detail.isActivePrefix).toBe(true);
+    expect(todo.isActive).toBe(false);
+    expect(todo.isActivePrefix).toBe(false);
+    detail.navigate({ id: "hello world" }, { replace: true });
+    expect(navigations).toEqual([{ path: "/blog/hello%20world", replace: true }]);
+    expect(() => detail.navigate({} as never)).toThrow("Missing route parameter id");
+    expect(() => detail.navigate({ id: "one", extra: "two" } as never)).toThrow(
+      "Unknown route parameter extra",
+    );
+
+    active = todo;
+    pathname = "/";
+    expect(() => detail.params.id).toThrow("inactive");
+    expect(detail.isActive).toBe(false);
+    todo.navigate({ replace: true });
+    expect(navigations.at(-1)).toEqual({ path: "/", replace: true });
   });
 
   test("updates normalized DOM classes reactively", () => {

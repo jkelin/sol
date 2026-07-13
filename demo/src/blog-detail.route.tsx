@@ -1,9 +1,11 @@
-import { $component, $route, router } from "frontend-framework";
+import { $component, $route } from "frontend-framework";
 import { BlogList } from "./BlogList.tsx";
 import { blogEntries } from "./blog-store.ts";
 
 const BlogDetailPage = $component(function BlogDetailPage() {
-  const entry = blogEntries.value.find((candidate) => String(candidate.id) === router.params.id);
+  const entry = blogEntries.value.find(
+    (candidate) => String(candidate.id) === blogDetailRoute.params.id,
+  );
 
   return (
     <section
@@ -29,7 +31,7 @@ const BlogDetailPage = $component(function BlogDetailPage() {
         ) : (
           <div class="grid min-h-72 place-content-center border-y border-rule-strong text-center">
             <p class="font-mono text-xs tracking-widest text-correction">
-              UNFILED / {router.params.id}
+              UNFILED / {blogDetailRoute.params.id}
             </p>
             <h1 id="blog-detail-title" class="mt-4 font-serif text-4xl">
               This entry is missing.

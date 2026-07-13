@@ -221,3 +221,24 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
 });
+
+test("renders context-backed async components and Await behind Suspense", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto("/async-context");
+  await expect(page.getByRole("heading", { name: "Context and async rendering" })).toBeVisible();
+  await expect(page.getByTestId("optional-context")).toContainText("undefined");
+  await expect(page.getByTestId("context-consumer")).toContainText("visits 0");
+  await expect(page.getByTestId("async-loading")).toBeVisible();
+  await expect(page.getByTestId("async-results")).toBeHidden();
+
+  await expect(page.getByTestId("async-loading")).toBeHidden();
+  await expect(page.getByTestId("async-component")).toContainText("Async component");
+  await expect(page.getByTestId("async-component")).toContainText("Provider-backed");
+  await expect(page.getByTestId("await-result")).toContainText("Await render function");
+
+  await page.getByTestId("context-consumer").click();
+  await expect(page.getByTestId("context-consumer")).toContainText("visits 1");
+  expect(pageErrors).toEqual([]);
+});

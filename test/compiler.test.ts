@@ -86,7 +86,9 @@ describe("compiler", () => {
 
     expect(result.code).toContain("const Counter = __ff_component");
     expect(result.code).toContain("const count = __ff_signal(0)");
-    expect(result.code).toContain("const doubled = __ff_computed(() => (count.value * 2))");
+    expect(result.code).toContain(
+      "const doubled = __ff_computed(() => (count.value * 2), __ff_frame)",
+    );
     expect(result.code).toContain("count.value++");
     expect(result.code).toContain("__ff_event");
     expect(result.code).toContain("__ff_attribute");
@@ -189,7 +191,7 @@ describe("compiler", () => {
     );
 
     expect(result.code).toContain("__ff_signal(1)");
-    expect(result.code).toContain("__ff_computed(() => count.value * 2)");
+    expect(result.code).toContain("__ff_computed(() => count.value * 2, __ff_frame)");
     expect(result.code).toContain('<p class="static">');
     expect(result.code.match(/__ff_attribute\(/g)?.length).toBe(2);
   });
@@ -247,6 +249,66 @@ describe("compiler", () => {
     expect(result.code).toContain("const row = __ff_component");
     expect(result.code).toContain("__ff_child");
     expect(result.code).not.toContain("<row>");
+  });
+
+  test("compiles contexts, async components, suspense, await, and error boundaries", () => {
+    const result = compile(
+      `
+      import { $component, $context, Suspense, Await, ErrorBoundary } from "frontend-framework";
+      const messageContext = $context<{ message: string }>();
+      const AsyncChild = $component(async function AsyncChild() {
+        const context = messageContext.use();
+        const data = await Promise.resolve({ text: "ready" });
+        return <p>{context.message}: {data.text}</p>;
+      });
+      const App = $component(function App() {
+        const shared = { message: "hello" };
+        const promise = Promise.resolve({ text: "awaited" });
+        return <messageContext.Provider data={shared}>
+          <ErrorBoundary fallback={error => <p>{String(error)}</p>}>
+            <Suspense fallback={<p>Loading</p>} error={error => <p>{String(error)}</p>}>
+              <AsyncChild />
+              <Await $promise={promise} error={error => <p>{String(error)}</p>}>
+                {data => <p>{data.text}</p>}
+              </Await>
+            </Suspense>
+          </ErrorBoundary>
+        </messageContext.Provider>;
+      });
+    `,
+      "AsyncContext.tsx",
+    );
+
+    expect(result.code).toContain("__ff_component(async (");
+    expect(result.code).toContain("__ff_context_provider");
+    expect(result.code).toContain("__ff_error_boundary");
+    expect(result.code).toContain("__ff_suspense");
+    expect(result.code).toContain("__ff_await");
+  });
+
+  test("validates async boundary and context provider JSX contracts", () => {
+    const cases = [
+      {
+        source: `import { $component, Suspense } from "frontend-framework"; const App = $component(function App() { return <Suspense><p>Child</p></Suspense>; });`,
+        message: "JSX property fallback is required",
+      },
+      {
+        source: `import { $component, Await } from "frontend-framework"; const App = $component(function App() { return <Await $promise={Promise.resolve(1)} />; });`,
+        message: "Await requires exactly one inline data-renderer child",
+      },
+      {
+        source: `import { $component, ErrorBoundary } from "frontend-framework"; const App = $component(function App() { return <ErrorBoundary fallback={<p>Error</p>}><p>Child</p></ErrorBoundary>; });`,
+        message: "Error and data renderers must be inline functions",
+      },
+      {
+        source: `import { $component, $context } from "frontend-framework"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider><p>Child</p></context.Provider>; });`,
+        message: "JSX property data is required",
+      },
+    ];
+
+    for (const fixture of cases) {
+      expect(() => compile(fixture.source, "AsyncBoundary.tsx")).toThrow(fixture.message);
+    }
   });
 
   test("reports invalid component, binding, class, and list interfaces with locations", () => {
@@ -527,11 +589,11 @@ describe("compiler", () => {
     const cases = [
       {
         source: `const App = $component(async function App() { return <p>Async</p>; });`,
-        message: "Components must be synchronous functions",
+        message: "__accept_async__",
       },
       {
         source: `const App = $component(function* App() { return <p>Generator</p>; });`,
-        message: "Components must be synchronous functions",
+        message: "Components must not be generator functions",
       },
       {
         source: `const App = $component(function App() { return <p>One</p>; }), other = 1;`,
@@ -556,7 +618,11 @@ describe("compiler", () => {
     ];
 
     for (const fixture of cases) {
-      expect(() => compile(fixture.source, "Boundary.tsx")).toThrow(fixture.message);
+      if (fixture.message === "__accept_async__") {
+        expect(() => compile(fixture.source, "Boundary.tsx")).not.toThrow();
+      } else {
+        expect(() => compile(fixture.source, "Boundary.tsx")).toThrow(fixture.message);
+      }
     }
   });
 

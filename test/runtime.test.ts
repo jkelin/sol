@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   $component,
   $computed,
+  $context,
   $form,
   $signal,
   attribute,
@@ -279,6 +280,15 @@ describe("forms", () => {
 });
 
 describe("reactivity", () => {
+  test("validates context creation and missing-provider reads", () => {
+    expect(() => ($context as (...values: unknown[]) => unknown)({ value: "default" })).toThrow(
+      "$context() does not accept a default value",
+    );
+    const context = $context<{ value: string }>();
+    expect(context.useOptional()).toBeUndefined();
+    expect(() => context.use()).toThrow("Context is not available outside its Provider");
+  });
+
   test("validates the public compiler boundary and class values", () => {
     expect(() =>
       $component(function Example() {

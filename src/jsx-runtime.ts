@@ -9,6 +9,10 @@ export namespace JSX {
     key?: PropertyKey;
   }
 
+  export interface ElementChildrenAttribute {
+    children: unknown;
+  }
+
   export interface IntrinsicElementAttributes {
     $bind?: unknown;
     class?: ClassValue;

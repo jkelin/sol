@@ -90,6 +90,52 @@ import { frontendFramework } from "frontend-framework/vite";
 export default defineConfig({ plugins: [frontendFramework()] });
 ```
 
+## Context and async rendering
+
+Create a shared object context with `$context<T>()`. A provider accepts the object through its
+`data` property, and descendants read a stable reactive proxy with `use()`. The proxy remains
+writable and follows provider data replacement. `use()` throws when no matching provider exists;
+use `useOptional()` when an absent provider is valid.
+
+```tsx
+const noteContext = $context<{ section: string; visits: number }>();
+
+const AsyncNote = $component(async function AsyncNote() {
+  const context = noteContext.use(); // read context before the first await
+  const note = await getNote();
+  return (
+    <p>
+      {context.section}: {note.text}
+    </p>
+  );
+});
+
+const App = $component(function App() {
+  const shared = { section: "Inbox", visits: 0 };
+  return (
+    <noteContext.Provider data={shared}>
+      <ErrorBoundary fallback={(error) => <p>{String(error)}</p>}>
+        <Suspense
+          fallback={<p>Loading…</p>}
+          error={(error) => <p>Loading failed: {String(error)}</p>}
+        >
+          <AsyncNote />
+          <Await $promise={getSummary()} error={(error) => <p>{String(error)}</p>}>
+            {(summary) => <p>{summary.text}</p>}
+          </Await>
+        </Suspense>
+      </ErrorBoundary>
+    </noteContext.Provider>
+  );
+});
+```
+
+Suspense keeps its fallback visible until all async work owned by that boundary resolves. Nested
+boundaries account for their own work. Without Suspense, an async component or Await leaves an empty
+region until it is ready. Rejections are handled by the nearest Await `error` renderer, then the
+owning Suspense `error` renderer, then ErrorBoundary. ErrorBoundary also catches synchronous
+descendant setup/render failures; event-handler errors are not intercepted.
+
 ## Routing
 
 Routes are discovered automatically below the Vite project root. Define each route as an exported top-level constant in a `*.route.js`, `.jsx`, `.ts`, or `.tsx` file:

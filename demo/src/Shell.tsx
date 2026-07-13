@@ -1,5 +1,6 @@
 import { $component, Route } from "frontend-framework";
 import { blogDetailRoute } from "./blog-detail.route.tsx";
+import { asyncContextRoute } from "./async-context.route.tsx";
 import { todoRoute } from "./todo.route.tsx";
 
 const Header = $component(function Header() {
@@ -43,6 +44,19 @@ const Header = $component(function Header() {
             href="/blog/new"
           >
             New entry
+          </a>
+          <a
+            classNames={[
+              "rounded px-3 py-2 transition-colors hover:bg-paper-inset",
+              {
+                "bg-paper text-graphite shadow-[inset_0_0_0_1px_var(--color-rule-strong)]":
+                  asyncContextRoute.isActive,
+                "text-pencil": !asyncContextRoute.isActive,
+              },
+            ]}
+            href="/async-context"
+          >
+            Async
           </a>
         </nav>
       </div>

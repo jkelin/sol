@@ -37,6 +37,29 @@ export type Component<Props extends object = Record<string, never>> = (
   props: Readonly<Props>,
 ) => JSX.Element;
 
+export interface Context<TShape extends object> {
+  readonly Provider: Component<{ data: TShape; children?: JSX.Element | readonly JSX.Element[] }>;
+  use(): TShape;
+  useOptional(): TShape | undefined;
+}
+
+export interface SuspenseProps {
+  readonly fallback: JSX.Element;
+  readonly error?: (error: unknown) => JSX.Element;
+  readonly children?: JSX.Element | readonly JSX.Element[];
+}
+
+export interface AwaitProps<T> {
+  readonly $promise: PromiseLike<T>;
+  readonly error?: (error: unknown) => JSX.Element;
+  readonly children: (data: T) => JSX.Element;
+}
+
+export interface ErrorBoundaryProps {
+  readonly fallback: (error: unknown) => JSX.Element;
+  readonly children?: JSX.Element | readonly JSX.Element[];
+}
+
 export interface NavigateOptions {
   readonly replace?: boolean;
 }
@@ -93,6 +116,7 @@ interface ReactiveEffect {
 const ITERATE = Symbol("frontend-framework.iterate");
 const SIGNAL = Symbol("frontend-framework.signal");
 const COMPONENT = Symbol("frontend-framework.component");
+const CONTEXT = Symbol("frontend-framework.context");
 const ROUTE = Symbol("frontend-framework.route");
 const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
 const proxyCache = new WeakMap<object, object>();
@@ -110,6 +134,7 @@ const mutatingArrayMethods = new Set([
 ]);
 let activeEffect: ReactiveEffect | undefined;
 let activeOwner: Cleanup[] | undefined;
+let activeFrame: RenderFrame | undefined;
 let batchDepth = 0;
 let flushingEffects = false;
 const pendingEffects = new Set<ReactiveEffect>();
@@ -212,7 +237,11 @@ export function batch<T>(callback: () => T): T {
   return result as T;
 }
 
-function createReactiveEffect(callback: () => void, computed: boolean): Cleanup {
+function createReactiveEffect(
+  callback: () => void,
+  computed: boolean,
+  explicitOwner?: Cleanup[],
+): Cleanup {
   const effect: ReactiveEffect = {
     active: true,
     computed,
@@ -238,7 +267,7 @@ function createReactiveEffect(callback: () => void, computed: boolean): Cleanup 
     pendingEffects.delete(effect);
     cleanupEffect(effect);
   };
-  const owner = activeOwner;
+  const owner = explicitOwner ?? activeOwner;
   owner?.push(stop);
   try {
     effect.run();
@@ -347,17 +376,29 @@ export function $signal<T>(initial: T): Signal<T> {
   return reference;
 }
 
-export function $computed<T>(derive: () => T): ReadonlySignal<T> {
+function createComputed<T>(derive: () => T, frame?: RenderFrame): ReadonlySignal<T> {
   if (typeof derive !== "function") throw new TypeError("$computed() expects a function");
   const value = $signal<T>(undefined as T);
-  createReactiveEffect(() => {
-    value.value = derive();
-  }, true);
+  createReactiveEffect(
+    () => {
+      value.value = derive();
+    },
+    true,
+    frame?.owner,
+  );
   return Object.freeze({
     get value(): T {
       return value.value;
     },
   });
+}
+
+export function $computed<T>(derive: () => T): ReadonlySignal<T> {
+  return createComputed(derive);
+}
+
+export function computedInFrame<T>(derive: () => T, frame: RenderFrame): ReadonlySignal<T> {
+  return createComputed(derive, frame);
 }
 
 interface ValidationIssue {
@@ -552,12 +593,76 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
 }
 
 export function $component<Props extends object>(
-  _setup: (props: Readonly<Props>) => JSX.Element,
+  _setup: (props: Readonly<Props>) => JSX.Element | Promise<JSX.Element>,
 ): Component<Props> {
   throw new Error(
     "$component() reached runtime. Add frontendFramework() before Vite's JSX transform.",
   );
 }
+
+type ContextRecord = Context<object> & { readonly [CONTEXT]: symbol };
+
+export function $context<TShape extends object>(): Context<TShape> {
+  if (arguments.length !== 0) throw new TypeError("$context() does not accept a default value");
+  const key = Symbol("frontend-framework.context.value");
+  const Provider = (() => {
+    throw new Error("Context providers must be rendered as JSX inside a compiled component");
+  }) as Component<{ data: TShape; children?: JSX.Element | readonly JSX.Element[] }>;
+
+  const read = (optional: boolean): TShape | undefined => {
+    const source = activeFrame?.contexts.get(key);
+    if (!source) {
+      if (optional) return undefined;
+      throw new Error("Context is not available outside its Provider");
+    }
+    return contextProxy(source) as TShape;
+  };
+
+  return Object.freeze({
+    [CONTEXT]: key,
+    Provider,
+    use: () => read(false)!,
+    useOptional: () => read(true),
+  }) as Context<TShape>;
+}
+
+function contextProxy(source: () => object): object {
+  const target = {};
+  const current = (): object => {
+    const value = source();
+    if (!isObject(value) || Array.isArray(value)) {
+      throw new TypeError("Context Provider data must be an object");
+    }
+    return value;
+  };
+  return new Proxy(target, {
+    get: (_target, key, receiver) => Reflect.get(current(), key, receiver),
+    set: (_target, key, value, receiver) => Reflect.set(current(), key, value, receiver),
+    deleteProperty: (_target, key) => Reflect.deleteProperty(current(), key),
+    defineProperty: (_target, key, descriptor) =>
+      Reflect.defineProperty(current(), key, descriptor),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(current(), key);
+      return descriptor ? { ...descriptor, configurable: true } : undefined;
+    },
+    getPrototypeOf: () => Reflect.getPrototypeOf(current()),
+    has: (_target, key) => Reflect.has(current(), key),
+    ownKeys: () => Reflect.ownKeys(current()),
+    setPrototypeOf: (_target, prototype) => Reflect.setPrototypeOf(current(), prototype),
+  });
+}
+
+export const Suspense = (() => {
+  throw new Error("Suspense must be rendered as JSX inside a compiled component");
+}) as Component<SuspenseProps>;
+
+export const Await = (() => {
+  throw new Error("Await must be rendered as JSX inside a compiled component");
+}) as <T>(props: Readonly<AwaitProps<T>>) => JSX.Element;
+
+export const ErrorBoundary = (() => {
+  throw new Error("ErrorBoundary must be rendered as JSX inside a compiled component");
+}) as Component<ErrorBoundaryProps>;
 
 export function $route<const Path extends `/${string}`>(
   _config: RouteConfig<Path>,
@@ -591,7 +696,26 @@ export interface TemplateDefinition {
   element?: HTMLTemplateElement;
 }
 
-type ComponentFactory<Props extends object> = (props: Readonly<Props>) => Block;
+type MaybeBlock = Block | PromiseLike<Block>;
+type RenderFactory = (frame: RenderFrame) => Block;
+type ErrorRenderFactory = (error: unknown, frame: RenderFrame) => Block;
+
+interface SuspenseController {
+  begin(): () => void;
+  reject(error: unknown): void;
+}
+
+export interface RenderFrame {
+  readonly owner: Cleanup[];
+  readonly contexts: ReadonlyMap<symbol, () => object>;
+  readonly suspense?: SuspenseController;
+  readonly handleError?: (error: unknown) => void;
+}
+
+type ComponentFactory<Props extends object> = (
+  props: Readonly<Props>,
+  frame: RenderFrame,
+) => MaybeBlock;
 type CompiledComponent<Props extends object> = Component<Props> & {
   [COMPONENT]: ComponentFactory<Props>;
 };
@@ -655,22 +779,37 @@ export function instantiate(definition: TemplateDefinition): View {
 }
 
 export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Block {
-  const nodes = [...fragment.childNodes];
+  const start = document.createComment("ff:block:start");
+  const end = document.createComment("ff:block:end");
+  fragment.prepend(start);
+  fragment.append(end);
   let disposed = false;
+  const nodes = (): Node[] => {
+    const result: Node[] = [];
+    let node: Node | null = start;
+    while (node) {
+      result.push(node);
+      if (node === end) break;
+      node = node.nextSibling;
+    }
+    return result;
+  };
   const move = (parent: Node, before: Node | null = null): void => {
     const moving = document.createDocumentFragment();
-    for (const node of nodes) moving.append(node);
+    for (const node of nodes()) moving.append(node);
     parent.insertBefore(moving, before);
   };
   return {
-    nodes,
+    get nodes() {
+      return nodes();
+    },
     mount: move,
     move,
     dispose() {
       if (disposed) return;
       disposed = true;
       for (const cleanup of cleanups.toReversed()) cleanup();
-      for (const node of nodes) node.parentNode?.removeChild(node);
+      for (const node of nodes()) node.parentNode?.removeChild(node);
     },
   };
 }
@@ -697,34 +836,53 @@ export function component<Props extends object>(
       "Compiled components cannot be called directly; pass them to mount() or render them in JSX",
     );
   }) as unknown as CompiledComponent<Props>;
-  const ownedFactory: ComponentFactory<Props> = (props) => {
+  const ownedFactory: ComponentFactory<Props> = (props, parentFrame) => {
     const owner: Cleanup[] = [];
+    const frame: RenderFrame = { ...parentFrame, owner };
     const previousOwner = activeOwner;
+    const previousFrame = activeFrame;
     activeOwner = owner;
-    let rendered: Block;
+    activeFrame = frame;
+    let rendered: MaybeBlock;
     try {
-      rendered = factory(props);
+      rendered = factory(props, frame);
     } catch (error) {
       for (const cleanup of owner.toReversed()) cleanup();
       throw error;
     } finally {
       activeOwner = previousOwner;
+      activeFrame = previousFrame;
     }
-    let disposed = false;
-    return {
-      nodes: rendered.nodes,
-      mount: (parent, before) => rendered.mount(parent, before),
-      move: (parent, before) => rendered.move(parent, before),
-      dispose() {
-        if (disposed) return;
-        disposed = true;
-        rendered.dispose();
-        for (const cleanup of owner.toReversed()) cleanup();
-      },
-    };
+    if (isPromiseLike(rendered)) {
+      return Promise.resolve(rendered).then(
+        (resolved) => ownedBlock(resolved, owner),
+        (error) => {
+          for (const cleanup of owner.toReversed()) cleanup();
+          throw error;
+        },
+      );
+    }
+    return ownedBlock(rendered, owner);
   };
   Object.defineProperty(compiled, COMPONENT, { value: ownedFactory });
   return compiled;
+}
+
+function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
+  let disposed = false;
+  return {
+    get nodes() {
+      return rendered.nodes;
+    },
+    mount: (parent, before) => rendered.mount(parent, before),
+    move: (parent, before) => rendered.move(parent, before),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      rendered.dispose();
+      for (const cleanup of owner.toReversed()) cleanup();
+    },
+  };
 }
 
 function getFactory<Props extends object>(candidate: Component<Props>): ComponentFactory<Props> {
@@ -745,7 +903,8 @@ export function renderComponent<Props extends object>(
     throw new TypeError("renderComponent() props must be an object");
   }
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
-  return getFactory(candidate)(initialProps);
+  const frame = rootFrame();
+  return resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
 }
 
 export function route<const Path extends `/${string}`>(
@@ -858,10 +1017,62 @@ export function mount<Props extends object>(
   if (props != null && !isObject(props)) throw new TypeError("mount() props must be an object");
   const factory = getFactory(candidate);
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
-  const mounted = factory(initialProps);
+  const frame = rootFrame();
+  const mounted = resolvedBlock(factory(initialProps, frame), frame);
   target.replaceChildren();
   mounted.mount(target);
   return () => mounted.dispose();
+}
+
+function rootFrame(): RenderFrame {
+  return { owner: [], contexts: new Map() };
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return isObject(value) && typeof (value as { then?: unknown }).then === "function";
+}
+
+function surfaceAsyncError(error: unknown): void {
+  queueMicrotask(() => {
+    throw error;
+  });
+}
+
+function reportError(frame: RenderFrame, error: unknown): void {
+  if (frame.suspense) frame.suspense.reject(error);
+  else if (frame.handleError) frame.handleError(error);
+  else surfaceAsyncError(error);
+}
+
+function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block {
+  if (!isPromiseLike(candidate)) return candidate;
+  const fragment = document.createDocumentFragment();
+  const marker = document.createComment("ff:async");
+  fragment.append(marker);
+  let disposed = false;
+  let resolved: Block | undefined;
+  const finish = frame.suspense?.begin();
+  Promise.resolve(candidate).then(
+    (settledBlock) => {
+      if (disposed) {
+        settledBlock.dispose();
+      } else {
+        resolved = settledBlock;
+        settledBlock.mount(marker.parentNode!, marker);
+      }
+      finish?.();
+    },
+    (error) => {
+      if (!disposed) reportError(frame, error);
+      finish?.();
+    },
+  );
+  return block(fragment, [
+    () => {
+      disposed = true;
+      resolved?.dispose();
+    },
+  ]);
 }
 
 function displayValue(value: unknown): string {
@@ -1056,11 +1267,12 @@ export function child<Props extends object>(
   candidate: Component<Props>,
   propGetters: Record<string, () => unknown>,
   cleanups: Cleanup[],
+  frame: RenderFrame = rootFrame(),
 ): void {
   const state = reactive<Record<string, unknown>>({});
   for (const [name, getter] of Object.entries(propGetters)) state[name] = getter();
   const props = readonlyProps(state) as Readonly<Props>;
-  const mounted = getFactory(candidate)(props);
+  const mounted = resolvedBlock(getFactory(candidate)(props, frame), frame);
   mounted.mount(region.end.parentNode!, region.end);
   cleanups.push(() => mounted.dispose());
   for (const [name, getter] of Object.entries(propGetters)) {
@@ -1070,5 +1282,194 @@ export function child<Props extends object>(
       }),
     );
   }
+}
+
+function contextKey(context: Context<object>): symbol {
+  const key = (context as ContextRecord)[CONTEXT];
+  if (typeof key !== "symbol") throw new TypeError("Invalid context Provider handle");
+  return key;
+}
+
+export function contextProvider(
+  region: Region,
+  context: Context<object>,
+  getData: () => unknown,
+  render: RenderFactory,
+  cleanups: Cleanup[],
+  frame: RenderFrame,
+): void {
+  const key = contextKey(context);
+  const readData = (): object => {
+    const data = getData();
+    if (!isObject(data) || Array.isArray(data)) {
+      throw new TypeError("Context Provider data must be an object");
+    }
+    return data;
+  };
+  readData();
+  const contexts = new Map(frame.contexts);
+  contexts.set(key, readData);
+  const childFrame: RenderFrame = { ...frame, contexts };
+  const rendered = render(childFrame);
+  rendered.mount(region.end.parentNode!, region.end);
+  cleanups.push(() => rendered.dispose());
+}
+
+export function suspense(
+  region: Region,
+  render: RenderFactory,
+  renderFallback: RenderFactory,
+  renderError: ErrorRenderFactory | undefined,
+  cleanups: Cleanup[],
+  frame: RenderFrame,
+): void {
+  let pending = 0;
+  let initialized = false;
+  let failed = false;
+  let visible: Block | undefined;
+  let content: Block | undefined;
+  const parking = document.createDocumentFragment();
+  const show = (next: Block): void => {
+    if (visible === next) return;
+    if (visible && visible === content) visible.move(parking);
+    else visible?.dispose();
+    visible = next;
+    next.mount(region.end.parentNode!, region.end);
+  };
+  const controller: SuspenseController = {
+    begin() {
+      const wasIdle = pending === 0;
+      pending += 1;
+      if (initialized && wasIdle && !failed && visible === content) {
+        try {
+          show(renderFallback(frame));
+        } catch (error) {
+          controller.reject(error);
+        }
+      }
+      let finished = false;
+      return () => {
+        if (finished) return;
+        finished = true;
+        pending -= 1;
+        if (initialized && pending === 0 && !failed && content) show(content);
+      };
+    },
+    reject(error) {
+      if (failed) return;
+      failed = true;
+      if (renderError) {
+        if (content && visible !== content) content.dispose();
+        try {
+          show(renderError(error, frame));
+        } catch (renderFailure) {
+          reportError(frame, renderFailure);
+        }
+      } else if (frame.suspense) frame.suspense.reject(error);
+      else if (frame.handleError) frame.handleError(error);
+      else surfaceAsyncError(error);
+    },
+  };
+  const contentFrame: RenderFrame = { ...frame, suspense: controller };
+  try {
+    content = render(contentFrame);
+    initialized = true;
+    show(pending > 0 ? renderFallback(frame) : content);
+  } catch (error) {
+    controller.reject(error);
+  }
+  cleanups.push(() => {
+    visible?.dispose();
+    if (content && content !== visible) content.dispose();
+  });
+}
+
+export function awaitBlock<T>(
+  region: Region,
+  getPromise: () => PromiseLike<T>,
+  render: (value: T, frame: RenderFrame) => Block,
+  renderError: ErrorRenderFactory | undefined,
+  cleanups: Cleanup[],
+  frame: RenderFrame,
+): void {
+  let generation = 0;
+  let current: Block | undefined;
+  let currentFinish: (() => void) | undefined;
+  let disposed = false;
+  const showError = (error: unknown): void => {
+    if (!renderError) return reportError(frame, error);
+    try {
+      current = renderError(error, frame);
+      current.mount(region.end.parentNode!, region.end);
+    } catch (renderFailure) {
+      reportError(frame, renderFailure);
+    }
+  };
+  const stop = runtimeEffect(() => {
+    const promise = getPromise();
+    if (!isPromiseLike(promise)) throw new TypeError("Await $promise must be promise-like");
+    const currentGeneration = ++generation;
+    currentFinish?.();
+    current?.dispose();
+    current = undefined;
+    const finish = frame.suspense?.begin();
+    currentFinish = finish;
+    Promise.resolve(promise).then(
+      (value) => {
+        if (disposed || currentGeneration !== generation) return finish?.();
+        try {
+          current = render(value, frame);
+          current.mount(region.end.parentNode!, region.end);
+        } catch (error) {
+          showError(error);
+        }
+        finish?.();
+        if (currentFinish === finish) currentFinish = undefined;
+      },
+      (error) => {
+        if (disposed || currentGeneration !== generation) return finish?.();
+        showError(error);
+        finish?.();
+        if (currentFinish === finish) currentFinish = undefined;
+      },
+    );
+  });
+  cleanups.push(stop, () => {
+    disposed = true;
+    generation += 1;
+    currentFinish?.();
+    current?.dispose();
+  });
+}
+
+export function errorBoundary(
+  region: Region,
+  render: RenderFactory,
+  renderFallback: ErrorRenderFactory,
+  cleanups: Cleanup[],
+  frame: RenderFrame,
+): void {
+  let current: Block | undefined;
+  let failed = false;
+  const fail = (error: unknown): void => {
+    if (failed) return;
+    failed = true;
+    current?.dispose();
+    try {
+      current = renderFallback(error, frame);
+      current.mount(region.end.parentNode!, region.end);
+    } catch (fallbackError) {
+      if (frame.handleError) frame.handleError(fallbackError);
+      else surfaceAsyncError(fallbackError);
+    }
+  };
+  const childFrame: RenderFrame = { ...frame, handleError: fail };
+  try {
+    current = render(childFrame);
+    current.mount(region.end.parentNode!, region.end);
+  } catch (error) {
+    fail(error);
+  }
+  cleanups.push(() => current?.dispose());
 }
 import type { JSX } from "./jsx-runtime.ts";

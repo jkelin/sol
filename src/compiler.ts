@@ -11,18 +11,22 @@ const traverse =
   (traverseModule as unknown as { default?: typeof traverseModule }).default ?? traverseModule;
 
 const RUNTIME_IMPORT = `import {
-  $computed as __ff_computed,
+  computedInFrame as __ff_computed,
   $signal as __ff_signal,
   attribute as __ff_attribute,
+  awaitBlock as __ff_await,
   bindValue as __ff_bind,
   block as __ff_block,
   child as __ff_child,
   component as __ff_component,
+  contextProvider as __ff_context_provider,
   emptyBlock as __ff_empty_block,
+  errorBoundary as __ff_error_boundary,
   event as __ff_event,
   instantiate as __ff_instantiate,
   list as __ff_list,
   route as __ff_route,
+  suspense as __ff_suspense,
   template as __ff_template,
   text as __ff_text,
   valueBlock as __ff_value_block,
@@ -78,6 +82,7 @@ interface CompilerContext {
   source: string;
   templates: string[];
   componentNames: Set<string>;
+  builtinNames: Map<string, "Suspense" | "Await" | "ErrorBoundary">;
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;
@@ -437,6 +442,241 @@ function compileBinding(
   );
 }
 
+function meaningfulChildren(node: t.JSXElement): t.JSXElement["children"] {
+  return node.children.filter(
+    (child) => !t.isJSXText(child) || normalizeJsxText(child.value) !== "",
+  );
+}
+
+function namedAttribute(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  name: string,
+  required = false,
+): t.JSXAttribute | undefined {
+  const matches = node.openingElement.attributes.filter(
+    (attribute): attribute is t.JSXAttribute =>
+      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name }),
+  );
+  if (matches.length > 1)
+    codeFrame(compiler, matches[1]!, `JSX property ${name} may only appear once`);
+  if (required && !matches[0]) codeFrame(compiler, node, `JSX property ${name} is required`);
+  return matches[0];
+}
+
+function jsxAttributeExpression(compiler: CompilerContext, attribute: t.JSXAttribute): Expression {
+  if (
+    !t.isJSXExpressionContainer(attribute.value) ||
+    (!t.isExpression(attribute.value.expression) &&
+      !t.isJSXElement(attribute.value.expression) &&
+      !t.isJSXFragment(attribute.value.expression))
+  ) {
+    codeFrame(compiler, attribute, "This JSX property requires an expression");
+  }
+  return attribute.value.expression;
+}
+
+function childrenRoot(node: t.JSXElement): t.JSXFragment {
+  return t.jsxFragment(t.jsxOpeningFragment(), t.jsxClosingFragment(), node.children);
+}
+
+function blockFactory(
+  compiler: CompilerContext,
+  root: t.JSXElement | t.JSXFragment,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+): string {
+  return `(__ff_frame) => { ${compileBlockBody(compiler, root, bindings, scope)} }`;
+}
+
+function jsxFactoryFromAttribute(
+  compiler: CompilerContext,
+  attribute: t.JSXAttribute,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+): string {
+  const expression = jsxAttributeExpression(compiler, attribute);
+  if (!t.isJSXElement(expression) && !t.isJSXFragment(expression)) {
+    codeFrame(
+      compiler,
+      expression,
+      `JSX property ${getAttributeName(compiler, attribute.name)} must contain JSX`,
+    );
+  }
+  return blockFactory(compiler, expression, bindings, scope);
+}
+
+function renderFunctionFactory(
+  compiler: CompilerContext,
+  expression: Expression,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+  valueName: string,
+): string {
+  if (!t.isArrowFunctionExpression(expression) && !t.isFunctionExpression(expression)) {
+    codeFrame(compiler, expression, "Error and data renderers must be inline functions");
+  }
+  if (expression.params.length !== 1 || !t.isIdentifier(expression.params[0])) {
+    codeFrame(
+      compiler,
+      expression,
+      "Error and data renderers require exactly one identifier parameter",
+    );
+  }
+  let body: t.Node = expression.body;
+  if (t.isBlockStatement(body)) {
+    const returns = body.body.filter((statement): statement is t.ReturnStatement =>
+      t.isReturnStatement(statement),
+    );
+    if (returns.length !== 1 || returns[0] !== body.body.at(-1) || !returns[0]!.argument) {
+      codeFrame(compiler, body, "Error and data renderers require exactly one final JSX return");
+    }
+    if (body.body.length !== 1) {
+      codeFrame(compiler, body, "Error and data renderer setup statements are not supported");
+    }
+    body = returns[0]!.argument;
+  }
+  if (!t.isJSXElement(body) && !t.isJSXFragment(body)) {
+    codeFrame(compiler, body, "Error and data renderers must return JSX");
+  }
+  const renderScope = new Map(scope);
+  renderScope.set(expression.params[0].name, valueName);
+  return blockFactory(compiler, body, bindings, renderScope);
+}
+
+function optionalErrorFactory(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+): string {
+  const attribute = namedAttribute(compiler, node, "error");
+  if (!attribute) return "undefined";
+  return `(__ff_error, __ff_frame) => (${renderFunctionFactory(compiler, jsxAttributeExpression(compiler, attribute), bindings, scope, "__ff_error")})(__ff_frame)`;
+}
+
+function validateBuiltinAttributes(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  allowed: ReadonlySet<string>,
+): void {
+  for (const attribute of node.openingElement.attributes) {
+    if (t.isJSXSpreadAttribute(attribute))
+      codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
+    const name = getAttributeName(compiler, attribute.name);
+    if (!allowed.has(name)) codeFrame(compiler, attribute, `Unexpected ${name} property`);
+  }
+}
+
+function compileBuiltinElement(
+  compiler: CompilerContext,
+  kind: "Suspense" | "Await" | "ErrorBoundary",
+  node: t.JSXElement,
+  context: TemplateContext,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+): void {
+  const index = region(context);
+  if (kind === "Suspense") {
+    validateBuiltinAttributes(compiler, node, new Set(["fallback", "error"]));
+    const fallback = jsxFactoryFromAttribute(
+      compiler,
+      namedAttribute(compiler, node, "fallback", true)!,
+      bindings,
+      scope,
+    );
+    context.operations.push(
+      mappedCode(
+        compiler,
+        node,
+        `__ff_suspense(__ff_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, ${fallback}, ${optionalErrorFactory(compiler, node, bindings, scope)}, __ff_cleanups, __ff_frame);`,
+      ),
+    );
+    return;
+  }
+  if (kind === "ErrorBoundary") {
+    validateBuiltinAttributes(compiler, node, new Set(["fallback"]));
+    const fallbackAttribute = namedAttribute(compiler, node, "fallback", true)!;
+    const fallback = renderFunctionFactory(
+      compiler,
+      jsxAttributeExpression(compiler, fallbackAttribute),
+      bindings,
+      scope,
+      "__ff_error",
+    );
+    context.operations.push(
+      mappedCode(
+        compiler,
+        node,
+        `__ff_error_boundary(__ff_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, (__ff_error, __ff_frame) => (${fallback})(__ff_frame), __ff_cleanups, __ff_frame);`,
+      ),
+    );
+    return;
+  }
+
+  validateBuiltinAttributes(compiler, node, new Set(["$promise", "error"]));
+  const promise = jsxAttributeExpression(
+    compiler,
+    namedAttribute(compiler, node, "$promise", true)!,
+  );
+  if (t.isJSXElement(promise) || t.isJSXFragment(promise)) {
+    codeFrame(compiler, promise, "Await $promise must be a promise expression");
+  }
+  const children = meaningfulChildren(node);
+  if (
+    children.length !== 1 ||
+    !t.isJSXExpressionContainer(children[0]) ||
+    (!t.isArrowFunctionExpression(children[0].expression) &&
+      !t.isFunctionExpression(children[0].expression))
+  ) {
+    codeFrame(compiler, node, "Await requires exactly one inline data-renderer child");
+  }
+  const renderer = renderFunctionFactory(
+    compiler,
+    children[0].expression,
+    bindings,
+    scope,
+    "__ff_value",
+  );
+  context.operations.push(
+    mappedCode(
+      compiler,
+      node,
+      `__ff_await(__ff_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__ff_value, __ff_frame) => (${renderer})(__ff_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __ff_cleanups, __ff_frame);`,
+    ),
+  );
+}
+
+function compileProviderElement(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  context: TemplateContext,
+  bindings: ReadonlyMap<string, ReactiveKind>,
+  scope: Scope,
+): boolean {
+  const name = node.openingElement.name;
+  if (
+    !t.isJSXMemberExpression(name) ||
+    !t.isJSXIdentifier(name.object) ||
+    !t.isJSXIdentifier(name.property, { name: "Provider" })
+  )
+    return false;
+  validateBuiltinAttributes(compiler, node, new Set(["data"]));
+  const data = jsxAttributeExpression(compiler, namedAttribute(compiler, node, "data", true)!);
+  if (t.isJSXElement(data) || t.isJSXFragment(data))
+    codeFrame(compiler, data, "Context Provider data must be an object expression");
+  const contextName = expressionCode(t.identifier(name.object.name), scope);
+  const index = region(context);
+  context.operations.push(
+    mappedCode(
+      compiler,
+      node,
+      `__ff_context_provider(__ff_view.regions[${index}], ${contextName}, () => (${expressionCode(data, scope)}), ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, __ff_cleanups, __ff_frame);`,
+    ),
+  );
+  return true;
+}
+
 function compileComponentElement(
   compiler: CompilerContext,
   node: t.JSXElement,
@@ -444,10 +684,10 @@ function compileComponentElement(
   scope: Scope,
 ): void {
   const componentName = jsxName(compiler, node.openingElement.name);
-  const meaningfulChildren = node.children.filter((child) => {
+  const meaningfulComponentChildren = node.children.filter((child) => {
     return !t.isJSXText(child) || normalizeJsxText(child.value) !== "";
   });
-  if (meaningfulChildren.length > 0) {
+  if (meaningfulComponentChildren.length > 0) {
     codeFrame(
       compiler,
       node,
@@ -474,7 +714,7 @@ function compileComponentElement(
     mappedCode(
       compiler,
       node,
-      `__ff_child(__ff_view.regions[${index}], ${componentName}, { ${props.join(", ")} }, __ff_cleanups);`,
+      `__ff_child(__ff_view.regions[${index}], ${componentName}, { ${props.join(", ")} }, __ff_cleanups, __ff_frame);`,
     ),
   );
 }
@@ -811,8 +1051,12 @@ function compileNode(
     for (const child of node.children) compileNode(compiler, child, context, bindings, scope);
     return;
   }
+  if (compileProviderElement(compiler, node, context, bindings, scope)) return;
   const name = jsxName(compiler, node.openingElement.name);
-  if (compiler.componentNames.has(name)) {
+  const builtin = compiler.builtinNames.get(name);
+  if (builtin) {
+    compileBuiltinElement(compiler, builtin, node, context, bindings, scope);
+  } else if (compiler.componentNames.has(name)) {
     compileComponentElement(compiler, node, context, scope);
   } else if (/^[a-z]/.test(name)) {
     compileIntrinsicElement(compiler, node, context, bindings, scope);
@@ -843,8 +1087,13 @@ function compileBlockBody(
   return `
     const __ff_view = __ff_instantiate(__ff_template_${templateIndex});
     const __ff_cleanups: Array<() => void> = [];
-    ${context.operations.join("\n")}
-    return __ff_block(__ff_view.fragment, __ff_cleanups);
+    try {
+      ${context.operations.join("\n")}
+      return __ff_block(__ff_view.fragment, __ff_cleanups);
+    } catch (__ff_render_error) {
+      for (const __ff_cleanup of __ff_cleanups.toReversed()) __ff_cleanup();
+      throw __ff_render_error;
+    }
   `;
 }
 
@@ -852,9 +1101,11 @@ function reactiveCallCode(
   call: t.CallExpression,
   runtimeName: "__ff_signal" | "__ff_computed",
   scope: Scope,
+  extraArgument?: string,
 ): string {
   const cloned = t.cloneNode(call, true);
   cloned.callee = t.identifier(runtimeName);
+  if (extraArgument) cloned.arguments.push(t.identifier(extraArgument));
   return expressionCode(cloned, scope);
 }
 
@@ -1126,7 +1377,7 @@ function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(initializer, "__ff_computed", scope)};`,
+            `const ${identifier.name} = ${reactiveCallCode(initializer, "__ff_computed", scope, "__ff_frame")};`,
           ),
         );
       } else if (kind === "computed") {
@@ -1134,7 +1385,7 @@ function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = __ff_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}));`,
+            `const ${identifier.name} = __ff_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}), __ff_frame);`,
           ),
         );
       } else {
@@ -1167,8 +1418,8 @@ function compileFunction(
       `$component() function name ${declaration.id.name} must match binding ${name}`,
     );
   }
-  if (declaration.async || declaration.generator)
-    codeFrame(compiler, declaration, "Components must be synchronous functions");
+  if (declaration.generator)
+    codeFrame(compiler, declaration, "Components must not be generator functions");
   if (declaration.params.length > 1)
     codeFrame(compiler, declaration, "Components accept at most one props parameter");
   const parameter = declaration.params[0];
@@ -1225,7 +1476,7 @@ function compileFunction(
   const body = compileBlockBody(compiler, returned, compiledSetup.bindings, compiledSetup.scope);
   compiler.propsName = previousPropsName;
   return {
-    code: `${exported ? "export " : ""}const ${name} = __ff_component((${parameterCode}) => {
+    code: `${exported ? "export " : ""}const ${name} = __ff_component(${declaration.async ? "async " : ""}(${parameterCode}, __ff_frame) => {
       ${compiledSetup.code}
       ${body}
     });`,
@@ -1246,6 +1497,7 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     source,
     templates: [],
     componentNames: new Set(),
+    builtinNames: new Map(),
     mappingOrigins: [],
     nextListId: 0,
   };
@@ -1290,11 +1542,15 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
         }
       } else if (statement.source.value === "frontend-framework") {
         for (const specifier of statement.specifiers) {
-          if (
-            t.isImportSpecifier(specifier) &&
-            t.isIdentifier(specifier.imported, { name: "Route" })
-          ) {
+          if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
+          if (specifier.imported.name === "Route")
             compiler.componentNames.add(specifier.local.name);
+          if (
+            specifier.imported.name === "Suspense" ||
+            specifier.imported.name === "Await" ||
+            specifier.imported.name === "ErrorBoundary"
+          ) {
+            compiler.builtinNames.set(specifier.local.name, specifier.imported.name);
           }
         }
       }

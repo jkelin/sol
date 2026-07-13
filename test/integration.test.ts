@@ -35,10 +35,9 @@ afterEach(() => window.close());
 async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const result = compile(source, "Integration.tsx");
   const runtimeUrl = new URL("../src/runtime.ts", import.meta.url).href;
-  const sourceWithRuntime = result.code.replace(
-    '"frontend-framework/runtime"',
-    JSON.stringify(runtimeUrl),
-  );
+  const sourceWithRuntime = result.code
+    .replace('"frontend-framework/runtime"', JSON.stringify(runtimeUrl))
+    .replaceAll('"frontend-framework"', JSON.stringify(runtimeUrl));
   const javascript =
     ts.transpileModule(sourceWithRuntime, {
       compilerOptions: {
@@ -198,5 +197,175 @@ test("nested keyed lists preserve and react to outer row state", async () => {
   expect(target.querySelector("p")!.textContent).toBe("Updated: Renamed");
   expect(globalThis.integrationSetups.app).toBe(1);
 
+  dispose();
+});
+
+test("contexts compose with async components, Suspense, Await, and ErrorBoundary", async () => {
+  const module = await loadCompiled(`
+    import { $component, $context, Suspense, Await, ErrorBoundary } from "frontend-framework";
+
+    const sharedContext = $context<{ label: string; count: number }>();
+
+    const AsyncChild = $component(async function AsyncChild() {
+      const shared = sharedContext.use();
+      const data = await Promise.resolve({ text: "async" });
+      shared.count += 1;
+      return <p id="async-result">{shared.label}:{data.text}:{shared.count}</p>;
+    });
+
+    const ContextChild = $component(function ContextChild() {
+      const shared = sharedContext.use();
+      return <button id="context-result" onClick={() => shared.count += 1}>
+        {shared.label}:{shared.count}
+      </button>;
+    });
+
+    export const App = $component(function App() {
+      const shared = { label: "provided", count: 0 };
+      const promise = Promise.resolve({ text: "awaited" });
+      return <sharedContext.Provider data={shared}>
+        <ErrorBoundary fallback={error => <p id="boundary-error">{String(error)}</p>}>
+          <Suspense fallback={<p id="loading">Loading</p>} error={error => <p>{String(error)}</p>}>
+            <main>
+              <button id="replace-context" onClick={() => shared = { label: "replaced", count: 10 }}>
+                Replace
+              </button>
+              <ContextChild />
+              <AsyncChild />
+              <Await $promise={promise} error={error => <p>{String(error)}</p>}>
+                {data => <p id="await-result">{data.text}</p>}
+              </Await>
+            </main>
+          </Suspense>
+        </ErrorBoundary>
+      </sharedContext.Provider>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(target.querySelector("#loading")?.textContent).toBe("Loading");
+  expect(target.querySelector("main")).toBeNull();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(target.querySelector("#loading")).toBeNull();
+  expect(target.querySelector("#async-result")?.textContent).toBe("provided:async:1");
+  expect(target.querySelector("#await-result")?.textContent).toBe("awaited");
+  expect(target.querySelector("#context-result")?.textContent).toBe("provided:1");
+  target.querySelector<HTMLButtonElement>("#context-result")!.click();
+  expect(target.querySelector("#context-result")?.textContent).toBe("provided:2");
+  target.querySelector<HTMLButtonElement>("#replace-context")!.click();
+  expect(target.querySelector("#context-result")?.textContent).toBe("replaced:10");
+
+  dispose();
+  expect(target.childNodes).toHaveLength(0);
+});
+
+test("context optional reads and local Await errors work without Suspense", async () => {
+  const module = await loadCompiled(`
+    import { $component, $context, Await } from "frontend-framework";
+    const optionalContext = $context<{ value: string }>();
+    export const App = $component(function App() {
+      const optional = optionalContext.useOptional();
+      const promise = Promise.reject(new Error("Rejected locally"));
+      return <main>
+        <p id="optional">{optional === undefined ? "missing" : optional.value}</p>
+        <Await $promise={promise} error={error => <p id="await-error">{String(error)}</p>}>
+          {data => <p>{String(data)}</p>}
+        </Await>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(target.querySelector("#optional")?.textContent).toBe("missing");
+  expect(target.querySelector("#await-error")).toBeNull();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#await-error")?.textContent).toContain("Rejected locally");
+
+  dispose();
+});
+
+test("missing contexts throw and ErrorBoundary catches sync and async render failures", async () => {
+  const missingModule = await loadCompiled(`
+    import { $component, $context } from "frontend-framework";
+    const missingContext = $context<{ value: string }>();
+    export const App = $component(function App() {
+      const value = missingContext.use();
+      return <p>{value.value}</p>;
+    });
+  `);
+  const target = document.createElement("div");
+  expect(() => mount(missingModule.App as Component, target)).toThrow(
+    "Context is not available outside its Provider",
+  );
+
+  const boundaryModule = await loadCompiled(`
+    import { $component, ErrorBoundary } from "frontend-framework";
+    const SyncFailure = $component(function SyncFailure() {
+      throw new Error("sync failure");
+      return <p>unreachable</p>;
+    });
+    const AsyncFailure = $component(async function AsyncFailure() {
+      await Promise.resolve();
+      throw new Error("async failure");
+      return <p>unreachable</p>;
+    });
+    export const App = $component(function App() {
+      return <main>
+        <ErrorBoundary fallback={error => <p id="sync-error">{String(error)}</p>}>
+          <SyncFailure />
+        </ErrorBoundary>
+        <ErrorBoundary fallback={error => <p id="async-error">{String(error)}</p>}>
+          <AsyncFailure />
+        </ErrorBoundary>
+      </main>;
+    });
+  `);
+  const dispose = mount(boundaryModule.App as Component, target);
+  expect(target.querySelector("#sync-error")?.textContent).toContain("sync failure");
+  expect(target.querySelector("#async-error")).toBeNull();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#async-error")?.textContent).toContain("async failure");
+  dispose();
+});
+
+test("Await replaces stale promises and re-enters its Suspense fallback", async () => {
+  const module = await loadCompiled(`
+    import { $component, Await, Suspense } from "frontend-framework";
+    let resolveFirst!: (value: string) => void;
+    const first = new Promise<string>(resolve => resolveFirst = resolve);
+    export function settleFirst() { resolveFirst("stale"); }
+    export const App = $component(function App() {
+      let promise = first;
+      return <main>
+        <button id="replace" onClick={() => promise = Promise.resolve("fresh")}>Replace</button>
+        <Suspense fallback={<p id="replacement-loading">Loading</p>}>
+          <section><Await $promise={promise}>{value => <p id="replacement-value">{value}</p>}</Await></section>
+        </Suspense>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  expect(target.querySelector("#replacement-loading")).not.toBeNull();
+
+  target.querySelector<HTMLButtonElement>("#replace")!.click();
+  expect(target.querySelector("#replacement-loading")).not.toBeNull();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#replacement-value")?.textContent).toBe("fresh");
+
+  (module.settleFirst as () => void)();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#replacement-value")?.textContent).toBe("fresh");
   dispose();
 });

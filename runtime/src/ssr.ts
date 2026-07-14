@@ -30,7 +30,7 @@ export async function renderToStringAsync<Props extends object>(
   props?: Props,
   options: RenderToStringOptions = {},
 ): Promise<string> {
-  if (props != null && !isObject(props)) {
+  if (props != null && (!isObject(props) || Array.isArray(props))) {
     throw new TypeError("renderToStringAsync() props must be an object");
   }
   if (!isObject(options) || Array.isArray(options)) {

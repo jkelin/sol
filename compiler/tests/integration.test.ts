@@ -1311,6 +1311,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
   const App = module.App as Component;
   await expectRejection(renderToStringAsync(null as never), "compiled Solix component");
   await expectRejection(renderToStringAsync(App, 1 as never), "props must be an object");
+  await expectRejection(renderToStringAsync(App, [] as never), "props must be an object");
   await expectRejection(
     renderToStringAsync(App, undefined, null as never),
     "options must be an object",
@@ -1323,11 +1324,26 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
 
   const target = document.createElement("div");
   await expectRejection(hydrate(null as never, target), "compiled Solix component");
+  await expectRejection(hydrate(App, target, [] as never), "props must be an object");
   await expectRejection(hydrate(App, target), "payload is missing");
   target.innerHTML =
     '<script type="application/json" data-solix-hydration>{</script>' +
     '<script type="application/json" data-solix-hydration>{}</script>';
   await expectRejection(hydrate(App, target), "exactly once");
+  target.innerHTML = `<script data-solix-hydration>${serializeGraph({
+    version: 1,
+    templates: [],
+    async: [],
+    boundaries: [],
+  })}</script>`;
+  await expectRejection(hydrate(App, target), 'type="application/json"');
+  target.innerHTML = `<script type="text/javascript" data-solix-hydration>${serializeGraph({
+    version: 1,
+    templates: [],
+    async: [],
+    boundaries: [],
+  })}</script>`;
+  await expectRejection(hydrate(App, target), 'type="application/json"');
   target.innerHTML = '<script type="application/json" data-solix-hydration>{</script>';
   await expectRejection(hydrate(App, target), "payload JSON");
   target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({

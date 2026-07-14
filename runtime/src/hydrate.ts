@@ -39,7 +39,9 @@ export async function hydrate<Props extends object>(
   if (!target || target.nodeType !== Node.ELEMENT_NODE) {
     throw new TypeError("hydrate() expects a DOM Element target");
   }
-  if (props != null && !isObject(props)) throw new TypeError("hydrate() props must be an object");
+  if (props != null && (!isObject(props) || Array.isArray(props))) {
+    throw new TypeError("hydrate() props must be an object");
+  }
   const factory = getFactory(candidate);
   const scripts = [...target.querySelectorAll<HTMLScriptElement>("script[data-solix-hydration]")];
   if (scripts.length !== 1) {
@@ -50,6 +52,9 @@ export async function hydrate<Props extends object>(
     );
   }
   const script = scripts[0]!;
+  if (script.type !== "application/json") {
+    throw new Error('Solix hydration payload script must use type="application/json"');
+  }
   const payload = hydrationPayload(deserializeGraph(script.textContent ?? ""));
   const session = new HydrationSession(payload);
   session.validateTemplateOrder(templateSignatures(target));

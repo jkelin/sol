@@ -57,5 +57,10 @@
   },
   "lint-staged": {
     "*.{css,html,js,jsx,json,jsonc,md,mjs,cjs,ts,tsx,yaml,yml}": "oxfmt --write"
-  }
+  },
+  "engines": {
+    "bun": ">=1.3.14",
+    "node": ">=24.0.0"
+  },
+  "packageManager": "bun@1.3.14"
 }

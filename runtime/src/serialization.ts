@@ -36,16 +36,35 @@ function unsupported(value: unknown, detail: string): never {
   throw new TypeError(`Cannot serialize ${detail} (${type})`);
 }
 
-function ownEnumerableEntries(value: object): [string, unknown][] {
-  if (Object.getOwnPropertySymbols(value).length > 0) unsupported(value, "symbol-keyed data");
-  const entries: [string, unknown][] = [];
-  for (const key of Object.keys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-    if (descriptor.get || descriptor.set)
+function rejectAccessors(value: object): void {
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+    if (descriptor.get || descriptor.set) {
       unsupported(value, `accessor property ${JSON.stringify(key)}`);
-    entries.push([key, descriptor.value]);
+    }
   }
-  return entries;
+}
+
+function ownDataEntries(value: object): [string, unknown][] {
+  if (Object.getOwnPropertySymbols(value).length > 0) unsupported(value, "symbol-keyed data");
+  rejectAccessors(value);
+  return Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => [
+    key,
+    descriptor.value,
+  ]);
+}
+
+function isBuiltInError(value: Error): boolean {
+  const prototypes = [
+    Error.prototype,
+    EvalError.prototype,
+    RangeError.prototype,
+    ReferenceError.prototype,
+    SyntaxError.prototype,
+    TypeError.prototype,
+    URIError.prototype,
+    ...(typeof AggregateError === "undefined" ? [] : [AggregateError.prototype]),
+  ];
+  return prototypes.includes(Object.getPrototypeOf(value) as Error);
 }
 
 export function serializeGraph(value: unknown): string {
@@ -73,8 +92,12 @@ export function serializeGraph(value: unknown): string {
     const index = objects.length;
     references.set(candidate, index);
     objects.push(undefined as never);
+    rejectAccessors(candidate);
 
     if (Array.isArray(candidate)) {
+      if (Object.getPrototypeOf(candidate) !== Array.prototype) {
+        return unsupported(candidate, "custom-prototype data");
+      }
       const values: [number, EncodedValue][] = [];
       for (let position = 0; position < candidate.length; position += 1) {
         if (Object.prototype.hasOwnProperty.call(candidate, position)) {
@@ -87,8 +110,14 @@ export function serializeGraph(value: unknown): string {
       }
       objects[index] = { type: "array", length: candidate.length, values };
     } else if (candidate instanceof Date) {
+      if (Object.getPrototypeOf(candidate) !== Date.prototype) {
+        return unsupported(candidate, "custom-prototype data");
+      }
       objects[index] = { type: "date", value: encode(candidate.getTime()) };
     } else if (candidate instanceof RegExp) {
+      if (Object.getPrototypeOf(candidate) !== RegExp.prototype) {
+        return unsupported(candidate, "custom-prototype data");
+      }
       objects[index] = {
         type: "regexp",
         source: candidate.source,
@@ -96,22 +125,31 @@ export function serializeGraph(value: unknown): string {
         lastIndex: candidate.lastIndex,
       };
     } else if (typeof URL !== "undefined" && candidate instanceof URL) {
+      if (Object.getPrototypeOf(candidate) !== URL.prototype) {
+        return unsupported(candidate, "custom-prototype data");
+      }
       objects[index] = { type: "url", value: candidate.href };
     } else if (candidate instanceof Map) {
+      if (Object.getPrototypeOf(candidate) !== Map.prototype) {
+        return unsupported(candidate, "custom-prototype data");
+      }
       objects[index] = {
         type: "map",
         values: [...candidate].map(([key, entry]) => [encode(key), encode(entry)]),
       };
     } else if (candidate instanceof Set) {
+      if (Object.getPrototypeOf(candidate) !== Set.prototype) {
+        return unsupported(candidate, "custom-prototype data");
+      }
       objects[index] = { type: "set", values: [...candidate].map(encode) };
     } else if (candidate instanceof Error) {
+      if (!isBuiltInError(candidate)) return unsupported(candidate, "custom-prototype data");
+      const cause = Object.getOwnPropertyDescriptor(candidate, "cause");
       objects[index] = {
         type: "error",
         name: candidate.name,
         message: candidate.message,
-        ...(Object.prototype.hasOwnProperty.call(candidate, "cause")
-          ? { cause: encode(candidate.cause) }
-          : {}),
+        ...(cause ? { cause: encode(cause.value) } : {}),
       };
     } else {
       if (ArrayBuffer.isView(candidate) || candidate instanceof ArrayBuffer) {
@@ -126,7 +164,7 @@ export function serializeGraph(value: unknown): string {
       }
       objects[index] = {
         type: prototype === null ? "null-object" : "object",
-        values: ownEnumerableEntries(candidate).map(([key, entry]) => [key, encode(entry)]),
+        values: ownDataEntries(candidate).map(([key, entry]) => [key, encode(entry)]),
       };
     }
     return { $: "ref", v: index };

@@ -549,6 +549,7 @@ export function reportError(frame: RenderFrame, error: unknown): void {
   if (frame.suspense) frame.suspense.reject(error);
   else if (frame.handleError) frame.handleError(error);
   else if (frame.ssr) frame.ssr.fail(error);
+  else if (frame.hydration && !frame.hydration.committed) frame.hydration.fail(error);
   else surfaceAsyncError(error);
 }
 

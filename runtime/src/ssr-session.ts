@@ -180,6 +180,8 @@ export class HydrationSession {
   private boundaryIndex = 0;
   private pending = 0;
   private completion = deferred();
+  private failed = false;
+  private failure: unknown;
 
   constructor(readonly payload: HydrationPayload) {
     if (payload.version !== HYDRATION_VERSION) {
@@ -275,8 +277,15 @@ export class HydrationSession {
     return tracked;
   }
 
+  fail(error: unknown): void {
+    if (this.failed) return;
+    this.failed = true;
+    this.failure = error;
+  }
+
   async wait(): Promise<void> {
     if (this.pending > 0) await this.completion.promise;
+    if (this.failed) throw this.failure;
     if (this.templates.size > 0) {
       throw new Error("Solix hydration did not consume every template entry");
     }

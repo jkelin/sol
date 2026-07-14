@@ -96,6 +96,35 @@ describe("SSR graph serialization", () => {
     expect(() => serializeGraph(array)).toThrow("custom properties");
   });
 
+  test("rejects non-enumerable accessors and subclassed built-ins", () => {
+    const hiddenAccessor = {};
+    Object.defineProperty(hiddenAccessor, "secret", { get: () => "hidden" });
+    class CustomDate extends Date {}
+    class CustomMap extends Map {}
+    class CustomError extends Error {}
+    class CustomArray<T> extends Array<T> {}
+
+    expect(() => serializeGraph(hiddenAccessor)).toThrow("accessor");
+    expect(() => serializeGraph(new CustomDate())).toThrow("custom-prototype");
+    expect(() => serializeGraph(new CustomMap())).toThrow("custom-prototype");
+    expect(() => serializeGraph(new CustomError("custom"))).toThrow("custom-prototype");
+    expect(() => serializeGraph(new CustomArray(1, 2))).toThrow("custom-prototype");
+  });
+
+  test("rejects accessor Error causes without invoking them", () => {
+    const error = new Error("failure");
+    let invoked = false;
+    Object.defineProperty(error, "cause", {
+      get() {
+        invoked = true;
+        return "cause";
+      },
+    });
+
+    expect(() => serializeGraph(error)).toThrow("accessor");
+    expect(invoked).toBe(false);
+  });
+
   test("rejects malformed graphs and references", () => {
     expect(() => deserializeGraph("{")).toThrow("payload JSON");
     expect(() => deserializeGraph("{}")).toThrow("payload graph");

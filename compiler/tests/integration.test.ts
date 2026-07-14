@@ -29,6 +29,8 @@ declare global {
   var integrationKeyedRefs: Set<number>;
   var integrationPending: Promise<string>;
   var integrationResolve: (value: string) => void;
+  var integrationLoads: number;
+  var integrationLoad: (id: string) => Promise<unknown>;
 }
 
 let window: Window;
@@ -37,6 +39,8 @@ beforeEach(() => {
   window = new Window();
   delete (window.Element.prototype as { getAnimations?: unknown }).getAnimations;
   globalThis.integrationSetups = { app: 0, child: 0 };
+  globalThis.integrationLoads = 0;
+  globalThis.integrationLoad = () => Promise.reject(new Error("integrationLoad is not configured"));
   Object.assign(globalThis, {
     integrationForm: $form,
     integrationMutation: $mutation,
@@ -1199,6 +1203,68 @@ test("rejects reordered template payload entries", async () => {
   expect(target.firstChild).toBe(original);
 });
 
+test("rejects missing and reordered hydration region comments", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      const label = "dynamic";
+      return <main>{label}</main>;
+    });
+  `);
+  const App = module.App as Component;
+  const html = await renderToStringAsync(App);
+  const target = document.createElement("div");
+
+  target.innerHTML = html.replace("<!--solix:s:0-->", "");
+  const missingMarkup = target.innerHTML;
+  await expectRejection(hydrate(App, target), "hydration mismatch");
+  expect(target.innerHTML).toBe(missingMarkup);
+
+  target.innerHTML = html.replace(
+    "<!--solix:s:0-->dynamic<!--solix:e:0-->",
+    "<!--solix:e:0-->dynamic<!--solix:s:0-->",
+  );
+  const reorderedMarkup = target.innerHTML;
+  await expectRejection(hydrate(App, target), "hydration mismatch");
+  expect(target.innerHTML).toBe(reorderedMarkup);
+});
+
+test("rejects extra replay entries and nested async-site mismatches", async () => {
+  const staticModule = await loadCompiled(`
+    export const App = $component(function App() { return <main>Static</main>; });
+  `);
+  const staticApp = staticModule.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(staticApp);
+  let script = target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!;
+  const extraPayload = deserializeGraph(script.textContent) as {
+    async: { site: string; status: "pending" }[];
+  };
+  extraPayload.async.push({ site: "await:extra", status: "pending" });
+  script.textContent = serializeGraph(extraPayload);
+  const staticRoot = target.firstChild;
+  await expectRejection(hydrate(staticApp, target), "consume every async entry");
+  expect(target.firstChild).toBe(staticRoot);
+
+  const asyncModule = await loadCompiled(`
+    const Child = $component(async function Child() {
+      const value = await Promise.resolve("nested");
+      return <p>{value}</p>;
+    });
+    export const App = $component(function App() { return <main><Child /></main>; });
+  `);
+  const asyncApp = asyncModule.App as Component;
+  target.innerHTML = await renderToStringAsync(asyncApp);
+  script = target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!;
+  const stalePayload = deserializeGraph(script.textContent) as {
+    async: { site: string }[];
+  };
+  stalePayload.async[0]!.site = "await:stale";
+  script.textContent = serializeGraph(stalePayload);
+  const asyncRoot = target.firstChild;
+  await expectRejection(hydrate(asyncApp, target), "async mismatch");
+  expect(target.firstChild).toBe(asyncRoot);
+});
+
 test("validates SSR and hydration public interfaces and payloads", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() { return <main>Valid</main>; });
@@ -1291,6 +1357,78 @@ test("does not capture fire-and-forget helper awaits", async () => {
   expect(payload.async).toHaveLength(1);
   const dispose = await hydrate(App, target);
   expect(globalThis.integrationSetups.app).toBe(2);
+  dispose();
+});
+
+test("replays repeated same-site component awaits resolved out of order", async () => {
+  const resolvers = new Map<string, (value: unknown) => void>();
+  globalThis.integrationLoad = (id) => {
+    globalThis.integrationLoads += 1;
+    return new Promise((resolve) => resolvers.set(id, resolve));
+  };
+  const module = await loadCompiled(`
+    const Child = $component(async function Child(props: { id: string }) {
+      const value = await globalThis.integrationLoad(props.id);
+      return <p data-id={props.id}>{String(value)}</p>;
+    });
+    export const App = $component(function App() {
+      return <main><Child id="first" /><Child id="second" /></main>;
+    });
+  `);
+  const App = module.App as Component;
+  const rendering = renderToStringAsync(App);
+  expect(globalThis.integrationLoads).toBe(2);
+  resolvers.get("second")!("second result");
+  await Promise.resolve();
+  resolvers.get("first")!("first result");
+  const target = document.createElement("div");
+  target.innerHTML = await rendering;
+  const first = target.querySelector('[data-id="first"]');
+  const second = target.querySelector('[data-id="second"]');
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { async: { site: string }[] };
+  expect(payload.async.map((entry) => entry.site)).toEqual(["await:0", "await:0"]);
+  const dispose = await hydrate(App, target);
+  expect(globalThis.integrationLoads).toBe(2);
+  expect(target.querySelector('[data-id="first"]')).toBe(first);
+  expect(target.querySelector('[data-id="second"]')).toBe(second);
+  expect(first?.textContent).toBe("first result");
+  expect(second?.textContent).toBe("second result");
+  dispose();
+});
+
+test("replays nested helper Promise.all data driving branches and lists", async () => {
+  globalThis.integrationLoad = async (id) => {
+    globalThis.integrationLoads += 1;
+    return id === "visible" ? true : ["one", "two"];
+  };
+  const module = await loadCompiled(`
+    export const App = $component(async function App() {
+      async function loadPage() {
+        return await Promise.all([
+          globalThis.integrationLoad("visible"),
+          globalThis.integrationLoad("items"),
+        ]);
+      }
+      const data = await loadPage() as [boolean, string[]];
+      return <main>
+        {data[0] && <h1 id="async-branch">Visible</h1>}
+        <ul>{data[1].map(item => <li key={item}>{item}</li>)}</ul>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expect(globalThis.integrationLoads).toBe(2);
+  const branch = target.querySelector("#async-branch");
+  const rows = [...target.querySelectorAll("li")];
+  const dispose = await hydrate(App, target);
+  expect(globalThis.integrationLoads).toBe(2);
+  expect(target.querySelector("#async-branch")).toBe(branch);
+  expect([...target.querySelectorAll("li")]).toEqual(rows);
+  expect(rows.map((row) => row.textContent)).toEqual(["one", "two"]);
   dispose();
 });
 

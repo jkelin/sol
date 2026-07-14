@@ -904,11 +904,11 @@ export function compileNode(
   if (compileProviderElement(compiler, node, context, bindings, scope)) return;
   const name = jsxName(compiler, node.openingElement.name);
   const builtin = compiler.builtinElements.get(node);
-  if (compiler.linkNames.has(name)) {
+  if (compiler.linkElements.has(node)) {
     compileLinkElement(compiler, node, context, bindings, scope);
   } else if (builtin) {
     compileBuiltinElement(compiler, builtin, node, context, bindings, scope);
-  } else if (compiler.componentNames.has(name)) {
+  } else if (compiler.componentElements.has(node)) {
     compileComponentElement(compiler, node, context, scope);
   } else if (/^[a-z]/.test(name)) {
     compileIntrinsicElement(compiler, node, context, bindings, scope);
@@ -951,7 +951,7 @@ export function compileBlockBody(
       ${context.operations.join("\n")}
       return __sol_block(__sol_view.fragment, __sol_cleanups, __sol_lifecycle);
     } catch (__sol_render_error) {
-      for (const __sol_cleanup of __sol_cleanups.toReversed()) __sol_cleanup();
+      __sol_cleanup(__sol_cleanups);
       throw __sol_render_error;
     }
   `;

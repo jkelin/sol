@@ -42,13 +42,16 @@ export interface CompilerContext {
   source: string;
   templates: CompiledTemplate[];
   componentNames: Set<string>;
+  componentBindings: Set<t.Identifier>;
+  componentElements: WeakSet<t.JSXElement>;
   builtinImports: Map<t.Identifier, BuiltinKind>;
   builtinElements: WeakMap<t.JSXElement, BuiltinKind>;
-  linkNames: Set<string>;
+  linkImports: Set<t.Identifier>;
+  linkElements: WeakSet<t.JSXElement>;
   refCreatorNames: Set<string>;
-  requestHelperNames: Set<string>;
   declarationHelperNames: Map<string, "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute">;
   declarationHelperNamespaces: Set<string>;
+  requestHelpers: Map<string, "$query" | "$mutation">;
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;

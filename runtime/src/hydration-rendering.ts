@@ -1,6 +1,6 @@
 import type { Block, BlockLifecycle, Region, RenderView, TemplateDefinition } from "./rendering.ts";
 import { HydrationMismatchError, type HydrationSession } from "./ssr-session.ts";
-import { runtimeEffect } from "./reactivity.ts";
+import { runCleanups, runDisposals, runtimeEffect } from "./reactivity.ts";
 import { cancelTransitions, runTransitions } from "./transitions.ts";
 
 export interface HydrationClaim {
@@ -258,22 +258,7 @@ export function instantiateHydrated(
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
   const elements: Element[] = [];
   const regions: { start: Comment; end: Comment }[] = [];
-  const propertyValueElements = new Set(
-    definition.metadata.operations
-      .filter(
-        (operation) =>
-          operation.target === "element" &&
-          operation.name === "value" &&
-          (operation.kind === "bind" || operation.kind === "attribute"),
-      )
-      .map((operation) => operation.index)
-      .filter((index): index is number => index !== undefined),
-  );
-  for (const operation of definition.metadata.operations) {
-    if (operation.kind === "raw_text" && operation.index !== undefined) {
-      propertyValueElements.add(operation.index);
-    }
-  }
+  const propertyValueElements = new Set(definition.metadata.propertyValueElements);
   matchChildren(
     definition.element.content,
     start.nextSibling,
@@ -307,7 +292,7 @@ export function hydratedBlock(
   const cleanup = (): void => {
     if (cleaned) return;
     cleaned = true;
-    for (const registered of cleanups.toReversed()) registered();
+    runCleanups(cleanups);
   };
   const remove = (): void => {
     for (const node of nodes()) node.parentNode?.removeChild(node);
@@ -368,24 +353,30 @@ export function hydratedBlock(
       const leaving = leave();
       if (!leaving) {
         disposed = true;
-        for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
-        remove();
+        runDisposals([
+          ...(lifecycle?.remoteBlocks ?? []).map((remote) => () => remote.dispose()),
+          remove,
+        ]);
         return undefined;
       }
       return leaving.then(() => {
         if (disposed) return;
         disposed = true;
-        for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
-        remove();
+        runDisposals([
+          ...(lifecycle?.remoteBlocks ?? []).map((remote) => () => remote.dispose()),
+          remove,
+        ]);
       });
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       cancelTransitions(nodes());
-      cleanup();
-      for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
-      if (fragment.session.committed) remove();
+      runDisposals([
+        cleanup,
+        ...(lifecycle?.remoteBlocks ?? []).map((remote) => () => remote.dispose()),
+        ...(fragment.session.committed ? [remove] : []),
+      ]);
     },
   };
 }

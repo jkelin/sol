@@ -69,8 +69,8 @@ function page(label: string, animated: boolean, reactive = false): Component {
     `route-${label}`,
     {
       elements: ["section"],
-      regions: reactive ? [0] : [],
-      operations: [],
+      regionCount: reactive ? 1 : 0,
+      propertyValueElements: [],
     },
   );
   return component((_props, frame) => {
@@ -186,8 +186,8 @@ test("renders the matched route from an isolated server request URL", async () =
 test("resolves asynchronous route state before rendering the server root", async () => {
   const definition = template("<p><!--sol:s:0--><!--sol:e:0--></p>", "route-shell", {
     elements: [],
-    regions: [0],
-    operations: [],
+    regionCount: 1,
+    propertyValueElements: [],
   });
   const Shell = component((_props, frame) => {
     const view = instantiate(definition, frame);
@@ -200,4 +200,22 @@ test("resolves asynchronous route state before rendering the server root", async
   });
 
   expect(html).toContain("<p><!--sol:s:0-->7<!--sol:e:0--></p>");
+});
+
+test("tracks native hash-only navigation", () => {
+  const target = document.createElement("main");
+  const dispose = mount(Route, target);
+
+  window.location.hash = "#details";
+  window.dispatchEvent(new window.Event("hashchange"));
+
+  expect(router.hash).toBe("#details");
+  dispose();
+});
+
+test("validates navigation options", () => {
+  expect(() => router.navigate("/", { replace: "yes" } as never)).toThrow(
+    "replace must be a boolean",
+  );
+  expect(() => router.navigate("/", { extra: true } as never)).toThrow("unknown property extra");
 });

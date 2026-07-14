@@ -12,6 +12,8 @@ import {
   isObject,
   isPromiseLike,
   reactive,
+  runCleanups,
+  runDisposals,
   runtimeEffect,
   runtimeState,
 } from "./reactivity.ts";
@@ -91,16 +93,8 @@ export interface TemplateDefinition {
 
 export interface TemplateMetadata {
   readonly elements: readonly string[];
-  readonly regions: readonly number[];
-  readonly operations: readonly TemplateOperationMetadata[];
-}
-
-export interface TemplateOperationMetadata {
-  readonly id: string;
-  readonly kind: string;
-  readonly target?: "element" | "region";
-  readonly index?: number;
-  readonly name?: string;
+  readonly regionCount: number;
+  readonly propertyValueElements: readonly number[];
 }
 
 export interface PendingBlock extends PromiseLike<Block> {
@@ -164,7 +158,7 @@ export function prepareServerRender(frame: RenderFrame): void | PromiseLike<void
 export function template(
   html: string,
   signature = html,
-  metadata: TemplateMetadata = { elements: [], regions: [], operations: [] },
+  metadata: TemplateMetadata = { elements: [], regionCount: 0, propertyValueElements: [] },
 ): TemplateDefinition {
   return { html, signature, metadata };
 }
@@ -313,16 +307,18 @@ export function block(
       flushMounts(lifecycle.coordinator);
     } catch (error) {
       disposed = true;
-      cleanup();
-      for (const remote of lifecycle.remoteBlocks) remote.dispose();
-      remove();
+      runDisposals([
+        cleanup,
+        ...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()),
+        remove,
+      ]);
       throw error;
     }
   };
   const cleanup = (): void => {
     if (cleaned) return;
     cleaned = true;
-    for (const registered of cleanups.toReversed()) registered();
+    runCleanups(cleanups);
   };
   const remove = (): void => {
     for (const node of nodes()) node.parentNode?.removeChild(node);
@@ -357,24 +353,24 @@ export function block(
       cleanup();
       if (!leaving) {
         disposed = true;
-        for (const remote of lifecycle.remoteBlocks) remote.dispose();
-        remove();
+        runDisposals([...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove]);
         return undefined;
       }
       return leaving.then(() => {
         if (disposed) return;
         disposed = true;
-        for (const remote of lifecycle.remoteBlocks) remote.dispose();
-        remove();
+        runDisposals([...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove]);
       });
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       cancelTransitions(nodes());
-      cleanup();
-      for (const remote of lifecycle.remoteBlocks) remote.dispose();
-      remove();
+      runDisposals([
+        cleanup,
+        ...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()),
+        remove,
+      ]);
     },
   };
 }
@@ -439,9 +435,14 @@ export function component<Props extends object>(
     try {
       rendered = factory(props, frame);
     } catch (error) {
-      disposeOwner(owner);
-      devtoolsComponentDisposed(devtoolsId);
-      throw error;
+      runDisposals([
+        () => {
+          throw error;
+        },
+        () => disposeOwner(owner),
+        () => devtoolsComponentDisposed(devtoolsId),
+      ]);
+      throw new Error("Unreachable component setup disposal", { cause: error });
     } finally {
       runtimeState.activeOwner = previousOwner;
       runtimeState.activeFrame = previousFrame;
@@ -461,21 +462,28 @@ export function component<Props extends object>(
           return ownedBlock(resolved, owner, devtoolsId);
         },
         (error) => {
-          disposeOwner(owner);
-          devtoolsComponentDisposed(devtoolsId);
           if (!cancelled) {
             devtoolsLoaderUpdated(loaderId, { isLoading: false, isFailed: true, error });
           }
-          throw error;
+          runDisposals([
+            () => {
+              throw error;
+            },
+            () => disposeOwner(owner),
+            () => devtoolsComponentDisposed(devtoolsId),
+          ]);
+          throw new Error("Unreachable async component disposal", { cause: error });
         },
       );
       void Object.defineProperty(pending, "cancel", {
         value: () => {
           if (cancelled) return;
           cancelled = true;
-          disposeOwner(owner);
-          devtoolsComponentDisposed(devtoolsId);
-          devtoolsLoaderUpdated(loaderId, { isLoading: false, isCancelled: true });
+          runDisposals([
+            () => disposeOwner(owner),
+            () => devtoolsComponentDisposed(devtoolsId),
+            () => devtoolsLoaderUpdated(loaderId, { isLoading: false, isCancelled: true }),
+          ]);
         },
       });
       return pending;
@@ -518,9 +526,11 @@ function ownedBlock(rendered: Block, owner: Cleanup[], devtoolsId = 0): Block {
     dispose() {
       if (disposed) return;
       disposed = true;
-      rendered.dispose();
-      disposeOwner(owner);
-      devtoolsComponentDisposed(devtoolsId);
+      runDisposals([
+        () => rendered.dispose(),
+        () => disposeOwner(owner),
+        () => devtoolsComponentDisposed(devtoolsId),
+      ]);
     },
   };
   if (isServerBlock(rendered)) {

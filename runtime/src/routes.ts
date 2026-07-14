@@ -235,17 +235,19 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
   const [pathnameTemplate] = definition.config.path.split("?", 1);
   let path = pathnameTemplate!;
-  for (const name of definition.compiled.pathnameParameterNames) {
-    if (!(name in candidateParams)) throw new TypeError(`Missing route parameter ${name}`);
-    const value = candidateParams[name];
-    if (typeof value !== "string" && typeof value !== "number") {
-      throw new TypeError(`Route parameter ${name} must be a string or number`);
-    }
-    path = path
-      .split("/")
-      .map((segment) => (segment === `:${name}` ? encodeURIComponent(String(value)) : segment))
-      .join("/");
-  }
+  path = path
+    .split("/")
+    .map((segment) => {
+      if (!segment.startsWith(":")) return encodeURIComponent(decodeURIComponent(segment));
+      const name = segment.slice(1);
+      if (!(name in candidateParams)) throw new TypeError(`Missing route parameter ${name}`);
+      const value = candidateParams[name];
+      if (typeof value !== "string" && typeof value !== "number") {
+        throw new TypeError(`Route parameter ${name} must be a string or number`);
+      }
+      return encodeURIComponent(String(value));
+    })
+    .join("/");
   const search = new URLSearchParams();
   for (const queryParameter of definition.compiled.queryParameters) {
     const value = candidateParams[queryParameter.name];

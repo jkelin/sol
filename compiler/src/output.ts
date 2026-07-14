@@ -3,7 +3,7 @@ import MagicString from "magic-string";
 import type { CompilationState } from "./context.ts";
 import { generatedSourceMap } from "./diagnostics.ts";
 import { escapeTemplate } from "./html.ts";
-import { RUNTIME_IMPORT } from "./runtime-import.ts";
+import { runtimeImport } from "./runtime-import.ts";
 import type { CompileResult } from "./types.ts";
 
 export function emitCompilation(state: CompilationState): CompileResult {
@@ -14,10 +14,10 @@ export function emitCompilation(state: CompilationState): CompileResult {
     .map((template, index) => {
       const metadata = {
         elements: template.elementTags,
-        regions: Array.from({ length: template.regionCount }, (_, region) => region),
-        operations: template.operations.map(operationMetadata),
+        regionCount: template.regionCount,
+        propertyValueElements: propertyValueElements(template.operations),
       };
-      const signature = templateSignature(template.html, metadata);
+      const signature = templateSignature(template.html, template.operations);
       return `const __sol_template_${index} = __sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
     })
     .join("\n");
@@ -27,12 +27,11 @@ export function emitCompilation(state: CompilationState): CompileResult {
       : compiler.target === "server"
         ? `import { httpRouteServer as __sol_http_route_server, rpcMutationServer as __sol_rpc_mutation_server, rpcQueryServer as __sol_rpc_query_server } from "sol/compiler-runtime";`
         : `import { httpRouteClient as __sol_http_route_client, rpcMutationClient as __sol_rpc_mutation_client, rpcQueryClient as __sol_rpc_query_client } from "sol/compiler-runtime";`;
-  transformedSource.prepend(
-    serverRuntimeImport
-      ? `${RUNTIME_IMPORT}\n${serverRuntimeImport}\n${templates}\n`
-      : `${RUNTIME_IMPORT}\n${templates}\n`,
-  );
-  const transformed = transformedSource.toString();
+  const generatedBody = `${templates}\n${transformedSource.toString()}`;
+  const imports = [runtimeImport(generatedBody), serverRuntimeImport].filter(Boolean).join("\n");
+  transformedSource.prepend(`${imports}\n${templates}\n`);
+  const marked = transformedSource.toString();
+  const transformed = marked.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
 
   parse(transformed, {
     sourceType: "module",
@@ -41,12 +40,7 @@ export function emitCompilation(state: CompilationState): CompileResult {
   });
   return {
     code: transformed,
-    map: generatedSourceMap(
-      transformedSource,
-      transformed,
-      compiler,
-      redactClientServerSource(state),
-    ),
+    map: generatedSourceMap(transformedSource, marked, compiler, redactClientServerSource(state)),
   };
 }
 
@@ -72,38 +66,26 @@ function identityHash(value: string, prefix: string): string {
   return `${prefix}${(hash >>> 0).toString(36)}`;
 }
 
-function operationMetadata(operation: string): {
-  id: string;
-  kind: string;
-  target?: "element" | "region";
-  index?: number;
-  name?: string;
-} {
-  const code = operation.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
-  const kind = /__sol_([a-z_]+)\(/.exec(code)?.[1];
-  const target = /__sol_view\.(elements|regions)\[(\d+)\]/.exec(code);
-  if (!kind) throw new Error(`Cannot describe compiled operation ${code}`);
-  const metadata: {
-    id: string;
-    kind: string;
-    target?: "element" | "region";
-    index?: number;
-    name?: string;
-  } = {
-    id: identityHash(code, "o"),
-    kind,
-  };
-  if (target) {
-    metadata.target = target[1] === "elements" ? "element" : "region";
-    metadata.index = Number(target[2]);
-  }
-  if (kind === "attribute" || kind === "bind") {
+function propertyValueElements(operations: readonly string[]): number[] {
+  const indexes = new Set<number>();
+  for (const operation of operations) {
+    const code = operation.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
+    const target = /__sol_view\.elements\[(\d+)\]/.exec(code);
+    if (!target) continue;
+    const kind = /__sol_([a-z_]+)\(/.exec(code)?.[1];
     const name = /__sol_view\.elements\[\d+\],\s*"([^"]+)"/.exec(code)?.[1];
-    if (name) metadata.name = name;
+    if (kind === "raw_text" || ((kind === "attribute" || kind === "bind") && name === "value")) {
+      indexes.add(Number(target[1]));
+    }
   }
-  return metadata;
+  return [...indexes].toSorted((left, right) => left - right);
 }
 
-function templateSignature(html: string, metadata: object): string {
-  return identityHash(`${html}\0${JSON.stringify(metadata)}`, "t");
+function operationIdentity(operation: string): string {
+  const code = operation.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
+  return identityHash(code, "o");
+}
+
+function templateSignature(html: string, operations: readonly string[]): string {
+  return identityHash(`${html}\0${operations.map(operationIdentity).join("\0")}`, "t");
 }

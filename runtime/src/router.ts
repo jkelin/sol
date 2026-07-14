@@ -262,8 +262,14 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   if (typeof window === "undefined") {
     throw new Error("router.navigate() requires a browser window");
   }
-  if (!options || typeof options !== "object") {
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
     throw new TypeError("router.navigate() options must be an object");
+  }
+  const unexpected = Object.keys(options).find((name) => name !== "replace");
+  if (unexpected)
+    throw new TypeError(`router.navigate() options contain unknown property ${unexpected}`);
+  if (options.replace !== undefined && typeof options.replace !== "boolean") {
+    throw new TypeError("router.navigate() options replace must be a boolean");
   }
   const destination = new URL(path, window.location.origin);
   if (destination.origin !== window.location.origin) {
@@ -361,17 +367,19 @@ function listenForNavigation(): () => void {
     navigate(`${destination.pathname}${destination.search}${destination.hash}`);
   };
   window.addEventListener("popstate", handlePopState);
+  window.addEventListener("hashchange", handlePopState);
   document.addEventListener("click", handleClick);
   return () => {
     window.removeEventListener("popstate", handlePopState);
+    window.removeEventListener("hashchange", handlePopState);
     document.removeEventListener("click", handleClick);
   };
 }
 
 const routeTemplate = template("<!--sol:s:0--><!--sol:e:0-->", "tsolroute", {
   elements: [],
-  regions: [0],
-  operations: [],
+  regionCount: 1,
+  propertyValueElements: [],
 });
 
 function renderRouteComponent(candidate: Component, frame: RenderFrame, region: Region): Block {

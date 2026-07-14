@@ -171,7 +171,18 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     else element.setAttribute(name, String(value));
     return;
   }
-  if (property in element) {
+  let owner: object | null = element;
+  let descriptor: PropertyDescriptor | undefined;
+  while (owner && !descriptor) {
+    descriptor = Object.getOwnPropertyDescriptor(owner, property);
+    owner = Object.getPrototypeOf(owner) as object | null;
+  }
+  const writable = descriptor
+    ? "writable" in descriptor
+      ? descriptor.writable
+      : typeof descriptor.set === "function"
+    : false;
+  if (property in element && writable) {
     (element as unknown as Record<string, unknown>)[property] = value == null ? "" : value;
   } else if (value == null || value === false) {
     element.removeAttribute(name);

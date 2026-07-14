@@ -8,7 +8,11 @@ export interface ReadonlySignal<T> {
   readonly value: T;
 }
 
-type Dependency = Set<ReactiveEffect>;
+interface Dependency {
+  readonly effects: Set<ReactiveEffect>;
+  readonly key: PropertyKey;
+  readonly target: Map<PropertyKey, Dependency>;
+}
 
 interface ReactiveEffect {
   active: boolean;
@@ -39,16 +43,37 @@ export const runtimeState: { activeOwner?: Cleanup[]; activeFrame?: RenderFrame 
 let batchDepth = 0;
 let flushingEffects = false;
 const pendingEffects = new Set<ReactiveEffect>();
+const pendingComputedEffects = new Set<ReactiveEffect>();
 const disposedOwners = new WeakSet<Cleanup[]>();
+
+export function runDisposals(disposals: readonly Cleanup[]): void {
+  const failures: unknown[] = [];
+  for (const dispose of disposals) {
+    try {
+      dispose();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "Multiple disposal callbacks failed");
+}
+
+export function runCleanups(cleanups: readonly Cleanup[]): void {
+  runDisposals(cleanups.toReversed());
+}
 
 export function disposeOwner(owner: Cleanup[]): void {
   if (disposedOwners.has(owner)) return;
   disposedOwners.add(owner);
-  for (const cleanup of owner.toReversed()) cleanup();
+  runCleanups(owner);
 }
 
 function cleanupEffect(effect: ReactiveEffect): void {
-  for (const dependency of effect.dependencies) dependency.delete(effect);
+  for (const dependency of effect.dependencies) {
+    dependency.effects.delete(effect);
+    if (dependency.effects.size === 0) dependency.target.delete(dependency.key);
+  }
   effect.dependencies.clear();
 }
 
@@ -61,10 +86,10 @@ function track(target: object, key: PropertyKey): void {
   }
   let dependency = targetDependencies.get(key);
   if (!dependency) {
-    dependency = new Set();
+    dependency = { effects: new Set(), key, target: targetDependencies };
     targetDependencies.set(key, dependency);
   }
-  dependency.add(activeEffect);
+  dependency.effects.add(activeEffect);
   activeEffect.dependencies.add(dependency);
 }
 
@@ -74,16 +99,11 @@ function flushEffects(): void {
   let failed = false;
   let failure: unknown;
   try {
-    while (pendingEffects.size > 0) {
-      let effect: ReactiveEffect | undefined;
-      for (const candidate of pendingEffects) {
-        effect ??= candidate;
-        if (candidate.computed) {
-          effect = candidate;
-          break;
-        }
-      }
+    while (pendingComputedEffects.size > 0 || pendingEffects.size > 0) {
+      const effect =
+        pendingComputedEffects.values().next().value ?? pendingEffects.values().next().value;
       if (!effect) break;
+      pendingComputedEffects.delete(effect);
       pendingEffects.delete(effect);
       try {
         effect.run();
@@ -104,9 +124,11 @@ function trigger(target: object, key: PropertyKey): void {
   const targetDependencies = dependencies.get(target);
   if (!targetDependencies) return;
   const effects = new Set<ReactiveEffect>();
-  for (const effect of targetDependencies.get(key) ?? []) effects.add(effect);
+  for (const effect of targetDependencies.get(key)?.effects ?? []) effects.add(effect);
   for (const effect of effects) {
-    if (effect.active && !effect.running) pendingEffects.add(effect);
+    if (effect.active && !effect.running) {
+      (effect.computed ? pendingComputedEffects : pendingEffects).add(effect);
+    }
   }
   if (batchDepth === 0 && !flushingEffects) flushEffects();
 }
@@ -173,6 +195,7 @@ function createReactiveEffect(
     if (!effect.active) return;
     effect.active = false;
     pendingEffects.delete(effect);
+    pendingComputedEffects.delete(effect);
     cleanupEffect(effect);
   };
   const owner = explicitOwner ?? runtimeState.activeOwner;

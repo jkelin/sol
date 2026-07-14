@@ -433,11 +433,10 @@ function instrumentRequestSources(
   traverse(file, {
     CallExpression(path: NodePath<t.CallExpression>) {
       const call = path.node;
-      if (
-        !t.isIdentifier(call.callee) ||
-        !compiler.requestHelperNames.has(call.callee.name) ||
-        path.scope.hasBinding(call.callee.name)
-      ) {
+      const helper = t.isIdentifier(call.callee)
+        ? compiler.requestHelpers.get(call.callee.name)
+        : undefined;
+      if (!t.isIdentifier(call.callee) || !helper || path.scope.hasBinding(call.callee.name)) {
         return;
       }
       const config = call.arguments[0];
@@ -450,6 +449,8 @@ function instrumentRequestSources(
           t.objectProperty(t.identifier("column"), t.numericLiteral(call.loc?.start.column ?? 0)),
         ]),
       ]);
+      call.arguments.splice(1, 0, t.identifier("__sol_frame"));
+      call.callee = t.identifier(helper === "$query" ? "__sol_query" : "__sol_mutation");
     },
   });
 }

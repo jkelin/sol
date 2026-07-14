@@ -38,7 +38,13 @@ export function parseRoutePath(context: CompilerContext, node: t.StringLiteral):
           .map((segment) => {
             if (!segment.startsWith(":")) {
               specificity.push(1);
-              return escapeRegExp(segment);
+              let canonical: string;
+              try {
+                canonical = encodeURIComponent(decodeURIComponent(segment));
+              } catch {
+                codeFrame(context, node, `Invalid percent encoding in route segment ${segment}`);
+              }
+              return escapeRegExp(canonical!);
             }
             const name = segment.slice(1);
             if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {

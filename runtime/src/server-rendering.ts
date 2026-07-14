@@ -1,4 +1,5 @@
 import type { Block, TemplateDefinition } from "./rendering.ts";
+import { runCleanups, runDisposals } from "./reactivity.ts";
 import type { SsrSession } from "./ssr-session.ts";
 
 export interface ServerRenderable {
@@ -54,7 +55,7 @@ export function instantiateServer(
     elements[index] = { kind: "server-element", index, tag, attributes: new Map() };
   }
   const regions: ServerRegion[] = [];
-  for (const index of definition.metadata.regions) {
+  for (let index = 0; index < definition.metadata.regionCount; index += 1) {
     regions[index] = { kind: "server-region", index, blocks: [] };
   }
   const fragment = {
@@ -294,7 +295,7 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
   const cleanup = (): void => {
     if (disposed) return;
     disposed = true;
-    for (const registered of cleanups.toReversed()) registered();
+    runCleanups(cleanups);
   };
   return {
     nodes: [],
@@ -314,13 +315,21 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
       return undefined;
     },
     retire() {
-      cleanup();
-      if (parent) parent.blocks = parent.blocks.filter((block) => block !== this);
+      runDisposals([
+        cleanup,
+        () => {
+          if (parent) parent.blocks = parent.blocks.filter((block) => block !== this);
+        },
+      ]);
       return undefined;
     },
     dispose() {
-      cleanup();
-      if (parent) parent.blocks = parent.blocks.filter((block) => block !== this);
+      runDisposals([
+        cleanup,
+        () => {
+          if (parent) parent.blocks = parent.blocks.filter((block) => block !== this);
+        },
+      ]);
     },
     serverHtml: render,
   } as Block & ServerRenderable;

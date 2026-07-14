@@ -665,6 +665,16 @@ describe("reactivity", () => {
     expect(observations).toEqual(["1:false", "1:true", "2:true", "1:false"]);
   });
 
+  test("invalidates removed array indexes when length shrinks", () => {
+    const state = $signal({ values: ["first", "second", "third"] });
+    const observations: Array<string | undefined> = [];
+    runtimeEffect(() => observations.push(state.value.values[2]));
+
+    state.value.values.length = 1;
+
+    expect(observations).toEqual(["third", undefined]);
+  });
+
   test("preserves built-in and class instances instead of proxying them", () => {
     class Model {
       constructor(readonly value: number) {}
@@ -883,6 +893,15 @@ describe("compiled DOM runtime", () => {
       matched: true,
       values: { filter: undefined },
     });
+
+    const unicode = route({ path: "/cafe au lait/Crème" }, Empty, {
+      pattern: "^/cafe%20au%20lait/Cr%C3%A8me$",
+      parameterNames: [],
+      pathnameParameterNames: [],
+      queryParameters: [],
+      specificity: [1, 1],
+    });
+    expect(routeHref(unicode, {})).toBe("/cafe%20au%20lait/Cr%C3%A8me");
   });
 
   test("validates routes with Standard Schema implementations", async () => {
@@ -1039,6 +1058,19 @@ describe("compiled DOM runtime", () => {
     for (const cleanup of cleanups.toReversed()) cleanup();
   });
 
+  test("writes reflected getter-only DOM values as attributes", () => {
+    const formId = $signal("first-form");
+    const input = document.createElement("input");
+    const cleanups: Array<() => void> = [];
+
+    attribute(input, "form", () => formId.value, cleanups);
+    expect(input.getAttribute("form")).toBe("first-form");
+
+    formId.value = "second-form";
+    expect(input.getAttribute("form")).toBe("second-form");
+    for (const cleanup of cleanups.toReversed()) cleanup();
+  });
+
   test("mounts once and patches text without rerunning setup", () => {
     const count = $signal(0);
     let setups = 0;
@@ -1059,6 +1091,26 @@ describe("compiled DOM runtime", () => {
     expect(setups).toBe(1);
     dispose();
     expect(target.textContent).toBe("");
+  });
+
+  test("finishes block teardown when cleanup callbacks throw", () => {
+    const target = document.createElement("main");
+    const fragment = document.createDocumentFragment();
+    fragment.append(document.createElement("p"));
+    const calls: string[] = [];
+    const rendered = block(fragment, [
+      () => calls.push("first"),
+      () => {
+        calls.push("throwing");
+        throw new Error("cleanup failed");
+      },
+      () => calls.push("last"),
+    ]);
+    rendered.mount(target);
+
+    expect(() => rendered.dispose()).toThrow("cleanup failed");
+    expect(calls).toEqual(["last", "throwing", "first"]);
+    expect(target.childNodes).toHaveLength(0);
   });
 
   test("validates mount boundaries", () => {

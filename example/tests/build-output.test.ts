@@ -23,8 +23,8 @@ test("the example build keeps compiler output readable", async () => {
   expect(output).toContain("function cleanupEffect(effect)");
   expect(output).toContain("function queryEntry(key, frame)");
   expect(output).toContain("function requestSource(config, source)");
-  expect(output).toContain("$query(requestSource({");
-  expect(output).toContain("$mutation(requestSource(");
+  expect(output).toContain("queryInFrame(requestSource({");
+  expect(output).toContain("mutationInFrame(requestSource(");
   expect(output).toContain('rpcQueryClient("notes")');
   expect(output).toContain('rpcMutationClient("create-note")');
   expect(clientArtifacts).not.toContain("Invalid note id");

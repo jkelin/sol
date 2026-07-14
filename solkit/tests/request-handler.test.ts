@@ -15,7 +15,7 @@ const { createRequestHandler } = await import("../src/index.ts");
 const definition = template(
   '<main data-sol-e="0"><!--sol:s:0--><!--sol:e:0--></main>',
   "solkit-test",
-  { elements: ["main"], regions: [0], operations: [] },
+  { elements: ["main"], regionCount: 1, propertyValueElements: [] },
 );
 const Root = component((_props, frame) => {
   const view = instantiate(definition, frame);

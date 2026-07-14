@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { unlink, writeFile } from "node:fs/promises";
 import { Window } from "happy-dom";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { compile } from "../src/index.ts";
 import type { Component } from "../../runtime/src/components.ts";
@@ -96,7 +99,7 @@ function installAnimations(): Array<{ cancelled: boolean; finish(): void }> {
 
 async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const result = compile(source, "Integration.tsx");
-  const runtimeModule = ["components.ts", "portals.ts", "refs.ts"]
+  const runtimeModule = ["components.ts", "portals.ts", "queries.ts", "refs.ts"]
     .map(
       (file) =>
         `export * from ${JSON.stringify(new URL(`../../runtime/src/${file}`, import.meta.url).href)};`,
@@ -114,12 +117,13 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
         target: ts.ScriptTarget.ES2022,
       },
     }).outputText + `\n// ${crypto.randomUUID()}`;
-  const moduleUrl = new URL(`./.integration-${crypto.randomUUID()}.mjs`, import.meta.url);
-  await writeFile(moduleUrl, javascript);
+  const directory = await mkdtemp(join(tmpdir(), "sol-compiler-test-"));
+  const modulePath = join(directory, "compiled.mjs");
+  await writeFile(modulePath, javascript);
   try {
-    return await import(moduleUrl.href);
+    return await import(pathToFileURL(modulePath).href);
   } finally {
-    await unlink(moduleUrl);
+    await rm(directory, { recursive: true, force: true });
   }
 }
 
@@ -861,6 +865,33 @@ test("query and mutation controllers update compiled DOM and opt into Suspense p
 
   dispose();
   expect(target.childNodes).toHaveLength(0);
+});
+
+test("creates frame-bound query and mutation controllers after async setup resumes", async () => {
+  const module = await loadCompiled(`
+    import { $component, $query, $mutation } from "sol";
+
+    export const App = $component(async function App() {
+      await Promise.resolve();
+      const query = $query({
+        queryKey: ["late-controller", ${JSON.stringify(crypto.randomUUID())}],
+        query: async () => "ready",
+        enabled: false,
+        cacheTime: 0,
+      });
+      const mutation = $mutation({ mutation: async () => "saved" });
+      return <p id="late-controllers">{String(query.isFetching)}:{String(mutation.isMutating)}</p>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(target.querySelector("#late-controllers")?.textContent).toBe("false:false");
+  dispose();
 });
 
 test("hydrates a fulfilled non-suspending initial query from its server loading branch", async () => {

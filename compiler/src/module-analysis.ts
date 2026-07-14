@@ -46,6 +46,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         for (const specifier of statement.specifiers) {
           if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;
           compiler.componentNames.add(specifier.local.name);
+          compiler.componentBindings.add(specifier.local);
         }
       } else if (statement.source.value === "sol") {
         for (const specifier of statement.specifiers) {
@@ -63,6 +64,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
           }
           if (specifier.imported.name === "Route") {
             compiler.componentNames.add(specifier.local.name);
+            compiler.componentBindings.add(specifier.local);
           }
           if (
             specifier.imported.name === "Suspense" ||
@@ -75,7 +77,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             compiler.builtinImports.set(specifier.local, specifier.imported.name);
           }
           if (t.isIdentifier(specifier.imported, { name: "Link" })) {
-            compiler.linkNames.add(specifier.local.name);
+            compiler.linkImports.add(specifier.local);
           }
           if (t.isIdentifier(specifier.imported, { name: "createRef" })) {
             compiler.refCreatorNames.add(specifier.local.name);
@@ -84,7 +86,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             t.isIdentifier(specifier.imported) &&
             (specifier.imported.name === "$query" || specifier.imported.name === "$mutation")
           ) {
-            compiler.requestHelperNames.add(specifier.local.name);
+            compiler.requestHelpers.set(specifier.local.name, specifier.imported.name);
           }
         }
       }
@@ -98,6 +100,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         t.isIdentifier(variable.init.callee, { name: "$component" })
       ) {
         compiler.componentNames.add(variable.id.name);
+        compiler.componentBindings.add(variable.id);
       }
     }
   }
@@ -110,6 +113,10 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
       if (!binding) return;
       const kind = compiler.builtinImports.get(binding.identifier);
       if (kind) compiler.builtinElements.set(path.node, kind);
+      if (compiler.componentBindings.has(binding.identifier)) {
+        compiler.componentElements.add(path.node);
+      }
+      if (compiler.linkImports.has(binding.identifier)) compiler.linkElements.add(path.node);
     },
   });
 }

@@ -86,6 +86,7 @@ interface QueryObserver {
 interface QueryCacheEntry {
   readonly key: string;
   readonly cache: Map<string, QueryCacheEntry>;
+  readonly requestScoped: boolean;
   readonly state: ReturnType<typeof $signal<QueryState<unknown>>>;
   readonly observers: Set<QueryObserver>;
   inFlight?: Promise<unknown>;
@@ -114,6 +115,17 @@ export function requestSource<Config extends object>(
   return config;
 }
 const serverQueryCaches = new WeakMap<URL, Map<string, QueryCacheEntry>>();
+
+export function clearServerQueryCache(url: URL | undefined): void {
+  if (!url) return;
+  const cache = serverQueryCaches.get(url);
+  if (!cache) return;
+  serverQueryCaches.delete(url);
+  for (const entry of cache.values()) {
+    if (entry.evictionTimer !== undefined) clearTimeout(entry.evictionTimer);
+  }
+  cache.clear();
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!isObject(value) || Array.isArray(value)) return false;
@@ -274,6 +286,7 @@ function queryEntry(key: string, frame: RenderFrame): QueryCacheEntry {
   entry = {
     key,
     cache,
+    requestScoped: Boolean(frame.url),
     state: $signal<QueryState<unknown>>({
       data: undefined,
       lastData: undefined,
@@ -305,6 +318,7 @@ function subscribe(entry: QueryCacheEntry, cacheTime: number, owner: Cleanup[]):
     active = false;
     entry.observers.delete(observer);
     if (entry.observers.size > 0) return;
+    if (entry.requestScoped) return;
     const retention = entry.cycleCacheTime;
     entry.cycleCacheTime = 0;
     if (retention === Infinity) return;
@@ -409,6 +423,23 @@ export function $query<Data, Args extends unknown[]>(
   config: QueryConfig<Data, Args>,
   ...initialArgs: Args
 ): QueryController<Data, Args> {
+  return createQuery(config, initialArgs);
+}
+
+export function queryInFrame<Data, Args extends unknown[]>(
+  config: QueryConfig<Data, Args>,
+  frame: RenderFrame,
+  ...initialArgs: Args
+): QueryController<Data, Args> {
+  return createQuery(config, initialArgs, frame.owner, frame);
+}
+
+function createQuery<Data, Args extends unknown[]>(
+  config: QueryConfig<Data, Args>,
+  initialArgs: Args,
+  explicitOwner?: Cleanup[],
+  explicitFrame?: RenderFrame,
+): QueryController<Data, Args> {
   validateOptionsObject(config, "$query() config");
   if (typeof config.query !== "function") throw new TypeError("$query() query must be a function");
   validateOptionalBoolean(config.enabled, "$query() enabled");
@@ -428,7 +459,11 @@ export function $query<Data, Args extends unknown[]>(
     validateOptionalBoolean(config.suspense.initial, "$query() suspense.initial");
     validateOptionalBoolean(config.suspense.refetch, "$query() suspense.refetch");
   }
-  const { owner, frame } = activeComponent("$query()");
+  const active =
+    explicitOwner && explicitFrame
+      ? { owner: explicitOwner, frame: explicitFrame }
+      : activeComponent("$query()");
+  const { owner, frame } = active;
   const enabled = config.enabled ?? true;
   const key = serializeQueryKey(config.queryKey);
   const entry = queryEntry(key, frame);
@@ -523,12 +558,31 @@ export function $query<Data, Args extends unknown[]>(
 export function $mutation<Data, Args extends unknown[]>(
   config: MutationConfig<Data, Args>,
 ): MutationController<Data, Args> {
+  return createMutation(config);
+}
+
+export function mutationInFrame<Data, Args extends unknown[]>(
+  config: MutationConfig<Data, Args>,
+  frame: RenderFrame,
+): MutationController<Data, Args> {
+  return createMutation(config, frame.owner, frame);
+}
+
+function createMutation<Data, Args extends unknown[]>(
+  config: MutationConfig<Data, Args>,
+  explicitOwner?: Cleanup[],
+  explicitFrame?: RenderFrame,
+): MutationController<Data, Args> {
   validateOptionsObject(config, "$mutation() config");
   if (typeof config.mutation !== "function") {
     throw new TypeError("$mutation() mutation must be a function");
   }
   validateOptionalBoolean(config.suspense, "$mutation() suspense");
-  const { owner, frame } = activeComponent("$mutation()");
+  const active =
+    explicitOwner && explicitFrame
+      ? { owner: explicitOwner, frame: explicitFrame }
+      : activeComponent("$mutation()");
+  const { owner, frame } = active;
   const state = $signal<MutationState<Data>>({
     data: undefined,
     lastData: undefined,

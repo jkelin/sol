@@ -1,5 +1,6 @@
 import type { Component } from "./components.ts";
-import { isObject, isPromiseLike, reactive } from "./reactivity.ts";
+import { clearServerQueryCache } from "./queries.ts";
+import { isObject, isPromiseLike, reactive, runDisposals } from "./reactivity.ts";
 import {
   getFactory,
   prepareServerRender,
@@ -150,6 +151,6 @@ export async function renderToStringAsync<Props extends object>(
     const payload = serializeGraph(session.payload());
     return `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
   } finally {
-    rendered?.dispose();
+    runDisposals([() => rendered?.dispose(), () => clearServerQueryCache(url)]);
   }
 }

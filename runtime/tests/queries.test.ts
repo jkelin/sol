@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { $mutation, $query, type QueryKey } from "../src/queries.ts";
-import { block, component, renderComponent, type Block } from "../src/rendering.ts";
+import {
+  $mutation,
+  $query,
+  clearServerQueryCache,
+  queryInFrame,
+  type QueryKey,
+} from "../src/queries.ts";
+import { disposeOwner } from "../src/reactivity.ts";
+import { block, component, renderComponent, rootFrame, type Block } from "../src/rendering.ts";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -49,6 +56,47 @@ function inComponent<T>(setup: () => T): { readonly value: T; dispose(): void } 
 }
 
 describe("queries", () => {
+  test("retains query data through a request and clears it at the render boundary", async () => {
+    const url = new URL("https://example.test/request");
+    const firstOwner: Array<() => void> = [];
+    const firstFrame = { ...rootFrame(), owner: firstOwner, url };
+    let requests = 0;
+    const config = {
+      queryKey: "request",
+      query: async () => {
+        requests += 1;
+        return "payload";
+      },
+      enabled: false,
+    };
+    const first = queryInFrame(config, firstFrame);
+    await first.refetch();
+    const originalSetTimeout = globalThis.setTimeout;
+    let scheduled = false;
+    globalThis.setTimeout = ((..._arguments: unknown[]) => {
+      scheduled = true;
+      return 0 as never;
+    }) as unknown as typeof setTimeout;
+    try {
+      disposeOwner(firstOwner);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+
+    expect(scheduled).toBe(false);
+    const secondOwner: Array<() => void> = [];
+    const second = queryInFrame(config, { ...rootFrame(), owner: secondOwner, url });
+    expect(second.data).toBe("payload");
+    expect(requests).toBe(1);
+    disposeOwner(secondOwner);
+
+    clearServerQueryCache(url);
+    const thirdOwner: Array<() => void> = [];
+    const third = queryInFrame(config, { ...rootFrame(), owner: thirdOwner, url });
+    expect(third.data).toBeUndefined();
+    disposeOwner(thirdOwner);
+  });
+
   test("validates configs, JSON keys, durations, call options, and component ownership", async () => {
     expect(() => $query(undefined as never)).toThrow("config must be an object");
     expect(() => $mutation({ mutation: async () => 1 })).toThrow("component setup");

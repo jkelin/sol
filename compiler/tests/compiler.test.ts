@@ -68,6 +68,16 @@ describe("compiler", () => {
     }
   });
 
+  test("canonicalizes static route segments for URL pathname matching", () => {
+    const result = compile(
+      `import { Page } from "./Page";
+       export const page = $route({ path: "/cafe au lait/Crème" }, Page);`,
+      "page.sol.tsx",
+    );
+
+    expect(result.code).toContain('"pattern":"^/cafe%20au%20lait/Cr%C3%A8me$"');
+  });
+
   test("preserves route schemas and compiles Link into its anchor child", () => {
     const result = compile(
       `
@@ -486,9 +496,11 @@ describe("compiler", () => {
     expect(result.code).toContain("__sol_event");
     expect(result.code).toContain("__sol_attribute");
     expect(result.code).toContain("__sol_text");
+    expect(result.code).not.toContain("asyncCaptureActive as __sol_async_capture_active");
     expect(result.code).not.toContain("$component(function");
     expect(result.map?.sources).toContain("Counter.tsx");
     expect(result.map?.sourcesContent).toEqual([source]);
+    expect(result.code).not.toContain("__sol_source_");
   });
 
   test("maps generated setup and DOM effects to their authored locations", () => {
@@ -723,10 +735,7 @@ describe("compiler", () => {
 
     expect(result.code.match(/__sol_bind\([^\n]+"value"/g)?.length).toBe(2);
     expect(result.code.match(/__sol_bind\([^\n]+"checked"/g)?.length).toBe(1);
-    expect(
-      result.code.match(/"kind":"bind","target":"element","index":\d+,"name":"value"/g)?.length,
-    ).toBe(2);
-    expect(result.code).toMatch(/"kind":"bind","target":"element","index":\d+,"name":"checked"/);
+    expect(result.code).toContain('"propertyValueElements":[0,1]');
   });
 
   test("connects form controllers through the $form element property", () => {
@@ -760,6 +769,31 @@ describe("compiler", () => {
     expect(result.code).toContain("const row = __sol_component");
     expect(result.code).toContain("__sol_child");
     expect(result.code).not.toContain("<row>");
+  });
+
+  test("does not classify shadowed component or Link bindings by name", () => {
+    expect(() =>
+      compile(
+        `import { $component, Link } from "sol";
+         import { Child } from "./Child";
+         const App = $component(function App() {
+           const Child = 1;
+           return <Child />;
+         });`,
+        "App.tsx",
+      ),
+    ).toThrow("JSX component Child must be declared with $component() or imported");
+
+    expect(() =>
+      compile(
+        `import { $component, Link } from "sol";
+         const App = $component(function App() {
+           const Link = 1;
+           return <Link />;
+         });`,
+        "App.tsx",
+      ),
+    ).toThrow("JSX component Link must be declared with $component() or imported");
   });
 
   test("compiles contexts, async components, suspense, await, and error boundaries", () => {
@@ -808,11 +842,9 @@ describe("compiler", () => {
     expect(result.code).toContain("__sol_frame, 250)");
     expect(result.code).toMatch(/__sol_template\(`[^`]*`, "t[a-z0-9]+", \{/);
     expect(result.code).toContain('"elements":["p"]');
-    expect(result.code).toContain('"regions":[0,1]');
-    expect(result.code).toMatch(/"operations":\[\{"id":"o[a-z0-9]+","kind":"attribute"/);
-    expect(result.code).toMatch(
-      /"kind":"attribute","target":"element","index":0,"name":"data-state"/,
-    );
+    expect(result.code).toContain('"regionCount":2');
+    expect(result.code).toContain('"propertyValueElements":[]');
+    expect(result.code).not.toContain('"operations"');
   });
 
   test("passes the render frame to imported context candidates", () => {
@@ -1658,11 +1690,29 @@ test("emits authored source metadata for query and mutation diagnostics", () => 
   );
 
   expect(result.code).toMatch(
-    /query\(__sol_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 4,[\s\S]*?column: 24/,
+    /__sol_query\(__sol_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 4,[\s\S]*?column: 24[\s\S]*?__sol_frame/,
   );
   expect(result.code).toMatch(
-    /\$mutation\(__sol_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 5,[\s\S]*?column: 21/,
+    /__sol_mutation\(__sol_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 5,[\s\S]*?column: 21[\s\S]*?__sol_frame/,
   );
+});
+
+test("binds request helpers to async component frames", () => {
+  const result = compile(
+    `import { $component, $query, $mutation } from "sol";
+     const Requests = $component(async function Requests() {
+       await Promise.resolve();
+       const query = $query({ queryKey: "late", query: async () => 1 });
+       const mutation = $mutation({ mutation: async () => 2 });
+       return <p>{query.data}{mutation.data}</p>;
+     });`,
+    "AsyncRequests.tsx",
+  );
+
+  expect(result.code).toContain("__sol_query(__sol_request_source(");
+  expect(result.code).toContain("__sol_mutation(__sol_request_source(");
+  expect(result.code).not.toMatch(/const query = \$query\(/);
+  expect(result.code).not.toMatch(/const mutation = \$mutation\(/);
 });
 
 test("an explicitly enabled production build bundles devtools", async () => {

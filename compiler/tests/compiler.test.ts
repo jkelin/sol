@@ -197,6 +197,58 @@ describe("compiler", () => {
     expect(clientSources).not.toContain("exportedBackendHelper");
   });
 
+  test("removes assignment-built and mixed server dependencies from client modules", () => {
+    const assigned = compile(
+      `
+        import { backendValidator } from "./backend-assignment-secret";
+        export let schema;
+        // BACKEND_ASSIGNMENT_COMMENT_SECRET
+        schema = backendValidator("BACKEND_ASSIGNMENT_VALUE_SECRET");
+        export const load = $rpcQuery("load", { schema }, async () => 1);
+      `,
+      "assigned.sol.ts",
+      { target: "client" },
+    );
+    expect(assigned.code).toContain('__solix_rpc_query_client("load")');
+    expect(assigned.code).not.toContain("backend-assignment-secret");
+    expect(assigned.code).not.toContain("BACKEND_ASSIGNMENT_COMMENT_SECRET");
+    expect(assigned.code).not.toContain("BACKEND_ASSIGNMENT_VALUE_SECRET");
+    expect(assigned.map?.sourcesContent?.join("\n")).not.toContain("BACKEND_ASSIGNMENT");
+
+    const mixed = compile(
+      `
+        import { backendValidator } from "./backend-mixed-secret";
+        // BACKEND_MIXED_COMMENT_SECRET
+        const schema = backendValidator("BACKEND_MIXED_SCHEMA_SECRET"), frontendLabel = "Public";
+        export const load = $rpcQuery("load", { schema }, async () => 1);
+        export const App = $component(function App() { return <p>{frontendLabel}</p>; });
+      `,
+      "mixed.sol.tsx",
+      { target: "client" },
+    );
+    expect(mixed.code).toContain('const frontendLabel = "Public"');
+    expect(mixed.code).toContain("frontendLabel");
+    expect(mixed.code).not.toContain("backend-mixed-secret");
+    expect(mixed.code).not.toContain("BACKEND_MIXED_SCHEMA_SECRET");
+    expect(mixed.code).not.toContain("backendValidator");
+    expect(mixed.map?.sourcesContent?.join("\n")).not.toContain("BACKEND_MIXED");
+  });
+
+  test("removes comments attached to stripped server dependencies", () => {
+    const result = compile(
+      `
+        import { $rpcQuery } from "solix";
+        // BACKEND_HANDLER_COMMENT_SECRET
+        function backendHandler() { return Promise.resolve("secret"); }
+        export const load = $rpcQuery("load", { schema: value => value }, backendHandler);
+      `,
+      "comments.sol.ts",
+      { target: "client" },
+    );
+    expect(result.code).not.toContain("BACKEND_HANDLER_COMMENT_SECRET");
+    expect(result.map?.sourcesContent?.join("\n")).not.toContain("BACKEND_HANDLER_COMMENT_SECRET");
+  });
+
   test("validates server declaration boundaries and literal configs", () => {
     const valid = `export const load = $rpcQuery("load", { schema: value => value }, async () => 1);`;
     expect(() => compile(valid, "api.ts")).toThrow("only valid in *.sol.ts");
@@ -222,6 +274,26 @@ describe("compiler", () => {
         "api.sol.ts",
       ),
     ).toThrow("reserved /api/rpc namespace");
+    for (const path of ["//users", "/users/", "/users//new"]) {
+      expect(() =>
+        compile(
+          `export const route = $httpRoute({ method: "GET", path: ${JSON.stringify(path)}, schema: x => x }, async () => new Response());`,
+          "api.sol.ts",
+        ),
+      ).toThrow(/exactly one slash|empty or trailing segments/);
+    }
+    expect(() =>
+      compile(
+        `export const route = $httpRoute({ method: "GET", path: "/users/:id/:id", schema: x => x }, async () => new Response());`,
+        "api.sol.ts",
+      ),
+    ).toThrow("Duplicate HTTP route parameter id");
+    expect(() =>
+      compile(
+        `export const route = $httpRoute({ method: "GET", path: "/users/:?draft=1", schema: x => x }, async () => new Response());`,
+        "api.sol.ts",
+      ),
+    ).toThrow("must not contain a query or hash");
   });
 
   test("validates the compiler-specialized Link interface", () => {

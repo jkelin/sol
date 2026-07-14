@@ -28,6 +28,13 @@ test.afterAll(async () => {
   if (server.exitCode === null) await new Promise<void>((resolve) => server?.once("exit", resolve));
 });
 
+test("dispatches the production HTTP route", async () => {
+  const response = await fetch("http://127.0.0.1:4174/api/health");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("application/json");
+  expect(await response.json()).toEqual({ ok: true, framework: "solix" });
+});
+
 test("runs landing examples and preserves preview state across view modes", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));

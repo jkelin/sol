@@ -176,11 +176,14 @@ function rpcEndpoint<Input extends RpcArgs, Parsed extends RpcArgs, Data>(
   const unexpected = Object.keys(config).find((key) => key !== "schema");
   if (unexpected) throw new TypeError(`RPC config contains unknown property ${unexpected}`);
   const callable = async (...args: Input): Promise<Data> => {
+    serializeJson(args, `RPC ${name} arguments`);
     const parsed = await parse(config.schema, args);
     if (!Array.isArray(parsed)) throw new TypeError("RPC schema output must be an argument tuple");
     const result = handler(...(parsed as unknown as Parsed));
     if (!isPromiseLike(result)) throw new TypeError("RPC handler must return a promise-like value");
-    return await result;
+    const data = await result;
+    serializeJson(data, `RPC ${name} result`);
+    return data;
   };
   Object.defineProperties(callable, {
     [ENDPOINT]: { value: true },
@@ -278,6 +281,9 @@ function compileHttpPath(path: string): CompiledHttpPath {
   }
   const names: string[] = [];
   const specificity: number[] = [];
+  if (path === "/") {
+    return { pattern: /^\/$/, parameterNames: names, specificity };
+  }
   const pattern = path
     .split("/")
     .map((segment, index) => {
@@ -360,7 +366,12 @@ function queryRecord(
   const output: Record<string, string | readonly string[]> = {};
   for (const key of new Set(search.keys())) {
     const values = search.getAll(key);
-    output[key] = values.length === 1 ? values[0]! : Object.freeze(values);
+    Object.defineProperty(output, key, {
+      configurable: true,
+      enumerable: true,
+      value: values.length === 1 ? values[0]! : Object.freeze(values),
+      writable: true,
+    });
   }
   return Object.freeze(output);
 }
@@ -437,6 +448,9 @@ export async function dispatchServerEndpoint(
       endpoint.kind !== "http" && endpoint.path === url.pathname,
   );
   const rpc = rpcPath.find((endpoint) => endpoint.method === request.method);
+  if (rpcPath.length === 0 && url.pathname.startsWith(RPC_PREFIX)) {
+    return new Response("Not Found", { status: 404 });
+  }
   if (!rpc && rpcPath.length > 0) {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
   }
@@ -493,7 +507,12 @@ export async function dispatchServerEndpoint(
     const params: Record<string, string> = {};
     selected.endpoint.compiled.parameterNames.forEach((name, index) => {
       try {
-        params[name] = decodeURIComponent(selected.match[index + 1]!);
+        Object.defineProperty(params, name, {
+          configurable: true,
+          enumerable: true,
+          value: decodeURIComponent(selected.match[index + 1]!),
+          writable: true,
+        });
       } catch {
         throw Object.assign(new TypeError(`Malformed HTTP route parameter ${name}`), {
           status: 400,

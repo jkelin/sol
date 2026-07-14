@@ -19,6 +19,21 @@ test.afterAll(async () => {
 test("Vite development middleware renders and hydrates full-stack features", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  const clientModule = await server.transformRequest("/src/queries.sol.tsx");
+  if (!clientModule) throw new Error("Vite did not transform the queries client module");
+  const clientCode = clientModule.code;
+  const clientSources = clientModule.map?.sourcesContent?.join("\n") ?? "";
+  const clientArtifacts = `${clientCode}\n${clientSources}`;
+  expect(clientCode).toContain('__solix_rpc_query_client("notes")');
+  expect(clientCode).toContain('__solix_rpc_mutation_client("create-note")');
+  expect(clientArtifacts).not.toContain("notes-backend");
+  expect(clientArtifacts).not.toContain("notesPageSchema");
+  expect(clientArtifacts).not.toContain("noteTitleSchema");
+  expect(clientArtifacts).not.toContain("noteHttpSchema");
+  expect(clientArtifacts).not.toContain("verifyNotesBackendSecret");
+  expect(clientArtifacts).not.toContain("Cache one request across observers");
+  expect(clientArtifacts).not.toContain("SOLIX_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
+  expect(clientArtifacts).not.toContain("SOLIX_BACKEND_SECRET_DO_NOT_SHIP");
   const response = await fetch("http://127.0.0.1:4175/blog/1?from=dev");
   const document = await response.text();
   expect(response.status).toBe(200);

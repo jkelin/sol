@@ -29,6 +29,22 @@ describe("server declarations", () => {
     expect((query as unknown as { method: string }).method).toBe("POST");
   });
 
+  test("enforces JSON arguments and results during direct server invocation", async () => {
+    let invoked = false;
+    const query = rpcQueryServer(
+      "json-direct",
+      { schema: (args: readonly [unknown]) => [...args] as [unknown] },
+      async () => {
+        invoked = true;
+        return 1n;
+      },
+    );
+    await expect(query(new Date())).rejects.toThrow("JSON arrays, objects, and primitives");
+    expect(invoked).toBe(false);
+    await expect(query("valid input")).rejects.toThrow("JSON-serializable");
+    expect(invoked).toBe(true);
+  });
+
   test("dispatches query and mutation POST requests with JSON values", async () => {
     const query = rpcQueryServer(
       "when",
@@ -119,6 +135,51 @@ describe("server declarations", () => {
     expect(received?.params).toEqual({ id: "one" });
     expect(received?.query).toEqual({ tag: ["a", "b"] });
     expect(received?.body).toEqual({ ready: true });
+  });
+
+  test("dispatches root HTTP routes and preserves special record keys", async () => {
+    const root = httpRouteServer(
+      {
+        method: "GET",
+        path: "/",
+        schema: (input: HttpRouteInput) => input,
+      },
+      async (input) => Response.json(input.query),
+    ) as unknown as ServerEndpoint;
+    const rootResponse = await dispatchServerEndpoint(
+      [root],
+      new Request("https://example.test/?__proto__=one&__proto__=two&constructor=value"),
+    );
+    expect(rootResponse?.status).toBe(200);
+    const rootBody = (await rootResponse!.json()) as Record<string, unknown>;
+    expect(Object.hasOwn(rootBody, "__proto__")).toBe(true);
+    expect(rootBody.__proto__).toEqual(["one", "two"]);
+    expect(rootBody.constructor).toBe("value");
+
+    const parameter = httpRouteServer(
+      {
+        method: "GET",
+        path: "/:__proto__",
+        schema: (input: HttpRouteInput) => input,
+      },
+      async (input) => Response.json(input.params),
+    ) as unknown as ServerEndpoint;
+    const parameterResponse = await dispatchServerEndpoint(
+      [parameter],
+      new Request("https://example.test/safe"),
+    );
+    const parameterBody = (await parameterResponse!.json()) as Record<string, unknown>;
+    expect(Object.hasOwn(parameterBody, "__proto__")).toBe(true);
+    expect(parameterBody.__proto__).toBe("safe");
+  });
+
+  test("returns 404 for unknown names in the reserved RPC namespace", async () => {
+    const response = await dispatchServerEndpoint(
+      [],
+      new Request("https://example.test/api/rpc/missing"),
+    );
+    expect(response?.status).toBe(404);
+    expect(await response!.text()).toBe("Not Found");
   });
 
   test("returns validation, media type, method, and production failure responses", async () => {

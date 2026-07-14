@@ -23,8 +23,9 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures.
 - `module-analysis.ts` validates bindings and classifies framework, builtin, Head, Link, and component imports.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
-  selecting direct server definitions or browser stubs and pruning imports used only by stripped
-  server expressions, including exported backend-only dependency closures.
+  selecting direct server definitions or browser stubs and pruning imports, declarators,
+  assignments, attached comments, and exported dependency closures used only by stripped server
+  expressions.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
 - `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax,
   redacts stripped server ranges from client source content, and creates the final source map.

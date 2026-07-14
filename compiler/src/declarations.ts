@@ -119,6 +119,39 @@ export function compileRouteDeclarations(state: CompilationState): void {
 
 const serverDeclarationNames = new Set(["$rpcQuery", "$rpcMutation", "$httpRoute"]);
 
+function rangeWithLeadingComments(node: t.Node): { start: number; end: number } {
+  const commentStart = node.leadingComments
+    ?.filter((comment) => comment.start !== null && comment.start !== undefined)
+    .reduce((start, comment) => Math.min(start, comment.start!), node.start!);
+  return { start: commentStart ?? node.start!, end: node.end! };
+}
+
+function validateHttpRoutePath(
+  compiler: CompilationState["compiler"],
+  node: t.StringLiteral,
+): void {
+  const path = node.value;
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    codeFrame(compiler, node, "HTTP route paths must start with exactly one slash");
+  }
+  if (path.includes("?") || path.includes("#")) {
+    codeFrame(compiler, node, "HTTP route paths must not contain a query or hash");
+  }
+  if (path !== "/" && (path.endsWith("/") || path.includes("//"))) {
+    codeFrame(compiler, node, "HTTP route paths must not contain empty or trailing segments");
+  }
+  const names = new Set<string>();
+  for (const segment of path.slice(1).split("/")) {
+    if (!segment.startsWith(":")) continue;
+    const name = segment.slice(1);
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+      codeFrame(compiler, node, `Invalid HTTP route parameter ${segment}`);
+    }
+    if (names.has(name)) codeFrame(compiler, node, `Duplicate HTTP route parameter ${name}`);
+    names.add(name);
+  }
+}
+
 export function compileServerDeclarations(state: CompilationState): void {
   const { ast, compiler, edits, serverCallRanges } = state;
   for (const statement of ast.program.body) {
@@ -210,6 +243,7 @@ export function compileServerDeclarations(state: CompilationState): void {
           "$httpRoute() path must be a root-relative string literal",
         );
       }
+      if (t.isStringLiteral(path)) validateHttpRoutePath(compiler, path);
       if (t.isStringLiteral(path) && path.value.startsWith("/api/rpc/")) {
         codeFrame(compiler, path, "$httpRoute() path uses the reserved /api/rpc namespace");
       }
@@ -235,10 +269,15 @@ export function compileServerDeclarations(state: CompilationState): void {
         : helper === "$httpRoute"
           ? `export const ${variable.id.name} = ${runtime}({ method: ${generate(properties.get("method")!.value).code}, path: ${generate(properties.get("path")!.value).code} });`
           : `export const ${variable.id.name} = ${runtime}(${nameCode});`;
-    edits.push({ start: statement.start!, end: statement.end!, code });
+    const statementRange =
+      compiler.target === "client" ? rangeWithLeadingComments(statement) : statement;
+    edits.push({ start: statementRange.start!, end: statementRange.end!, code });
     serverCallRanges.add(`${call.start}:${call.end}`);
     if (compiler.target === "client") {
-      state.clientServerSourceRanges.push({ start: statement.start!, end: statement.end! });
+      state.clientServerSourceRanges.push({
+        start: statementRange.start!,
+        end: statementRange.end!,
+      });
     }
   }
   if (compiler.target === "client" && serverCallRanges.size > 0) {
@@ -253,40 +292,113 @@ function pruneClientServerDependencies(state: CompilationState): void {
     removedRanges.some(([start, end]) => node.start! >= start! && node.end! <= end!);
   traverse(ast, {
     Program(path) {
+      const removedDeclarators = new Set<t.VariableDeclarator>();
+      const removedStatements = new Set<t.Statement>();
       let changed = true;
       while (changed) {
         changed = false;
+        for (const statement of ast.program.body) {
+          if (
+            removedStatements.has(statement) ||
+            !t.isExpressionStatement(statement) ||
+            !t.isAssignmentExpression(statement.expression)
+          ) {
+            continue;
+          }
+          let target: t.Node = statement.expression.left;
+          while (t.isMemberExpression(target) || t.isOptionalMemberExpression(target)) {
+            target = target.object;
+          }
+          if (!t.isIdentifier(target)) continue;
+          const binding = path.scope.getBinding(target.name);
+          if (!binding) continue;
+          const declarationStatement = ast.program.body.find(
+            (candidate) =>
+              candidate.start! <= binding.identifier.start! &&
+              candidate.end! >= binding.identifier.end!,
+          );
+          const reads = binding.referencePaths.filter(
+            (reference) => reference.node !== target && reference.node !== declarationStatement,
+          );
+          if (reads.length === 0 || reads.some((reference) => !removed(reference.node))) continue;
+          const range = rangeWithLeadingComments(statement);
+          removedStatements.add(statement);
+          removedRanges.push([range.start, range.end]);
+          state.clientServerSourceRanges.push(range);
+          changed = true;
+        }
         for (const statement of ast.program.body) {
           const dependency =
             t.isExportNamedDeclaration(statement) && statement.declaration
               ? statement.declaration
               : statement;
           if (
+            removedStatements.has(statement) ||
             t.isImportDeclaration(statement) ||
             (t.isExportDeclaration(statement) && dependency === statement) ||
-            removed(statement) ||
-            (!t.isVariableDeclaration(dependency) &&
-              !t.isFunctionDeclaration(dependency) &&
-              !t.isClassDeclaration(dependency))
+            removed(statement)
           ) {
             continue;
           }
-          const names = Object.keys(t.getBindingIdentifiers(dependency));
-          const bindings = names.map((name) => path.scope.getBinding(name)).filter(Boolean);
-          const references = bindings.flatMap((binding) => binding!.referencePaths);
-          const meaningfulReferences = references.filter(
-            (reference) => reference.node !== statement,
-          );
-          if (
-            meaningfulReferences.length === 0 ||
-            meaningfulReferences.some((reference) => !removed(reference.node))
-          ) {
-            continue;
+          const candidates = t.isVariableDeclaration(dependency)
+            ? dependency.declarations.filter((declarator) => !removedDeclarators.has(declarator))
+            : t.isFunctionDeclaration(dependency) || t.isClassDeclaration(dependency)
+              ? [dependency]
+              : [];
+          for (const candidate of candidates) {
+            const names = Object.keys(t.getBindingIdentifiers(candidate));
+            const bindings = names.map((name) => path.scope.getBinding(name)).filter(Boolean);
+            const references = bindings.flatMap((binding) => binding!.referencePaths);
+            const meaningfulReferences = references.filter(
+              (reference) => reference.node !== statement,
+            );
+            if (
+              meaningfulReferences.length === 0 ||
+              meaningfulReferences.some((reference) => !removed(reference.node))
+            ) {
+              continue;
+            }
+            const range = rangeWithLeadingComments(candidate);
+            removedRanges.push([range.start, range.end]);
+            state.clientServerSourceRanges.push(range);
+            if (t.isVariableDeclarator(candidate)) removedDeclarators.add(candidate);
+            else removedStatements.add(statement);
+            changed = true;
           }
-          edits.push({ start: statement.start!, end: statement.end!, code: "" });
-          removedRanges.push([statement.start!, statement.end!]);
-          state.clientServerSourceRanges.push({ start: statement.start!, end: statement.end! });
-          changed = true;
+        }
+      }
+      for (const statement of ast.program.body) {
+        if (removedStatements.has(statement)) {
+          const range = rangeWithLeadingComments(statement);
+          edits.push({ start: range.start, end: range.end, code: "" });
+          continue;
+        }
+        const dependency =
+          t.isExportNamedDeclaration(statement) && statement.declaration
+            ? statement.declaration
+            : statement;
+        if (!t.isVariableDeclaration(dependency)) continue;
+        const retained = dependency.declarations.filter(
+          (declarator) => !removedDeclarators.has(declarator),
+        );
+        if (retained.length === dependency.declarations.length) continue;
+        if (retained.length === 0) {
+          const range = rangeWithLeadingComments(statement);
+          edits.push({ start: range.start, end: range.end, code: "" });
+          state.clientServerSourceRanges.push(range);
+          continue;
+        }
+        const replacement = t.cloneNode(dependency);
+        replacement.declarations = retained.map((declarator) => t.cloneNode(declarator));
+        const code = generate(replacement).code;
+        const range = rangeWithLeadingComments(statement);
+        edits.push({
+          start: range.start,
+          end: range.end,
+          code: t.isExportNamedDeclaration(statement) ? `export ${code}` : code,
+        });
+        if (range.start < statement.start!) {
+          state.clientServerSourceRanges.push({ start: range.start, end: statement.start! });
         }
       }
       for (const statement of ast.program.body) {
@@ -299,12 +411,13 @@ function pruneClientServerDependencies(state: CompilationState): void {
         if (retained.length === statement.specifiers.length) continue;
         const replacement = t.cloneNode(statement);
         replacement.specifiers = retained.map((specifier) => t.cloneNode(specifier));
+        const range = rangeWithLeadingComments(statement);
         edits.push({
-          start: statement.start!,
-          end: statement.end!,
+          start: range.start!,
+          end: range.end!,
           code: retained.length === 0 ? "" : generate(replacement).code,
         });
-        state.clientServerSourceRanges.push({ start: statement.start!, end: statement.end! });
+        state.clientServerSourceRanges.push({ start: range.start!, end: range.end! });
       }
       path.stop();
     },

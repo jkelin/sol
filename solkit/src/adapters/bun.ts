@@ -8,9 +8,10 @@ const clientDirectory = resolve(import.meta.dir, "../client");
 const template = await Bun.file(resolve(clientDirectory, "index.html")).text();
 const port = Number(Bun.env.PORT ?? 3000);
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError("PORT must be a valid TCP port");
+const host = Bun.env.HOST ?? "0.0.0.0";
 
-Bun.serve({
-  hostname: Bun.env.HOST ?? "0.0.0.0",
+const server = Bun.serve({
+  hostname: host,
   port,
   async fetch(request) {
     const url = new URL(request.url);
@@ -32,6 +33,8 @@ Bun.serve({
     return handle(request, { template });
   },
 });
+const displayHost = host.includes(":") ? \`[\${host}]\` : host;
+console.log(\`Solkit listening on http://\${displayHost}:\${server.port}\`);
 `;
 
 export function bunAdapter(): SolkitAdapter {

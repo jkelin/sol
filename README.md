@@ -285,6 +285,7 @@ For full-document SSR, add the `solkit` Vite plugin after the compiler, export t
 from an entry module, and select `bunAdapter()` or `nodeAdapter()`. Development HTML requests render
 through Vite middleware with imported stylesheets available for the initial render; `solkit build`
 creates client and server bundles plus the selected launcher.
+The generated launcher prints its bound HTTP address once it starts listening.
 See `solkit/README.md` for the document outlets and complete configuration.
 
 ## Context and async rendering

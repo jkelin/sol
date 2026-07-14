@@ -46,7 +46,8 @@ example `solkit({ entry: "/src/entry.tsx", exportName: "Shell", adapter: bunAdap
 Use `vite` for development and `solkit build` for production. The build writes browser assets to
 `dist/client`, the bundled Fetch-style SSR handler to `dist/server/app.mjs`, and the selected host
 launcher to `dist/server/index.mjs`. Start the launcher with Bun or Node as selected. `HOST` defaults
-to `0.0.0.0`, and `PORT` defaults to `3000`.
+to `0.0.0.0`, and `PORT` defaults to `3000`. Once the listener is ready, the launcher prints its
+bound HTTP address and actual port.
 
 In development, Solkit follows the complete client module graph and adds stylesheet links to the
 server-rendered document before it is sent. CSS imported by the entry, nested components, and route

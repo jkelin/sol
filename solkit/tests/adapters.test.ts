@@ -85,5 +85,10 @@ for (const [name, adapter, command] of [
     const post = await fetch(`http://127.0.0.1:${port}/route`, { method: "POST" });
     expect(post.status).toBe(405);
     expect(post.headers.get("allow")).toBe("GET, HEAD");
+
+    process.kill();
+    await process.exited;
+    const output = await new Response(process.stdout).text();
+    expect(output).toContain(`Solkit listening on http://127.0.0.1:${port}`);
   });
 }

@@ -13,6 +13,7 @@ const clientDirectory = resolve(serverDirectory, "../client");
 const template = await readFile(resolve(clientDirectory, "index.html"), "utf8");
 const port = Number(process.env.PORT ?? 3000);
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError("PORT must be a valid TCP port");
+const host = process.env.HOST ?? "0.0.0.0";
 const contentTypes = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -22,7 +23,7 @@ const contentTypes = new Map([
   [".svg", "image/svg+xml"],
 ]);
 
-createServer(async (incoming, outgoing) => {
+const server = createServer(async (incoming, outgoing) => {
   try {
     const origin = \`http://\${incoming.headers.host ?? "localhost"}\`;
     const url = new URL(incoming.url ?? "/", origin);
@@ -68,7 +69,13 @@ createServer(async (incoming, outgoing) => {
     if (!outgoing.headersSent) outgoing.writeHead(500);
     outgoing.end("Internal Server Error");
   }
-}).listen(port, process.env.HOST ?? "0.0.0.0");
+});
+server.listen(port, host, () => {
+  const address = server.address();
+  const listeningPort = typeof address === "object" && address ? address.port : port;
+  const displayHost = host.includes(":") ? \`[\${host}]\` : host;
+  console.log(\`Solkit listening on http://\${displayHost}:\${listeningPort}\`);
+});
 `;
 
 export function nodeAdapter(): SolkitAdapter {

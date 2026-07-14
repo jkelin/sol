@@ -257,14 +257,10 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
       return id === resolvedVirtualRoutes ? routeManifest(files) : endpointManifest(files);
     },
     configureServer(server) {
-      const added = (file: string): void => invalidateManifest(server, file);
-      const removed = (file: string): void => invalidateManifest(server, file);
-      server.watcher.on("add", added);
-      server.watcher.on("unlink", removed);
-      return () => {
-        server.watcher.off("add", added);
-        server.watcher.off("unlink", removed);
-      };
+      const changed = (file: string): void => invalidateManifest(server, file);
+      server.watcher.on("add", changed);
+      server.watcher.on("change", changed);
+      server.watcher.on("unlink", changed);
     },
     transform: {
       filter: { id: [componentFile, solFile] },

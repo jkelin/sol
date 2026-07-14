@@ -22,10 +22,16 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   const clientModule = await server.transformRequest("/src/queries.sol.tsx");
   if (!clientModule) throw new Error("Vite did not transform the queries client module");
   const clientCode = clientModule.code;
-  const clientSources = clientModule.map?.sourcesContent?.join("\n") ?? "";
+  const sourceContents =
+    clientModule.map && "sourcesContent" in clientModule.map
+      ? clientModule.map.sourcesContent
+      : undefined;
+  if (!sourceContents) throw new Error("Vite did not retain client source-map content");
+  const clientSources = sourceContents.join("\n");
   const clientArtifacts = `${clientCode}\n${clientSources}`;
   expect(clientCode).toContain('__solix_rpc_query_client("notes")');
   expect(clientCode).toContain('__solix_rpc_mutation_client("create-note")');
+  expect(clientSources).toContain("interface Note");
   expect(clientArtifacts).not.toContain("notes-backend");
   expect(clientArtifacts).not.toContain("notesPageSchema");
   expect(clientArtifacts).not.toContain("noteTitleSchema");

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { SourceMapConsumer } from "source-map-js";
-import { build, type IndexHtmlTransformResult, type ResolvedConfig } from "vite";
+import {
+  build,
+  type IndexHtmlTransformResult,
+  type ResolvedConfig,
+  type ViteDevServer,
+} from "vite";
 import { compile } from "../src/index.ts";
 import { solix } from "../src/vite.ts";
 
@@ -294,6 +299,20 @@ describe("compiler", () => {
         "api.sol.ts",
       ),
     ).toThrow("must not contain a query or hash");
+    for (const handler of ["42", "null", "{}", "[]", "`not callable`"]) {
+      expect(() =>
+        compile(
+          `export const load = $rpcQuery("load", { schema: x => x }, ${handler});`,
+          "api.sol.ts",
+        ),
+      ).toThrow("handler must be callable");
+    }
+    expect(() =>
+      compile(
+        `const handlers = { load: async () => 1 }; export const load = $rpcQuery("load", { schema: x => x }, handlers.load);`,
+        "api.sol.ts",
+      ),
+    ).not.toThrow();
   });
 
   test("validates the compiler-specialized Link interface", () => {
@@ -1473,6 +1492,42 @@ test("the Vite plugin enables devtools only for development by default", () => {
   ]);
   expect(injectedDevtools("serve", false)).toEqual([]);
   expect(() => solix({ devtools: "yes" as never })).toThrow("must be a boolean");
+});
+
+test("the Vite plugin invalidates both manifests when an existing sol module changes", () => {
+  const plugin = solix();
+  const resolve = plugin.configResolved as unknown as (config: ResolvedConfig) => void;
+  resolve({ command: "serve", root: "/project" } as ResolvedConfig);
+  const listeners = new Map<string, (file: string) => void>();
+  const invalidated: string[] = [];
+  const messages: unknown[] = [];
+  const server = {
+    watcher: {
+      on(event: string, listener: (file: string) => void) {
+        listeners.set(event, listener);
+      },
+    },
+    moduleGraph: {
+      getModuleById(id: string) {
+        return { id };
+      },
+      invalidateModule(module: { id: string }) {
+        invalidated.push(module.id);
+      },
+    },
+    ws: {
+      send(message: unknown) {
+        messages.push(message);
+      },
+    },
+  } as unknown as ViteDevServer;
+  const configure = plugin.configureServer as (server: ViteDevServer) => unknown;
+
+  expect(configure(server)).toBeUndefined();
+  expect([...listeners.keys()].toSorted()).toEqual(["add", "change", "unlink"]);
+  listeners.get("change")!("/project/api.sol.ts");
+  expect(invalidated).toEqual(["\0virtual:solix/routes", "\0virtual:solix/server-endpoints"]);
+  expect(messages).toEqual([{ type: "full-reload" }]);
 });
 
 test("emits authored source metadata for query and mutation diagnostics", () => {

@@ -34,14 +34,18 @@ describe("server declarations", () => {
     const query = rpcQueryServer(
       "json-direct",
       { schema: (args: readonly [unknown]) => [...args] as [unknown] },
-      async () => {
+      async (_value) => {
         invoked = true;
         return 1n;
       },
     );
-    await expect(query(new Date())).rejects.toThrow("JSON arrays, objects, and primitives");
+    const argumentError = await query(new Date()).catch((error: unknown) => error);
+    expect(argumentError).toBeInstanceOf(TypeError);
+    expect((argumentError as Error).message).toContain("JSON arrays, objects, and primitives");
     expect(invoked).toBe(false);
-    await expect(query("valid input")).rejects.toThrow("JSON-serializable");
+    const resultError = await query("valid input").catch((error: unknown) => error);
+    expect(resultError).toBeInstanceOf(TypeError);
+    expect((resultError as Error).message).toContain("JSON-serializable");
     expect(invoked).toBe(true);
   });
 
@@ -83,6 +87,16 @@ describe("server declarations", () => {
       }),
     );
     expect(mediaTypeResponse?.status).toBe(415);
+
+    const caseInsensitiveMediaType = await dispatchServerEndpoint(
+      [query, mutation],
+      new Request("https://example.test/api/rpc/when", {
+        method: "POST",
+        headers: { "content-type": "Application/JSON; Charset=UTF-8" },
+        body: JSON.stringify(["2026-01-01T00:00:00Z"]),
+      }),
+    );
+    expect(caseInsensitiveMediaType?.status).toBe(200);
   });
 
   test("creates browser RPC clients and reconstructs detailed errors", async () => {
@@ -105,6 +119,19 @@ describe("server declarations", () => {
       expect(requestedInit?.method).toBe("POST");
       expect(new Headers(requestedInit?.headers).get("content-type")).toBe("application/json");
       expect(JSON.parse(String(requestedInit?.body))).toEqual([1]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("rejects RPC success envelopes without a JSON value", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({ ok: true })) as unknown as typeof fetch;
+    try {
+      const query = rpcQueryClient<readonly [], unknown>("missing-value");
+      const error = await query().catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("RPC missing-value returned an invalid response (200)");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -154,7 +181,7 @@ describe("server declarations", () => {
     const rootBody = (await rootResponse!.json()) as Record<string, unknown>;
     expect(Object.hasOwn(rootBody, "__proto__")).toBe(true);
     expect(rootBody.__proto__).toEqual(["one", "two"]);
-    expect(rootBody.constructor).toBe("value");
+    expect(rootBody["constructor"] as unknown).toBe("value");
 
     const parameter = httpRouteServer(
       {
@@ -207,6 +234,51 @@ describe("server declarations", () => {
       new Request("https://example.test/api/value"),
     );
     expect(method?.status).toBe(405);
+  });
+
+  test("treats user-thrown status fields as logged production failures", async () => {
+    const originalError = console.error;
+    const logged: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      await Promise.all(
+        [201, 700].map(async (status) => {
+          const route = httpRouteServer(
+            {
+              method: "GET",
+              path: `/status-${status}`,
+              schema: (input: HttpRouteInput) => input,
+            },
+            async () => {
+              throw Object.assign(new Error(`failure ${status}`), { status });
+            },
+          ) as unknown as ServerEndpoint;
+          const response = await dispatchServerEndpoint(
+            [route],
+            new Request(`https://example.test/status-${status}`),
+          );
+          expect(response?.status).toBe(500);
+          expect(await response!.json()).toEqual({
+            error: { name: "Error", message: "Internal Server Error" },
+          });
+        }),
+      );
+
+      const rpc = rpcQueryServer(
+        "status-failure",
+        { schema: (args: readonly []) => args as [] },
+        async () => {
+          throw Object.assign(new Error("RPC failure"), { status: 400 });
+        },
+      ) as unknown as ServerEndpoint;
+      const rpcResponse = await dispatchServerEndpoint([rpc], rpcRequest("status-failure", []));
+      expect(rpcResponse?.status).toBe(500);
+      expect(logged).toHaveLength(3);
+    } finally {
+      console.error = originalError;
+    }
   });
 
   test("supports raw bytes and rejects malformed automatic JSON", async () => {

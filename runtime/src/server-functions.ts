@@ -2,6 +2,7 @@ import { isObject, isPromiseLike } from "./reactivity.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 
 const ENDPOINT = Symbol.for("solix.server.endpoint");
+const REQUEST_ERROR_STATUS = Symbol("solix.request.error.status");
 const RPC_PREFIX = "/api/rpc/";
 const RPC_CONTENT_TYPE = "application/json";
 
@@ -85,6 +86,16 @@ function validateRpcName(name: unknown): asserts name is string {
 
 function validationError(error: unknown): error is { readonly issues: readonly unknown[] } {
   return isObject(error) && Array.isArray((error as { issues?: unknown }).issues);
+}
+
+function requestError(message: string, status: 400 | 415): TypeError {
+  return Object.assign(new TypeError(message), { [REQUEST_ERROR_STATUS]: status });
+}
+
+function requestErrorStatus(error: unknown): 400 | 415 | undefined {
+  if (!isObject(error)) return undefined;
+  const status = (error as { [REQUEST_ERROR_STATUS]?: unknown })[REQUEST_ERROR_STATUS];
+  return status === 400 || status === 415 ? status : undefined;
 }
 
 function serializeJson(value: unknown, label: string): string {
@@ -238,6 +249,9 @@ function clientRpc<Input extends RpcArgs, Data>(
     }
     if ((envelope as { ok: boolean }).ok) {
       if (!response.ok) throw new Error(`RPC ${name} failed (${response.status})`);
+      if (!Object.prototype.hasOwnProperty.call(envelope, "value")) {
+        throw new Error(`RPC ${name} returned an invalid response (${response.status})`);
+      }
       return (envelope as { value: Data }).value;
     }
     const detail = (envelope as { error?: unknown }).error;
@@ -391,11 +405,11 @@ async function decodedBody(request: Request, mode: "auto" | "bytes"): Promise<un
     try {
       return JSON.parse(text);
     } catch {
-      throw Object.assign(new TypeError("Malformed JSON request body"), { status: 400 });
+      throw requestError("Malformed JSON request body", 400);
     }
   }
   if (contentType?.startsWith("text/")) return text;
-  throw Object.assign(new TypeError("Unsupported request body media type"), { status: 415 });
+  throw requestError("Unsupported request body media type", 415);
 }
 
 function errorDetail(error: unknown, development: boolean): Record<string, unknown> {
@@ -456,31 +470,26 @@ export async function dispatchServerEndpoint(
   }
   if (rpc) {
     try {
-      const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim();
+      const contentType = request.headers
+        .get("content-type")
+        ?.split(";", 1)[0]
+        ?.trim()
+        .toLowerCase();
       if (contentType !== RPC_CONTENT_TYPE) {
-        throw Object.assign(new TypeError("RPC requests must use application/json"), {
-          status: 415,
-        });
+        throw requestError("RPC requests must use application/json", 415);
       }
       const payload = await request.text();
-      if (payload === "") throw Object.assign(new TypeError("Missing RPC input"), { status: 400 });
+      if (payload === "") throw requestError("Missing RPC input", 400);
       let args: unknown;
       try {
         args = JSON.parse(payload);
       } catch {
-        throw Object.assign(new TypeError("Malformed JSON RPC input"), { status: 400 });
+        throw requestError("Malformed JSON RPC input", 400);
       }
-      if (!Array.isArray(args))
-        throw Object.assign(new TypeError("RPC input must be an argument tuple"), { status: 400 });
+      if (!Array.isArray(args)) throw requestError("RPC input must be an argument tuple", 400);
       return rpcResponse({ ok: true, value: await rpc.invoke(args) });
     } catch (error) {
-      const status = validationError(error)
-        ? 400
-        : isObject(error) &&
-            ((error as { status?: unknown }).status === 400 ||
-              (error as { status?: unknown }).status === 415)
-          ? (error as { status: number }).status
-          : 500;
+      const status = validationError(error) ? 400 : (requestErrorStatus(error) ?? 500);
       if (status === 500 && !options.development) console.error(error);
       return rpcResponse(
         { ok: false, error: errorDetail(error, options.development ?? false) },
@@ -514,9 +523,7 @@ export async function dispatchServerEndpoint(
           writable: true,
         });
       } catch {
-        throw Object.assign(new TypeError(`Malformed HTTP route parameter ${name}`), {
-          status: 400,
-        });
+        throw requestError(`Malformed HTTP route parameter ${name}`, 400);
       }
     });
     const input: HttpRouteInput = Object.freeze({
@@ -527,11 +534,7 @@ export async function dispatchServerEndpoint(
     });
     return await selected.endpoint.invoke(input, request);
   } catch (error) {
-    const status = validationError(error)
-      ? 400
-      : isObject(error) && typeof (error as { status?: unknown }).status === "number"
-        ? (error as { status: number }).status
-        : 500;
+    const status = validationError(error) ? 400 : (requestErrorStatus(error) ?? 500);
     if (status === 500) console.error(error);
     const detail = errorDetail(error, options.development ?? false);
     return Response.json({ error: detail }, { status });

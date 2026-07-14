@@ -59,6 +59,11 @@ test("Node serves SSR output and hydrates routes, queries, async content, and He
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page.getByTestId("query-loading")).toBeHidden();
   await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
+  await page.getByTestId("query-refetch").click();
+  await expect(page.getByRole("heading", { name: "Page 2" })).toBeVisible();
+  await page.getByTestId("query-mutate").click();
+  await expect(page.getByText("Mutation note 1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
 
   await page.goto(`${origin}/async-context`);
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");

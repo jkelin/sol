@@ -198,6 +198,14 @@ export function compileServerDeclarations(state: CompilationState): void {
       codeFrame(compiler, config, `${helper}() config must be an object literal`);
     if (!t.isExpression(handler))
       codeFrame(compiler, handler, `${helper}() handler must be an expression`);
+    if (
+      t.isLiteral(handler) ||
+      t.isObjectExpression(handler) ||
+      t.isArrayExpression(handler) ||
+      t.isTemplateLiteral(handler)
+    ) {
+      codeFrame(compiler, handler, `${helper}() handler must be callable`);
+    }
     const properties = new Map<string, t.ObjectProperty>();
     const allowed = helper === "$httpRoute" ? ["method", "path", "schema", "body"] : ["schema"];
     for (const property of config.properties) {

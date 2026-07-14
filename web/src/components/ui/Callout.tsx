@@ -1,5 +1,22 @@
 import { $component } from "solix";
-import { panelClass, type PanelTone } from "./variants.ts";
+
+export type PanelTone = "paper" | "solar" | "cobalt" | "tomato" | "mint" | "ink";
+
+const tones: Readonly<Record<PanelTone, string>> = {
+  paper: "bg-paper text-ink",
+  solar: "bg-solar text-ink",
+  cobalt: "bg-cobalt text-white",
+  tomato: "bg-tomato text-white",
+  mint: "bg-mint text-ink",
+  ink: "bg-ink text-white",
+};
+
+export function panelClass(tone: PanelTone = "paper", elevated = false): string {
+  if (!(tone in tones)) {
+    throw new TypeError(`Panel tone must be one of: ${Object.keys(tones).join(", ")}`);
+  }
+  return `border-[3px] border-ink ${elevated ? "shadow-block" : ""} ${tones[tone]}`;
+}
 
 export interface CalloutProps {
   readonly eyebrow: string;

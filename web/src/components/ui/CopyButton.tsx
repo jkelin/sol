@@ -1,5 +1,5 @@
 import { $component } from "solix";
-import { buttonClass } from "./variants.ts";
+import { buttonClass } from "./Button.tsx";
 
 export interface CopyButtonProps {
   readonly text: string;

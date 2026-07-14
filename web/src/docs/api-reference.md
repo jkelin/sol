@@ -1,6 +1,6 @@
 ---
 title: API Reference
-description: A compact index of the public runtime, component, form, routing, async, and transition interfaces.
+description: A compact index of the public runtime, compiler, component, form, routing, async, and transition interfaces.
 section: Reference
 order: 9
 ---
@@ -15,8 +15,9 @@ order: 9
 
 - `$signal(initial)` creates manual state outside compiled component inference.
 - `$computed(read)` creates an explicit derived value.
-- `batch(callback)` groups writes before reactive consumers run.
 - `$bind={state}` connects supported form controls in both directions.
+
+`batch()` is an internal compiler-runtime operation, not an author-facing export from `solix`.
 
 ## Forms
 
@@ -42,6 +43,13 @@ order: 9
 
 - `$transition={transition}` attaches enter and leave phases to eligible intrinsic blocks.
 - `Transition` contains optional whitespace-separated `enter` and `leave` class strings.
+
+## Compiler and Vite
+
+- `compile(source, filename)` from `@solix/compiler` validates and transforms one Solix TSX module. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
+- `CompileResult` is the exported result type for that `{ code, map }` object.
+- `solix()` from `@solix/compiler/vite` returns the Vite plugin that compiles TSX, discovers typed route modules, rejects colliding route matchers, and maintains the virtual route manifest during development.
+- Place `solix()` before other JSX transforms in the Vite plugin list. The website additionally places its Markdown compiler before `solix()` so generated examples use the same compiler path.
 
 ## Validation behavior
 

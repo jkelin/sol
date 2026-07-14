@@ -19,6 +19,7 @@
     "magic-string": "^0.30.21"
   },
   "devDependencies": {
+    "happy-dom": "^20.10.6",
     "solix": "workspace:*"
   },
   "peerDependencies": {

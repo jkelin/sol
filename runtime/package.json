@@ -13,6 +13,9 @@
     "test": "bun test tests/runtime.test.ts tests/router.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "devDependencies": {
+    "happy-dom": "^20.10.6"
+  },
   "peerDependencies": {
     "typescript": "^5"
   }

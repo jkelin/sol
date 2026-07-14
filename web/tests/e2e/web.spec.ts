@@ -79,6 +79,31 @@ test("navigates Markdown documentation and operates embedded examples", async ({
     "aria-current",
     "page",
   );
+
+  const documentationPages = [
+    { href: "/docs", title: "Getting Started" },
+    { href: "/docs/mental-model", title: "Mental Model and Compilation" },
+    { href: "/docs/components-and-jsx", title: "Components and JSX" },
+    { href: "/docs/reactivity", title: "Reactivity" },
+    { href: "/docs/forms-and-validation", title: "Forms and Validation" },
+    { href: "/docs/routing", title: "Routing" },
+    { href: "/docs/async-and-context", title: "Async Rendering and Context" },
+    { href: "/docs/transitions", title: "Transitions" },
+    { href: "/docs/api-reference", title: "API Reference" },
+  ] as const;
+  const visitDocumentationPage = async (index: number): Promise<void> => {
+    const document = documentationPages[index];
+    if (!document) return;
+
+    const link = sidebar.locator(`a[href="${document.href}"]`);
+    await link.click();
+    await expect(page).toHaveURL(new RegExp(`${document.href.replaceAll("/", "\\/")}$`));
+    await expect(page.getByRole("heading", { name: document.title, exact: true })).toBeVisible();
+    await expect(link).toHaveAttribute("aria-current", "page");
+    await visitDocumentationPage(index + 1);
+  };
+  await visitDocumentationPage(0);
+
   await page
     .getByRole("link", { name: /Reactivity/ })
     .first()

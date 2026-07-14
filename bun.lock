@@ -40,6 +40,7 @@
         "magic-string": "^0.30.21",
       },
       "devDependencies": {
+        "happy-dom": "^20.10.6",
         "solix": "workspace:*",
       },
       "peerDependencies": {
@@ -64,6 +65,9 @@
     "runtime": {
       "name": "solix",
       "version": "0.0.0",
+      "devDependencies": {
+        "happy-dom": "^20.10.6",
+      },
       "peerDependencies": {
         "typescript": "^5",
       },

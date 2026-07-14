@@ -36,7 +36,8 @@ export async function hydrate<Props extends object>(
   target: Element,
   props?: Props,
 ): Promise<() => void> {
-  if (!target || target.nodeType !== Node.ELEMENT_NODE) {
+  const ownerElement = target?.ownerDocument?.defaultView?.Element ?? globalThis.Element;
+  if (typeof ownerElement !== "function" || !(target instanceof ownerElement)) {
     throw new TypeError("hydrate() expects a DOM Element target");
   }
   if (props != null && (!isObject(props) || Array.isArray(props))) {

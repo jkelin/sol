@@ -1158,7 +1158,7 @@ test("server form bindings parse correctly and hydration validates instead of mu
       return <main>
         <select id="bound-select" $bind={selected}>
           <option value="first">First</option>
-          <option value="second">Second</option>
+          <option>Second</option>
         </select>
         <textarea id="bound-note" $bind={note}></textarea>
         <Child />
@@ -1166,12 +1166,12 @@ test("server form bindings parse correctly and hydration validates instead of mu
     });
   `);
   const App = module.App as Component<{ selected: string; note: string }>;
-  const props = { selected: "second", note: "server note" };
+  const props = { selected: "Second", note: "server note" };
   const target = document.createElement("div");
   target.innerHTML = await renderToStringAsync(App, props);
   const select = target.querySelector<HTMLSelectElement>("#bound-select")!;
   const note = target.querySelector<HTMLTextAreaElement>("#bound-note")!;
-  expect(select.value).toBe("second");
+  expect(select.value).toBe("Second");
   expect(note.value).toBe("server note");
   const dispose = await hydrate(App, target, props);
   expect(target.querySelector("#bound-select")).toBe(select);
@@ -1185,7 +1185,7 @@ test("server form bindings parse correctly and hydration validates instead of mu
     hydrate(App, target, { selected: "first", note: "client note" }),
     "bound value differs",
   );
-  expect(mismatchedSelect.value).toBe("second");
+  expect(mismatchedSelect.value).toBe("Second");
   expect(mismatchedNote.value).toBe("server note");
 });
 
@@ -1324,6 +1324,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
 
   const target = document.createElement("div");
   await expectRejection(hydrate(null as never, target), "compiled Solix component");
+  await expectRejection(hydrate(App, { nodeType: 1 } as never), "DOM Element target");
   await expectRejection(hydrate(App, target, [] as never), "props must be an object");
   await expectRejection(hydrate(App, target), "payload is missing");
   target.innerHTML =

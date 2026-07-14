@@ -78,6 +78,35 @@ function escapeText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+function decodeHtml(value: string): string {
+  return value.replaceAll(
+    /&(?:#(\d+)|#x([\da-f]+)|amp|lt|gt|quot|#39);/gi,
+    (entity, decimal: string | undefined, hexadecimal: string | undefined) => {
+      if (decimal !== undefined) return String.fromCodePoint(Number.parseInt(decimal, 10));
+      if (hexadecimal !== undefined) return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+      switch (entity.toLowerCase()) {
+        case "&amp;":
+          return "&";
+        case "&lt;":
+          return "<";
+        case "&gt;":
+          return ">";
+        case "&quot;":
+          return '"';
+        default:
+          return "'";
+      }
+    },
+  );
+}
+
+function optionValue(attributes: string, content: string): string {
+  const match = /\svalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
+  if (match) return decodeHtml(match[1] ?? match[2] ?? match[3] ?? "");
+  const text = decodeHtml(content.replaceAll(/<!--[\s\S]*?-->|<[^>]*>/g, ""));
+  return text.replaceAll(/[\t\n\f\r ]+/g, " ").trim();
+}
+
 function renderAttributes(html: string, element: ServerElement): string {
   const marker = `data-solix-e="${element.index}"`;
   const dynamic = [...element.attributes]
@@ -114,17 +143,19 @@ function renderSelectValue(html: string, element: ServerElement): string {
   if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
     throw new Error(`Invalid server select metadata ${element.index}`);
   }
-  const expected = escapeAttribute(value);
   const content = html
     .slice(contentStart, contentEnd)
-    .replaceAll(/<option\b([^>]*)>/gi, (opening, attributes: string) => {
-      const withoutSelected = attributes.replace(
-        /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
-        "",
-      );
-      const optionValue = /\svalue\s*=\s*"([^"]*)"/i.exec(withoutSelected)?.[1];
-      return `<option${withoutSelected}${optionValue === expected ? " selected" : ""}>`;
-    });
+    .replaceAll(
+      /<option\b([^>]*)>([\s\S]*?)<\/option\s*>/gi,
+      (option, attributes: string, optionContent: string) => {
+        const withoutSelected = attributes.replace(
+          /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
+          "",
+        );
+        const selected = optionValue(withoutSelected, optionContent) === value ? " selected" : "";
+        return `<option${withoutSelected}${selected}>${optionContent}</option>`;
+      },
+    );
   return `${html.slice(0, contentStart)}${content}${html.slice(contentEnd)}`;
 }
 

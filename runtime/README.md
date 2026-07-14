@@ -63,6 +63,8 @@ validates the exact payload and async-entry shapes plus template order against t
 before activating operations, and preserves the existing DOM on signature, marker, property, payload,
 or module-qualified async-order mismatches. Claim mismatches bypass application `Await`, `Suspense`,
 and `ErrorBoundary` renderers so hydration always rejects instead of converting them into UI errors.
+Compiler-owned replay sites include promise initializers later consumed by an await and the individual
+helper awaits that make up supported `Promise.all` aggregates.
 Timed-out entries execute in the browser after the fallback is claimed.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,

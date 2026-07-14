@@ -1636,6 +1636,56 @@ test("replays nested helper Promise.all data driving branches and lists", async 
   dispose();
 });
 
+test("replays eagerly initialized promises and Promise.all helper sites", async () => {
+  globalThis.integrationLoad = async (id) => {
+    globalThis.integrationLoads += 1;
+    return `${id} result`;
+  };
+  const eagerModule = await loadCompiled(`
+    export const App = $component(async function App() {
+      const request = globalThis.integrationLoad("eager");
+      const value = await request;
+      return <p id="eager-result">{String(value)}</p>;
+    });
+  `);
+  const eagerApp = eagerModule.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(eagerApp);
+  expect(globalThis.integrationLoads).toBe(1);
+  const eagerParagraph = target.querySelector("#eager-result");
+  const disposeEager = await hydrate(eagerApp, target);
+  expect(globalThis.integrationLoads).toBe(1);
+  expect(target.querySelector("#eager-result")).toBe(eagerParagraph);
+  expect(eagerParagraph?.textContent).toBe("eager result");
+  disposeEager();
+
+  globalThis.integrationLoads = 0;
+  const allModule = await loadCompiled(`
+    export const App = $component(async function App() {
+      async function one() { return await globalThis.integrationLoad("one"); }
+      async function two() { return await globalThis.integrationLoad("two"); }
+      const values = await Promise.all([one(), two()]);
+      return <p id="all-result">{values.join(":")}</p>;
+    });
+  `);
+  const allApp = allModule.App as Component;
+  target.innerHTML = await renderToStringAsync(allApp);
+  expect(globalThis.integrationLoads).toBe(2);
+  const allParagraph = target.querySelector("#all-result");
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { async: { site: string }[] };
+  expect(payload.async.map((entry) => entry.site)).toEqual([
+    "await:Integration.tsx:0",
+    "await:Integration.tsx:1",
+  ]);
+  const disposeAll = await hydrate(allApp, target);
+  expect(globalThis.integrationLoads).toBe(2);
+  expect(target.querySelector("#all-result")).toBe(allParagraph);
+  expect(allParagraph?.textContent).toBe("one result:two result");
+  disposeAll();
+});
+
 test("SSR preserves Await promise-like validation", async () => {
   const module = await loadCompiled(`
     import { Await } from "solix";

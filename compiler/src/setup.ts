@@ -474,6 +474,30 @@ function instrumentAwaitExpressions(
       }
     },
   });
+  const awaitedInitializers = new WeakMap<t.AwaitExpression, t.VariableDeclarator>();
+  traverse(file, {
+    AwaitExpression(path: NodePath<t.AwaitExpression>) {
+      if (path.getFunctionParent()?.node !== declaration) return;
+      let argument = path.node.argument;
+      while (
+        t.isTSAsExpression(argument) ||
+        t.isTSTypeAssertion(argument) ||
+        t.isTSNonNullExpression(argument)
+      ) {
+        argument = argument.expression;
+      }
+      if (!t.isIdentifier(argument)) return;
+      const binding = path.scope.getBinding(argument.name);
+      if (!binding?.constant || !binding.path.isVariableDeclarator()) return;
+      const variable = binding.path.node;
+      if (!t.isExpression(variable.init)) return;
+      awaitedInitializers.set(path.node, variable);
+      if (t.isCallExpression(variable.init)) {
+        const helper = callTargets.get(variable.init);
+        if (helper) reachable.add(helper);
+      }
+    },
+  });
   const queue = [...reachable];
   for (let index = 0; index < queue.length; index += 1) {
     for (const helper of callsByOwner.get(queue[index]!) ?? []) {
@@ -514,13 +538,60 @@ function instrumentAwaitExpressions(
     return callTargets.get(expression);
   };
 
+  const capturedHelperAggregate = (argument: t.Expression): boolean => {
+    let expression = argument;
+    while (
+      t.isTSAsExpression(expression) ||
+      t.isTSTypeAssertion(expression) ||
+      t.isTSNonNullExpression(expression)
+    ) {
+      expression = expression.expression;
+    }
+    if (
+      !t.isCallExpression(expression) ||
+      !t.isMemberExpression(expression.callee) ||
+      expression.callee.computed ||
+      !t.isIdentifier(expression.callee.object, { name: "Promise" }) ||
+      !t.isIdentifier(expression.callee.property, { name: "all" }) ||
+      expression.arguments.length !== 1 ||
+      !t.isArrayExpression(expression.arguments[0]) ||
+      expression.arguments[0].elements.length === 0
+    ) {
+      return false;
+    }
+    return expression.arguments[0].elements.every((element) => {
+      if (!element || t.isSpreadElement(element)) return false;
+      const helper = directlyAwaitedHelper(element);
+      return helper !== undefined && reachable.has(helper) && hasCapturedAwait(helper);
+    });
+  };
+
+  const capturedInitializers = new WeakSet<t.VariableDeclarator>();
   traverse(file, {
     AwaitExpression(path: NodePath<t.AwaitExpression>) {
       const owner = path.getFunctionParent()?.node;
       if (owner !== declaration && !reachable.has(owner as LocalFunction)) return;
       const argument = path.node.argument;
+      const initializer = awaitedInitializers.get(path.node);
+      if (initializer && t.isExpression(initializer.init)) {
+        const helper = t.isCallExpression(initializer.init)
+          ? callTargets.get(initializer.init)
+          : undefined;
+        if (!(helper && reachable.has(helper) && hasCapturedAwait(helper))) {
+          if (!capturedInitializers.has(initializer)) {
+            initializer.init = t.callExpression(t.identifier("__solix_async_value"), [
+              t.identifier("__solix_frame"),
+              t.stringLiteral(nextAsyncSite(compiler)),
+              t.arrowFunctionExpression([], initializer.init),
+            ]);
+            capturedInitializers.add(initializer);
+          }
+        }
+        return;
+      }
       const helper = directlyAwaitedHelper(argument);
       if (helper && reachable.has(helper) && hasCapturedAwait(helper)) return;
+      if (capturedHelperAggregate(argument)) return;
       path.node.argument = t.callExpression(t.identifier("__solix_async_value"), [
         t.identifier("__solix_frame"),
         t.stringLiteral(nextAsyncSite(compiler)),

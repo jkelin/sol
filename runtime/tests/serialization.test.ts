@@ -34,7 +34,7 @@ describe("SSR graph serialization", () => {
 
   test("round trips supported scalar and built-in values", () => {
     const expression = /solix/giu;
-    expression.lastIndex = 3;
+    expression.lastIndex = 1.5;
     const error = new TypeError("failed", { cause: { code: 42 } });
     const values = {
       undefined,
@@ -63,7 +63,7 @@ describe("SSR graph serialization", () => {
     expect(Number.isNaN(restored.invalidDate.getTime())).toBe(true);
     expect(restored.expression.source).toBe("solix");
     expect(restored.expression.flags).toBe("giu");
-    expect(restored.expression.lastIndex).toBe(3);
+    expect(restored.expression.lastIndex).toBe(1.5);
     expect(restored.url.href).toBe(values.url.href);
     expect([...(restored.map.values().next().value as Set<number>)]).toEqual([1, 2]);
     expect(restored.error).toBeInstanceOf(Error);
@@ -151,6 +151,11 @@ describe("SSR graph serialization", () => {
     expect(() =>
       deserializeGraph(encodedGraph({ type: "regexp", source: "[", flags: "", lastIndex: 0 })),
     ).toThrow("invalid RegExp");
+    expect(() =>
+      deserializeGraph(
+        encodedGraph({ type: "regexp", source: "valid", flags: "g", lastIndex: "bad" }),
+      ),
+    ).toThrow("RegExp lastIndex is not a number");
     expect(() => deserializeGraph(encodedGraph({ type: "url", value: "not a URL" }))).toThrow(
       "invalid URL",
     );

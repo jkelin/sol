@@ -19,7 +19,7 @@ type EncodedObject =
       readonly type: "regexp";
       readonly source: string;
       readonly flags: string;
-      readonly lastIndex: number;
+      readonly lastIndex: EncodedValue;
     }
   | { readonly type: "url"; readonly value: string }
   | { readonly type: "map"; readonly values: readonly [EncodedValue, EncodedValue][] }
@@ -122,7 +122,7 @@ export function serializeGraph(value: unknown): string {
         type: "regexp",
         source: candidate.source,
         flags: candidate.flags,
-        lastIndex: candidate.lastIndex,
+        lastIndex: encode(candidate.lastIndex),
       };
     } else if (typeof URL !== "undefined" && candidate instanceof URL) {
       if (Object.getPrototypeOf(candidate) !== URL.prototype) {
@@ -297,14 +297,10 @@ function validateEncodedObject(value: unknown, objectCount: number, index: numbe
       return;
     case "regexp":
       validateKeys(object, ["type", "source", "flags", "lastIndex"], path);
-      if (
-        typeof object.source !== "string" ||
-        typeof object.flags !== "string" ||
-        !Number.isInteger(object.lastIndex) ||
-        (object.lastIndex as number) < 0
-      ) {
+      if (typeof object.source !== "string" || typeof object.flags !== "string") {
         invalidPayload(`${path} has invalid RegExp fields`);
       }
+      validateEncodedValue(object.lastIndex, objectCount, `${path}.lastIndex`);
       try {
         RegExp(object.source, object.flags);
       } catch {
@@ -465,7 +461,13 @@ export function deserializeGraph(serialized: string): unknown {
         }
         break;
       case "regexp":
-        (target as RegExp).lastIndex = source.lastIndex;
+        {
+          const lastIndex = decode(source.lastIndex);
+          if (typeof lastIndex !== "number") {
+            invalidPayload(`object ${index} RegExp lastIndex is not a number`);
+          }
+          (target as RegExp).lastIndex = lastIndex;
+        }
         break;
       case "map":
         for (const [key, value] of source.values)

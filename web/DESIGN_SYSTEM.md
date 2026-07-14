@@ -60,6 +60,7 @@ Fonts are self-hosted through Fontsource so builds and visual tests do not depen
 - **Callout:** eyebrow, declarative title, concise body. Mint is informational/success; tomato is warning.
 - **Example toggle:** three pressed buttons for Code, Preview, and Both. It is a view control, not a tab implementation, and preserves mounted preview state.
 - **Code panel:** ink surface, cream rule, mono source, line numbers, build-time syntax tokens, and a clipboard status announcement.
+- **Documentation measure:** prose stays within 52rem for reading; live workbenches expand to the full documentation column so code and preview both remain useful.
 - **Docs sheet:** mobile-only modal layer with a real close control, backdrop control, current-page state, and the same cream canvas as the content.
 
 Solix does not currently support general component children. Reusable primitives therefore use explicit typed props and focused leaf APIs instead of pretending standard React shadcn components are compatible.

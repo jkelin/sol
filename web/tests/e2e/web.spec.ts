@@ -67,6 +67,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 1632, height: 1000 });
   await page.goto("/docs");
   await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible();
   const sidebar = page.getByRole("complementary", {
@@ -90,6 +91,20 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   );
 
   const example = page.locator('[data-live-example="AssemblyQueue"]');
+  const workbenchLayout = await example.evaluate((workbench) => {
+    const article = workbench.closest<HTMLElement>(".docs-prose")!;
+    const pre = workbench.querySelector("pre")!;
+    const firstLineNumber = pre.querySelector("code > span > span")!;
+    return {
+      fillsDocumentationColumn:
+        Math.abs(workbench.getBoundingClientRect().width - article.getBoundingClientRect().width) <
+        1,
+      lineNumberInset:
+        firstLineNumber.getBoundingClientRect().left - pre.getBoundingClientRect().left,
+    };
+  });
+  expect(workbenchLayout.fillsDocumentationColumn).toBe(true);
+  expect(workbenchLayout.lineNumberInset).toBeLessThanOrEqual(16);
   await example.getByRole("button", { name: "Add block" }).click();
   await expect(example.getByText("Block 3", { exact: true })).toBeVisible();
   await example.getByRole("button", { name: "code", exact: true }).click();

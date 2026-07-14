@@ -92,9 +92,17 @@
   }
 
   .docs-prose {
-    max-width: 52rem;
+    max-width: none;
     font-size: 1.0625rem;
     line-height: 1.75;
+  }
+
+  .docs-prose > :not([data-live-example]) {
+    max-width: 52rem;
+  }
+
+  .docs-prose > [data-live-example] {
+    width: 100%;
   }
 
   .docs-prose h2,

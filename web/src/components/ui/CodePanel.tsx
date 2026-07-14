@@ -28,10 +28,10 @@ export const CodePanel = $component<CodePanelProps>(function CodePanel(props) {
         </span>
         <CopyButton text={props.code} label="Copy code" />
       </header>
-      <pre class="max-h-[34rem] overflow-auto p-4 text-[0.76rem] leading-6 sm:p-6 sm:text-[0.8125rem]">
+      <pre class="max-h-[34rem] overflow-auto px-2 py-4 text-[0.76rem] leading-6 sm:px-3 sm:py-6 sm:text-[0.8125rem]">
         <code class="font-mono">
           {props.lines.map((line, lineIndex) => (
-            <span key={lineIndex} class="grid grid-cols-[2rem_1fr] gap-3">
+            <span key={lineIndex} class="grid grid-cols-[1.5rem_1fr] gap-2">
               <span class="select-none text-right text-white/35" aria-hidden="true">
                 {lineIndex + 1}
               </span>

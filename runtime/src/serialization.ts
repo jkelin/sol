@@ -45,7 +45,6 @@ function rejectAccessors(value: object): void {
 }
 
 function ownDataEntries(value: object): [string, unknown][] {
-  if (Object.getOwnPropertySymbols(value).length > 0) unsupported(value, "symbol-keyed data");
   rejectAccessors(value);
   return Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => [
     key,
@@ -86,6 +85,9 @@ export function serializeGraph(value: unknown): string {
     if (typeof candidate === "function") return unsupported(candidate, "function data");
     if (typeof candidate === "symbol") return unsupported(candidate, "symbol data");
     if (typeof candidate !== "object") return unsupported(candidate, "data");
+    if (Object.getOwnPropertySymbols(candidate).length > 0) {
+      return unsupported(candidate, "symbol-keyed data");
+    }
 
     const existing = references.get(candidate);
     if (existing !== undefined) return { $: "ref", v: existing };

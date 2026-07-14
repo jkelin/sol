@@ -64,6 +64,15 @@ export class SsrSession {
     number,
     Array<{ site: string; status: "pending" | "fulfilled" | "rejected"; value?: unknown }>
   >();
+  private readonly boundaryControls = new Map<
+    number,
+    {
+      readonly parent?: number;
+      readonly onTimeout: (renderFallback: boolean) => void;
+      timer: ReturnType<typeof setTimeout>;
+      settled: boolean;
+    }
+  >();
 
   recordTemplate(signature: string): void {
     this.templates.push(signature);
@@ -123,30 +132,28 @@ export class SsrSession {
     });
   }
 
-  beginBoundary(timeoutMs: number, onTimeout: () => void): { index: number; finish: () => void } {
+  beginBoundary(
+    timeoutMs: number,
+    onTimeout: (renderFallback: boolean) => void,
+    parent?: number,
+  ): { index: number; finish: () => void } {
     const index = this.boundaries.length;
     this.boundaries.push("resolved");
     this.boundaryPending += 1;
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      this.boundaries[index] = "timeout";
-      this.boundaryPending -= 1;
-      try {
-        onTimeout();
-      } catch (error) {
-        this.fail(error);
-      } finally {
-        this.checkComplete();
-      }
-    }, timeoutMs);
+    const control = {
+      parent,
+      onTimeout,
+      timer: undefined as unknown as ReturnType<typeof setTimeout>,
+      settled: false,
+    };
+    control.timer = setTimeout(() => this.timeoutBoundary(index, true), timeoutMs);
+    this.boundaryControls.set(index, control);
     return {
       index,
       finish: () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
+        if (control.settled) return;
+        control.settled = true;
+        clearTimeout(control.timer);
         this.boundaryPending -= 1;
         this.checkComplete();
       },
@@ -207,6 +214,36 @@ export class SsrSession {
       finished = true;
       finish();
     };
+  }
+
+  private timeoutBoundary(index: number, renderFallback: boolean): void {
+    const control = this.boundaryControls.get(index);
+    if (!control || control.settled) return;
+    control.settled = true;
+    clearTimeout(control.timer);
+    this.boundaries[index] = "timeout";
+    this.boundaryPending -= 1;
+    for (const [descendant, candidate] of this.boundaryControls) {
+      if (!candidate.settled && this.isDescendant(descendant, index)) {
+        this.timeoutBoundary(descendant, false);
+      }
+    }
+    try {
+      control.onTimeout(renderFallback);
+    } catch (error) {
+      this.fail(error);
+    } finally {
+      this.checkComplete();
+    }
+  }
+
+  private isDescendant(candidate: number, ancestor: number): boolean {
+    let parent = this.boundaryControls.get(candidate)?.parent;
+    while (parent !== undefined) {
+      if (parent === ancestor) return true;
+      parent = this.boundaryControls.get(parent)?.parent;
+    }
+    return false;
   }
 
   private checkComplete(): void {

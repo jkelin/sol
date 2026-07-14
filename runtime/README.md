@@ -68,7 +68,8 @@ helper awaits that make up supported `Promise.all` aggregates.
 Timed-out entries execute in the browser after the fallback is claimed.
 SSR associates replay entries with their nearest Suspense boundary; once that boundary times out,
 its pending entries remain uncaptured even if the server-side promises settle before another boundary
-allows the final HTML response to complete.
+allows the final HTML response to complete. A timed-out owner also retires its pending descendant
+boundary timers, marking those descendants uncaptured without rendering hidden fallbacks.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or

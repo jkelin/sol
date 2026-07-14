@@ -1886,6 +1886,42 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
   dispose();
 });
 
+test("an outer Suspense timeout retires pending descendant boundaries", async () => {
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Pending = $component(async function Pending() {
+      await new Promise(() => {});
+      return <p>Never</p>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p id="outer-retired">Outer fallback</p>} timeoutMs={0}>
+        <Suspense fallback={<p>Inner fallback</p>} timeoutMs={100}><Pending /></Suspense>
+        <Pending />
+      </Suspense>;
+    });
+  `);
+  const App = module.App as Component;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  let html: string;
+  try {
+    html = await Promise.race([
+      renderToStringAsync(App, undefined, { timeoutMs: 200 }),
+      new Promise<never>((_, reject) => {
+        deadline = setTimeout(() => reject(new Error("descendant boundary was not retired")), 50);
+      }),
+    ]);
+  } finally {
+    if (deadline) clearTimeout(deadline);
+  }
+  const target = document.createElement("div");
+  target.innerHTML = html;
+  expect(target.querySelector("#outer-retired")?.textContent).toBe("Outer fallback");
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { boundaries: string[] };
+  expect(payload.boundaries).toEqual(["timeout", "timeout"]);
+});
+
 test("keeps late settlements from timed-out boundaries uncaptured", async () => {
   globalThis.integrationLoad = (id) => {
     globalThis.integrationLoads += 1;

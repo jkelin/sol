@@ -114,17 +114,21 @@ export function suspense(
     let timedOut = false;
     let content: Block | undefined;
     let visible: Block | undefined;
-    const boundary = frame.ssr?.beginBoundary(serverTimeout, () => {
-      timedOut = true;
-      if (failed) return;
-      try {
-        show(renderFallback(frame));
-      } catch (error) {
-        failed = true;
-        if (frame.handleError) frame.handleError(error);
-        else frame.ssr?.fail(error);
-      }
-    });
+    const boundary = frame.ssr?.beginBoundary(
+      serverTimeout,
+      (renderTimeoutFallback) => {
+        timedOut = true;
+        if (failed || !renderTimeoutFallback) return;
+        try {
+          show(renderFallback(frame));
+        } catch (error) {
+          failed = true;
+          if (frame.handleError) frame.handleError(error);
+          else frame.ssr?.fail(error);
+        }
+      },
+      frame.ssrBoundary,
+    );
     const show = (next: Block): void => {
       if (visible && visible !== next) visible.dispose();
       visible = next;

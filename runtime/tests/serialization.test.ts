@@ -100,6 +100,21 @@ describe("SSR graph serialization", () => {
     expect(() => serializeGraph(array)).toThrow("custom properties");
   });
 
+  test("rejects symbol keys on every supported built-in", () => {
+    const values: object[] = [
+      new Date(),
+      /value/g,
+      new URL("https://example.com"),
+      new Map(),
+      new Set(),
+      new Error("failure"),
+    ];
+    for (const value of values) {
+      Object.defineProperty(value, Symbol("custom"), { value: true });
+      expect(() => serializeGraph(value)).toThrow("symbol-keyed");
+    }
+  });
+
   test("rejects non-enumerable accessors and subclassed built-ins", () => {
     const hiddenAccessor = {};
     Object.defineProperty(hiddenAccessor, "secret", { get: () => "hidden" });

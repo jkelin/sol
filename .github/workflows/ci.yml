@@ -62,13 +62,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Build website
-        run: bun run --cwd web build --base=/sol/
+        working-directory: web
+        run: bunx vite build --base=/sol/
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/dist
+          path: web/dist/client
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

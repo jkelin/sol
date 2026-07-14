@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { unlink, writeFile } from "node:fs/promises";
 import { Window } from "happy-dom";
 import ts from "typescript";
 import { compile } from "../src/index.ts";
@@ -113,8 +114,13 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
         target: ts.ScriptTarget.ES2022,
       },
     }).outputText + `\n// ${crypto.randomUUID()}`;
-  const encoded = Buffer.from(javascript).toString("base64");
-  return import(`data:text/javascript;base64,${encoded}`);
+  const moduleUrl = new URL(`./.integration-${crypto.randomUUID()}.mjs`, import.meta.url);
+  await writeFile(moduleUrl, javascript);
+  try {
+    return await import(moduleUrl.href);
+  } finally {
+    await unlink(moduleUrl);
+  }
 }
 
 async function expectRejection(promise: PromiseLike<unknown>, message: string): Promise<void> {

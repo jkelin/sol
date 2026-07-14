@@ -95,7 +95,7 @@ const response = await handle(request, { template });
 - `types.ts` defines the request handler, Vite options, adapter, and build context contracts.
 - `vite.ts` provides virtual browser/server entries, Vite development middleware, build targets,
   hydration readiness, and adapter handoff.
-- `cli.ts` runs the paired Vite client and SSR production builds on Bun or Node.js.
+- `cli.ts` runs the paired Vite client and SSR production builds with Bun.
 - `adapter-utils.ts` loads launcher source through Bun's text loader or Node's file API, validates
   adapter output paths, and writes launchers.
 - `adapters/bun.ts` emits the Bun static-file and Fetch-handler host.

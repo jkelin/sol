@@ -508,7 +508,10 @@ The example uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry impo
 
 ```bash
 bun run verify
+bun run verify:ci
 bun run test:e2e
 ```
 
-GitHub Actions runs these commands in separate `Verify` and `End-to-end tests` jobs for every push and pull request. The E2E job installs Chromium before running the browser suites for the example application and website. Successful pushes to `master` also build `web/` and deploy it to GitHub Pages.
+`bun run verify` fixes formatting and lint issues before running the test suite. `bun run verify:ci` checks formatting and lint without modifying files, then runs the same tests.
+
+GitHub Actions runs `bun run verify:ci` and `bun run test:e2e` in separate `Verify` and `End-to-end tests` jobs for every push and pull request. The E2E job installs Chromium before running the browser suites for the example application and website. Successful pushes to `master` also build `web/` and deploy it to GitHub Pages.

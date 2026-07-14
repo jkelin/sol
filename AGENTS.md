@@ -1,8 +1,7 @@
 # Agent verification
 
-- Run `bun run verify` after making changes.
-- Run `bun run test:e2e` when a change might have broken the browser application.
-- Before creating an agent-authored commit, always run both `bun run verify` and `bun run test:e2e` for full verification.
+- During the development hot loop, run only `bun run verify` after making changes. It fixes formatting and lint issues, then runs the test suite.
+- Before creating an agent-authored commit, run only `bun run test:web` and `bun run test:e2e`.
 
 # Documentation
 

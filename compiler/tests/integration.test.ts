@@ -1043,6 +1043,40 @@ test("hydrates server DOM in place and replays async component data", async () =
   expect(target.childNodes).toHaveLength(0);
 });
 
+test("hydrates primitive conditional blocks without duplicating their nodes", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      let ready = true;
+      let optional = false;
+      const label = "ready";
+      return <main>
+        <button id="toggle-primitive" onClick={() => ready = !ready}>Toggle</button>
+        <button id="toggle-empty" onClick={() => optional = !optional}>Toggle empty</button>
+        <p id="primitive-value">{ready ? label : "loading"}</p>
+        <p id="empty-value">{optional && label}</p>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const paragraph = target.querySelector("#primitive-value")!;
+  const serverText = [...paragraph.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+  expect(serverText).toBeDefined();
+  const dispose = await hydrate(App, target);
+  expect(paragraph.textContent).toBe("ready");
+  expect([...paragraph.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE)).toEqual([
+    serverText!,
+  ]);
+  target.querySelector<HTMLButtonElement>("#toggle-primitive")!.click();
+  expect(paragraph.textContent).toBe("loading");
+  const empty = target.querySelector("#empty-value")!;
+  expect(empty.textContent).toBe("");
+  target.querySelector<HTMLButtonElement>("#toggle-empty")!.click();
+  expect(empty.textContent).toBe("ready");
+  dispose();
+});
+
 test("hydrates a timed-out fallback and resumes only its pending work", async () => {
   globalThis.integrationSetups.app = 0;
   globalThis.integrationPending = new Promise((resolve) => {
@@ -1226,6 +1260,11 @@ test("rejects missing and reordered hydration region comments", async () => {
   const reorderedMarkup = target.innerHTML;
   await expectRejection(hydrate(App, target), "hydration mismatch");
   expect(target.innerHTML).toBe(reorderedMarkup);
+
+  target.innerHTML = html.replace("<!--solix:e:0-->", "<!--solix:e:999-->");
+  const wrongIdentityMarkup = target.innerHTML;
+  await expectRejection(hydrate(App, target), "expected <!--solix:e:0-->");
+  expect(target.innerHTML).toBe(wrongIdentityMarkup);
 });
 
 test("rejects extra replay entries and nested async-site mismatches", async () => {
@@ -1270,6 +1309,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     export const App = $component(function App() { return <main>Valid</main>; });
   `);
   const App = module.App as Component;
+  await expectRejection(renderToStringAsync(null as never), "compiled Solix component");
   await expectRejection(renderToStringAsync(App, 1 as never), "props must be an object");
   await expectRejection(
     renderToStringAsync(App, undefined, null as never),
@@ -1282,6 +1322,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
   );
 
   const target = document.createElement("div");
+  await expectRejection(hydrate(null as never, target), "compiled Solix component");
   await expectRejection(hydrate(App, target), "payload is missing");
   target.innerHTML =
     '<script type="application/json" data-solix-hydration>{</script>' +

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { deserializeGraph, serializeGraph } from "../src/serialization.ts";
 
+function encodedGraph(object: unknown, root: unknown = null): string {
+  return JSON.stringify({ root, objects: [object] });
+}
+
 describe("SSR graph serialization", () => {
   test("round trips cycles, aliases, sparse arrays, and null prototypes", () => {
     const shared = { label: "shared" };
@@ -134,5 +138,32 @@ describe("SSR graph serialization", () => {
     expect(() => deserializeGraph(JSON.stringify({ root: { $: "mystery" }, objects: [] }))).toThrow(
       "value tag",
     );
+  });
+
+  test("validates every record field, including unreachable records", () => {
+    expect(() => deserializeGraph(encodedGraph({ type: "array", length: -1, values: [] }))).toThrow(
+      "array length",
+    );
+    expect(() =>
+      deserializeGraph(encodedGraph({ type: "array", length: 1, values: [[1, null]] })),
+    ).toThrow("array position");
+    expect(() => deserializeGraph(encodedGraph({ type: "date" }))).toThrow("Date value");
+    expect(() =>
+      deserializeGraph(encodedGraph({ type: "regexp", source: "[", flags: "", lastIndex: 0 })),
+    ).toThrow("invalid RegExp");
+    expect(() => deserializeGraph(encodedGraph({ type: "url", value: "not a URL" }))).toThrow(
+      "invalid URL",
+    );
+    expect(() =>
+      deserializeGraph(encodedGraph({ type: "map", values: [[{ $: "ref", v: 4 }, null]] })),
+    ).toThrow("invalid reference");
+    expect(() =>
+      deserializeGraph(
+        JSON.stringify({
+          root: null,
+          objects: [{ type: "set", values: [{ $: "unknown" }] }],
+        }),
+      ),
+    ).toThrow("unknown value tag");
   });
 });

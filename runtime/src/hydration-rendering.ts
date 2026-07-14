@@ -1,5 +1,6 @@
 import type { Block, Region, RenderView, TemplateDefinition } from "./rendering.ts";
 import type { HydrationSession } from "./ssr-session.ts";
+import { runtimeEffect } from "./reactivity.ts";
 
 export interface HydrationClaim {
   readonly start?: Comment;
@@ -44,19 +45,68 @@ function isComment(node: Node | null, data: string): node is Comment {
 function matchingEnd(start: Comment, prefix: "solix:block" | "solix"): Comment {
   const startPattern =
     prefix === "solix:block" ? /^solix:block:start(?::t[a-z0-9]+)?$/ : /^solix:s:\d+$/;
-  const endPattern = prefix === "solix:block" ? "solix:block:end" : /^solix:e:\d+$/;
+  const expectedEnd =
+    prefix === "solix:block" ? "solix:block:end" : start.data.replace("solix:s:", "solix:e:");
+  const endPattern = prefix === "solix:block" ? /^solix:block:end$/ : /^solix:e:\d+$/;
   let depth = 0;
   for (let node = start.nextSibling; node; node = node.nextSibling) {
     if (node.nodeType !== Node.COMMENT_NODE) continue;
     const data = (node as Comment).data;
     if (startPattern.test(data)) {
       depth += 1;
-    } else if (typeof endPattern === "string" ? data === endPattern : endPattern.test(data)) {
-      if (depth === 0) return node as Comment;
+    } else if (endPattern.test(data)) {
+      if (depth === 0) {
+        if (data !== expectedEnd) mismatch(`expected <!--${expectedEnd}-->`);
+        return node as Comment;
+      }
       depth -= 1;
     }
   }
   return mismatch(`missing end marker for ${start.data}`);
+}
+
+export function hydratedValueBlock(
+  claim: HydrationClaim,
+  session: HydrationSession,
+  getValue: () => string,
+): Block {
+  const start = claim.cursor;
+  if (!isComment(start, "solix:block:start")) mismatch("expected primitive block start marker");
+  const end = matchingEnd(start, "solix:block");
+  claim.cursor = end.nextSibling;
+  let textNode: Text | undefined;
+  const between: Node[] = [];
+  for (let node = start.nextSibling; node && node !== end; node = node.nextSibling) {
+    between.push(node);
+  }
+  const initial = getValue();
+  if (initial === "") {
+    if (between.length > 0) mismatch("empty primitive block contains server nodes");
+  } else {
+    if (between.length !== 1 || between[0]!.nodeType !== Node.TEXT_NODE) {
+      mismatch("primitive block text differs");
+    }
+    textNode = between[0] as Text;
+    if (textNode.data !== initial) mismatch("primitive block text differs");
+  }
+  let hydrating = true;
+  const stop = runtimeEffect(() => {
+    const value = getValue();
+    if (hydrating) {
+      hydrating = false;
+      return;
+    }
+    if (value === "") {
+      textNode?.remove();
+      textNode = undefined;
+    } else if (textNode) {
+      textNode.data = value;
+    } else {
+      textNode = document.createTextNode(value);
+      end.parentNode?.insertBefore(textNode, end);
+    }
+  });
+  return hydratedBlock({ kind: "hydrated-fragment", start, end, session }, [stop]);
 }
 
 function matchChildren(

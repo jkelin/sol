@@ -178,6 +178,177 @@ export function serializeGraph(value: unknown): string {
     .replaceAll("\u2029", "\\u2029");
 }
 
+function invalidPayload(detail: string): never {
+  throw new TypeError(`Invalid Solix hydration payload: ${detail}`);
+}
+
+function payloadRecord(value: unknown, path: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return invalidPayload(`${path} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function validateKeys(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+): void {
+  const unexpected = Object.keys(record).find((key) => !allowed.includes(key));
+  if (unexpected) invalidPayload(`${path} contains unexpected property ${unexpected}`);
+}
+
+function validateEncodedValue(value: unknown, objectCount: number, path: string): void {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string" ||
+    typeof value === "number"
+  ) {
+    return;
+  }
+  const encoded = payloadRecord(value, path);
+  validateKeys(encoded, ["$", "v"], path);
+  if (typeof encoded.$ !== "string") invalidPayload(`${path} is missing a value tag`);
+  if (["undefined", "nan", "infinity", "-infinity", "-0"].includes(encoded.$)) {
+    if (Object.prototype.hasOwnProperty.call(encoded, "v")) {
+      invalidPayload(`${path} tag ${encoded.$} cannot contain a value`);
+    }
+    return;
+  }
+  if (encoded.$ === "bigint") {
+    if (typeof encoded.v !== "string") invalidPayload(`${path} bigint must contain a string`);
+    try {
+      BigInt(encoded.v);
+    } catch {
+      invalidPayload(`${path} contains an invalid bigint`);
+    }
+    return;
+  }
+  if (encoded.$ === "ref") {
+    if (
+      !Number.isInteger(encoded.v) ||
+      (encoded.v as number) < 0 ||
+      (encoded.v as number) >= objectCount
+    ) {
+      invalidPayload(`${path} contains an invalid reference`);
+    }
+    return;
+  }
+  invalidPayload(`${path} contains unknown value tag ${encoded.$}`);
+}
+
+function payloadTuples(value: unknown, path: string): unknown[][] {
+  if (!Array.isArray(value)) invalidPayload(`${path} must be an array`);
+  for (const [index, tuple] of value.entries()) {
+    if (!Array.isArray(tuple) || tuple.length !== 2) {
+      invalidPayload(`${path}[${index}] must be a pair`);
+    }
+  }
+  return value as unknown[][];
+}
+
+function validateEncodedObject(value: unknown, objectCount: number, index: number): void {
+  const path = `object ${index}`;
+  const object = payloadRecord(value, path);
+  if (typeof object.type !== "string") invalidPayload(`${path} is missing a type`);
+  switch (object.type) {
+    case "array": {
+      validateKeys(object, ["type", "length", "values"], path);
+      if (
+        !Number.isInteger(object.length) ||
+        (object.length as number) < 0 ||
+        (object.length as number) > 0xffff_ffff
+      ) {
+        invalidPayload(`${path} has an invalid array length`);
+      }
+      const positions = new Set<number>();
+      for (const [tupleIndex, tuple] of payloadTuples(object.values, `${path}.values`).entries()) {
+        const [position, entry] = tuple;
+        if (
+          !Number.isInteger(position) ||
+          (position as number) < 0 ||
+          (position as number) >= (object.length as number) ||
+          positions.has(position as number)
+        ) {
+          invalidPayload(`${path}.values[${tupleIndex}] has an invalid array position`);
+        }
+        positions.add(position as number);
+        validateEncodedValue(entry, objectCount, `${path}.values[${tupleIndex}][1]`);
+      }
+      return;
+    }
+    case "object":
+    case "null-object":
+      validateKeys(object, ["type", "values"], path);
+      for (const [tupleIndex, tuple] of payloadTuples(object.values, `${path}.values`).entries()) {
+        if (typeof tuple[0] !== "string") {
+          invalidPayload(`${path}.values[${tupleIndex}] has a non-string key`);
+        }
+        validateEncodedValue(tuple[1], objectCount, `${path}.values[${tupleIndex}][1]`);
+      }
+      return;
+    case "date":
+      validateKeys(object, ["type", "value"], path);
+      if (!Object.prototype.hasOwnProperty.call(object, "value")) {
+        invalidPayload(`${path} is missing its Date value`);
+      }
+      validateEncodedValue(object.value, objectCount, `${path}.value`);
+      return;
+    case "regexp":
+      validateKeys(object, ["type", "source", "flags", "lastIndex"], path);
+      if (
+        typeof object.source !== "string" ||
+        typeof object.flags !== "string" ||
+        !Number.isInteger(object.lastIndex) ||
+        (object.lastIndex as number) < 0
+      ) {
+        invalidPayload(`${path} has invalid RegExp fields`);
+      }
+      try {
+        RegExp(object.source, object.flags);
+      } catch {
+        invalidPayload(`${path} contains an invalid RegExp`);
+      }
+      return;
+    case "url":
+      validateKeys(object, ["type", "value"], path);
+      if (typeof object.value !== "string") invalidPayload(`${path} has an invalid URL value`);
+      try {
+        const parsed = new URL(object.value);
+        void parsed;
+      } catch {
+        invalidPayload(`${path} contains an invalid URL`);
+      }
+      return;
+    case "map":
+      validateKeys(object, ["type", "values"], path);
+      for (const [tupleIndex, tuple] of payloadTuples(object.values, `${path}.values`).entries()) {
+        validateEncodedValue(tuple[0], objectCount, `${path}.values[${tupleIndex}][0]`);
+        validateEncodedValue(tuple[1], objectCount, `${path}.values[${tupleIndex}][1]`);
+      }
+      return;
+    case "set":
+      validateKeys(object, ["type", "values"], path);
+      if (!Array.isArray(object.values)) invalidPayload(`${path}.values must be an array`);
+      for (const [valueIndex, entry] of object.values.entries()) {
+        validateEncodedValue(entry, objectCount, `${path}.values[${valueIndex}]`);
+      }
+      return;
+    case "error":
+      validateKeys(object, ["type", "name", "message", "cause"], path);
+      if (typeof object.name !== "string" || typeof object.message !== "string") {
+        invalidPayload(`${path} has invalid Error fields`);
+      }
+      if (Object.prototype.hasOwnProperty.call(object, "cause")) {
+        validateEncodedValue(object.cause, objectCount, `${path}.cause`);
+      }
+      return;
+    default:
+      invalidPayload(`${path} has unknown type ${object.type}`);
+  }
+}
+
 export function deserializeGraph(serialized: string): unknown {
   let graph: EncodedGraph;
   try {
@@ -187,6 +358,12 @@ export function deserializeGraph(serialized: string): unknown {
   }
   if (!graph || typeof graph !== "object" || !Array.isArray(graph.objects) || !("root" in graph)) {
     throw new TypeError("Invalid Solix hydration payload graph");
+  }
+  validateKeys(graph as unknown as Record<string, unknown>, ["root", "objects"], "graph");
+
+  validateEncodedValue(graph.root, graph.objects.length, "root");
+  for (let index = 0; index < graph.objects.length; index += 1) {
+    validateEncodedObject(graph.objects[index], graph.objects.length, index);
   }
 
   const decoded: unknown[] = Array.from({ length: graph.objects.length });
@@ -280,7 +457,12 @@ export function deserializeGraph(serialized: string): unknown {
         }
         break;
       case "date":
-        (target as Date).setTime(decode(source.value) as number);
+        {
+          const value = decode(source.value);
+          if (typeof value !== "number")
+            invalidPayload(`object ${index} Date value is not a number`);
+          (target as Date).setTime(value);
+        }
         break;
       case "regexp":
         (target as RegExp).lastIndex = source.lastIndex;

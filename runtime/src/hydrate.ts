@@ -40,6 +40,7 @@ export async function hydrate<Props extends object>(
     throw new TypeError("hydrate() expects a DOM Element target");
   }
   if (props != null && !isObject(props)) throw new TypeError("hydrate() props must be an object");
+  const factory = getFactory(candidate);
   const scripts = [...target.querySelectorAll<HTMLScriptElement>("script[data-solix-hydration]")];
   if (scripts.length !== 1) {
     throw new Error(
@@ -63,7 +64,7 @@ export async function hydrate<Props extends object>(
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
   let rendered: Block | undefined;
   try {
-    const result = getFactory(candidate)(initialProps, frame);
+    const result = factory(initialProps, frame);
     rendered = isPromiseLike(result) ? await session.track(result) : result;
     rendered.mount(target);
     await session.wait();

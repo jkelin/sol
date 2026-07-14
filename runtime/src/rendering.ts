@@ -24,6 +24,7 @@ import {
 } from "./server-rendering.ts";
 import {
   hydratedBlock,
+  hydratedValueBlock,
   instantiateHydrated,
   isHydratedFragment,
   type HydratedFragment,
@@ -147,7 +148,7 @@ export function instantiate(definition: TemplateDefinition, frame?: RenderFrame)
   if (frame?.mode === "server") {
     return instantiateServer(definition, frame.ssr);
   }
-  if (frame?.mode === "hydrate" && frame.hydration && frame.claim) {
+  if (frame?.mode === "hydrate" && frame.hydration && !frame.hydration.committed && frame.claim) {
     return instantiateHydrated(definition, frame.hydration, frame.claim);
   }
   if (typeof document === "undefined") {
@@ -343,6 +344,9 @@ export function block(
 
 export function emptyBlock(frame?: RenderFrame): Block {
   if (frame?.mode === "server") return serverValueBlock("");
+  if (frame?.mode === "hydrate" && frame.hydration && !frame.hydration.committed && frame.claim) {
+    return hydratedValueBlock(frame.claim, frame.hydration, () => "");
+  }
   return block(document.createDocumentFragment());
 }
 
@@ -356,6 +360,9 @@ function escapeText(value: string): string {
 
 export function valueBlock(getValue: () => unknown, frame?: RenderFrame): Block {
   if (frame?.mode === "server") return serverValueBlock(escapeText(displayValue(getValue())));
+  if (frame?.mode === "hydrate" && frame.hydration && !frame.hydration.committed && frame.claim) {
+    return hydratedValueBlock(frame.claim, frame.hydration, () => displayValue(getValue()));
+  }
   const fragment = document.createDocumentFragment();
   const textNode = document.createTextNode("");
   fragment.append(textNode);
@@ -449,6 +456,9 @@ function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
 export function getFactory<Props extends object>(
   candidate: Component<Props>,
 ): ComponentFactory<Props> {
+  if (typeof candidate !== "function") {
+    throw new TypeError("Expected a compiled Solix component");
+  }
   const factory = (candidate as CompiledComponent<Props>)[COMPONENT];
   if (!factory) {
     throw new TypeError(

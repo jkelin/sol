@@ -72,12 +72,20 @@ export default __solix_modules.flatMap(module => Object.values(module).filter(__
 
 type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
 
-function declarationHelperNames(ast: t.File): Map<string, DeclarationHelper> {
+function declarationHelperBindings(ast: t.File): {
+  names: Map<string, DeclarationHelper>;
+  namespaces: Set<string>;
+} {
   const helpers = new Set<DeclarationHelper>(["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"]);
   const names = new Map<string, DeclarationHelper>();
+  const namespaces = new Set<string>();
   for (const statement of ast.program.body) {
     if (!t.isImportDeclaration(statement) || statement.source.value !== "solix") continue;
     for (const specifier of statement.specifiers) {
+      if (t.isImportNamespaceSpecifier(specifier)) {
+        namespaces.add(specifier.local.name);
+        continue;
+      }
       if (
         t.isImportSpecifier(specifier) &&
         t.isIdentifier(specifier.imported) &&
@@ -95,6 +103,41 @@ function declarationHelperNames(ast: t.File): Map<string, DeclarationHelper> {
       path.stop();
     },
   });
+  return { names, namespaces };
+}
+
+function manifestCallHelper(
+  bindings: ReturnType<typeof declarationHelperBindings>,
+  callee: t.Expression | t.V8IntrinsicIdentifier,
+): DeclarationHelper | undefined {
+  if (t.isIdentifier(callee)) return bindings.names.get(callee.name);
+  if (
+    t.isMemberExpression(callee) &&
+    !callee.computed &&
+    t.isIdentifier(callee.object) &&
+    t.isIdentifier(callee.property) &&
+    bindings.namespaces.has(callee.object.name)
+  ) {
+    return ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(callee.property.name)
+      ? (callee.property.name as DeclarationHelper)
+      : undefined;
+  }
+  return undefined;
+}
+
+function manifestExportedNames(ast: t.File): Set<string> {
+  const names = new Set<string>();
+  for (const statement of ast.program.body) {
+    if (!t.isExportNamedDeclaration(statement) || statement.source) continue;
+    if (statement.declaration) {
+      for (const name of Object.keys(t.getBindingIdentifiers(statement.declaration)))
+        names.add(name);
+    }
+    for (const specifier of statement.specifiers) {
+      if (t.isExportSpecifier(specifier) && t.isIdentifier(specifier.local))
+        names.add(specifier.local.name);
+    }
+  }
   return names;
 }
 
@@ -104,7 +147,8 @@ function declaredRoutePaths(source: string, filename: string): string[] {
     sourceFilename: filename,
     plugins: ["typescript", "jsx"],
   });
-  const helpers = declarationHelperNames(ast);
+  const helpers = declarationHelperBindings(ast);
+  const exportedNames = manifestExportedNames(ast);
   const paths: string[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
@@ -112,8 +156,9 @@ function declaredRoutePaths(source: string, filename: string): string[] {
     for (const variable of declaration.declarations) {
       if (
         !t.isCallExpression(variable.init) ||
-        !t.isIdentifier(variable.init.callee) ||
-        helpers.get(variable.init.callee.name) !== "$route" ||
+        !t.isIdentifier(variable.id) ||
+        !exportedNames.has(variable.id.name) ||
+        manifestCallHelper(helpers, variable.init.callee) !== "$route" ||
         !t.isObjectExpression(variable.init.arguments[0])
       )
         continue;
@@ -142,14 +187,20 @@ function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[]
     sourceFilename: filename,
     plugins: ["typescript", "jsx"],
   });
-  const helpers = declarationHelperNames(ast);
+  const helpers = declarationHelperBindings(ast);
+  const exportedNames = manifestExportedNames(ast);
   const endpoints: DeclaredEndpoint[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
     if (!t.isVariableDeclaration(declaration)) continue;
     for (const variable of declaration.declarations) {
-      if (!t.isCallExpression(variable.init) || !t.isIdentifier(variable.init.callee)) continue;
-      const helper = helpers.get(variable.init.callee.name);
+      if (
+        !t.isIdentifier(variable.id) ||
+        !exportedNames.has(variable.id.name) ||
+        !t.isCallExpression(variable.init)
+      )
+        continue;
+      const helper = manifestCallHelper(helpers, variable.init.callee);
       if (helper === "$rpcQuery" || helper === "$rpcMutation") {
         const name = variable.init.arguments[0];
         if (t.isStringLiteral(name)) {

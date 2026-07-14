@@ -4,6 +4,7 @@ import { traverse } from "./ast.ts";
 import { isSolFilename } from "./codegen.ts";
 import type { CompilationState } from "./context.ts";
 import { codeFrame } from "./diagnostics.ts";
+import { declarationCallHelper } from "./declarations.ts";
 
 export function validateCompiledModule(state: CompilationState): boolean {
   const {
@@ -17,7 +18,6 @@ export function validateCompiledModule(state: CompilationState): boolean {
   } = state;
   traverse(ast, {
     CallExpression(path: NodePath<t.CallExpression>) {
-      const calleeName = t.isIdentifier(path.node.callee) ? path.node.callee.name : undefined;
       if (t.isIdentifier(path.node.callee, { name: "$component" })) {
         if (componentCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(
@@ -26,8 +26,7 @@ export function validateCompiledModule(state: CompilationState): boolean {
           "$component() is only valid as a direct top-level const initializer",
         );
       }
-      const declarationHelper =
-        calleeName === undefined ? undefined : compiler.declarationHelperNames.get(calleeName);
+      const declarationHelper = declarationCallHelper(compiler, path.node.callee);
       if (declarationHelper === "$route") {
         if (routeCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(

@@ -36,10 +36,8 @@ export function createRequestHandler(
   }
   const unexpected = Object.keys(options).find((key) => key !== "maxBodyBytes");
   if (unexpected) throw new TypeError(`Unknown Solkit request handler option ${unexpected}`);
-  if (
-    options.maxBodyBytes !== undefined &&
-    (!Number.isSafeInteger(options.maxBodyBytes) || options.maxBodyBytes < 0)
-  ) {
+  const maxBodyBytes = options.maxBodyBytes;
+  if (maxBodyBytes !== undefined && (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 0)) {
     throw new TypeError("Solkit maxBodyBytes must be a non-negative safe integer");
   }
   return async (request: Request, context: RenderContext): Promise<Response> => {
@@ -49,11 +47,12 @@ export function createRequestHandler(
     }
     const endpoint = await dispatchServerEndpoint(endpoints, request, {
       development: context.development,
-      maxBodyBytes: options.maxBodyBytes,
+      maxBodyBytes,
     });
     if (endpoint) return endpoint;
     validateTemplate(context.template);
     if (request.method !== "GET" && request.method !== "HEAD") {
+      if (!request.bodyUsed) void request.body?.cancel().catch(() => undefined);
       return new Response("Not Found", { status: 404 });
     }
     const accept = request.headers.get("accept") ?? "";

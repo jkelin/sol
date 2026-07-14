@@ -132,6 +132,15 @@ describe("compiler", () => {
       code: shadowed,
       map: null,
     });
+    const namespace = compile(
+      `import * as solix from "solix";
+       const load = solix.$rpcQuery("load", { schema: x => x }, async () => 1);
+       export { load as query };`,
+      "namespace.sol.ts",
+      { target: "client" },
+    );
+    expect(namespace.code).toContain('const load = __solix_rpc_query_client("load")');
+    expect(namespace.code).toContain("export { load as query }");
   });
 
   test("removes imports referenced only by stripped browser handlers", () => {
@@ -266,6 +275,15 @@ describe("compiler", () => {
     );
     expect(effect.code).not.toContain("backend-effect-secret");
     expect(effect.code).not.toContain("configure(");
+    expect(() =>
+      compile(
+        `const schema = {}; function configure(value) {} function frontendInit() {}
+         configure(schema), frontendInit();
+         export const load = $rpcQuery("load", { schema }, async () => 1);`,
+        "ambiguous.sol.ts",
+        { target: "client" },
+      ),
+    ).toThrow("Ambiguous top-level server dependency effect");
   });
 
   test("removes comments attached to stripped server dependencies", () => {
@@ -1585,7 +1603,7 @@ test("the endpoint manifest respects helper bindings and canonical HTTP paths", 
   try {
     await writeFile(
       join(root, "real.sol.ts"),
-      `export const load = $rpcQuery("load", { schema: x => x }, async () => 1);`,
+      `import * as solix from "solix"; const load = solix.$rpcQuery("load", { schema: x => x }, async () => 1); export { load as query };`,
     );
     await writeFile(
       join(root, "shadow.sol.ts"),

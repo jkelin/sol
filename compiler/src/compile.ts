@@ -28,6 +28,7 @@ export function compile(
     refCreatorNames: new Set(),
     requestHelperNames: new Set(),
     declarationHelperNames: new Map(),
+    declarationHelperNamespaces: new Set(),
     mappingOrigins: [],
     nextListId: 0,
     nextAsyncId: 0,

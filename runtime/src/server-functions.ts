@@ -433,10 +433,14 @@ function bodyLimit(options: ServerDispatchOptions): number {
   return value;
 }
 
+function cancelRequestBody(request: Request): void {
+  if (!request.bodyUsed) void request.body?.cancel().catch(() => undefined);
+}
+
 function assertDeclaredBodyLimit(request: Request, limit: number): void {
   const declared = request.headers.get("content-length");
   if (declared && /^\d+$/.test(declared) && BigInt(declared) > BigInt(limit)) {
-    void request.body?.cancel().catch(() => undefined);
+    cancelRequestBody(request);
     throw requestError(`Request body exceeds the ${limit} byte limit`, 413);
   }
 }
@@ -455,9 +459,7 @@ async function bodyBytes(request: Request, limit: number): Promise<Uint8Array> {
       if (done) break;
       total += value.byteLength;
       if (total > limit) {
-        // Cancellation must settle before releasing the reader lock.
-        // eslint-disable-next-line no-await-in-loop
-        await reader.cancel().catch(() => undefined);
+        void reader.cancel().catch(() => undefined);
         throw requestError(`Request body exceeds the ${limit} byte limit`, 413);
       }
       chunks.push(value);
@@ -481,7 +483,13 @@ async function decodedBody(
 ): Promise<unknown> {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
   assertDeclaredBodyLimit(request, limit);
-  const bytes = await bodyBytes(request.clone(), limit);
+  let bytes: Uint8Array;
+  try {
+    bytes = await bodyBytes(request.clone(), limit);
+  } catch (error) {
+    if (requestErrorStatus(error) === 413) cancelRequestBody(request);
+    throw error;
+  }
   if (bytes.byteLength === 0) return undefined;
   if (mode === "bytes") return bytes.buffer;
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
@@ -549,9 +557,11 @@ export async function dispatchServerEndpoint(
   );
   const rpc = rpcPath.find((endpoint) => endpoint.method === request.method);
   if (rpcPath.length === 0 && pathname.startsWith(RPC_PREFIX)) {
+    cancelRequestBody(request);
     return new Response("Not Found", { status: 404 });
   }
   if (!rpc && rpcPath.length > 0) {
+    cancelRequestBody(request);
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "POST" } });
   }
   if (rpc) {
@@ -575,6 +585,7 @@ export async function dispatchServerEndpoint(
       if (!Array.isArray(args)) throw requestError("RPC input must be an argument tuple", 400);
       return rpcResponse({ ok: true, value: await rpc.invoke(args) });
     } catch (error) {
+      cancelRequestBody(request);
       const status = validationError(error) ? 400 : (requestErrorStatus(error) ?? 500);
       if (status === 500 && !options.development) console.error(error);
       return rpcResponse(
@@ -593,6 +604,7 @@ export async function dispatchServerEndpoint(
   const selected = matchingPath.find(({ endpoint }) => endpoint.method === request.method);
   if (!selected) {
     if (matchingPath.length === 0) return undefined;
+    cancelRequestBody(request);
     const allow = [...new Set(matchingPath.map(({ endpoint }) => endpoint.method))]
       .toSorted()
       .join(", ");
@@ -620,6 +632,7 @@ export async function dispatchServerEndpoint(
     });
     return await selected.endpoint.invoke(input, request);
   } catch (error) {
+    cancelRequestBody(request);
     const status = validationError(error) ? 400 : (requestErrorStatus(error) ?? 500);
     if (status === 500) console.error(error);
     const detail = errorDetail(error, options.development ?? false);

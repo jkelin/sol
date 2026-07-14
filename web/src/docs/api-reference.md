@@ -46,6 +46,8 @@ order: 10
 - `$httpRoute({ method, path, schema, body? }, handler)` declares a Fetch endpoint with decoded path parameters, query values, headers, and JSON/text or byte body input.
 - Server declarations and `$route()` must be exported top-level constants in `.sol.ts` or `.sol.tsx` files.
 - HTTP handlers receive the schema output and original `Request`, and must return a `Response`.
+- Static HTTP path segments are URL-canonicalized. Paths reject query or fragment syntax, backslashes, control characters, dot segments, trailing or empty segments, and authored percent escapes; use `:parameter` for decoded dynamic segments.
+- RPC and HTTP request bodies are limited to 1 MiB by default. Configure another non-negative byte limit with `solkit({ entry, adapter, maxBodyBytes })`; oversized requests return 413.
 
 ## Routing
 

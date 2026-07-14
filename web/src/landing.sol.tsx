@@ -52,7 +52,7 @@ const CounterExample = $component(function CounterExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={counterSource} lines={counterLines} filename="Counter.tsx" />
+          <CodePanel code={counterSource} lines={counterLines} filename="Counter.sol.tsx" />
         </div>
         <div
           hidden={mode === "code"}

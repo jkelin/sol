@@ -131,5 +131,8 @@ export const Demo = $component(function Demo() { return <p>{values[0]}</p>; });`
     const lines = await highlightCode(counterSource, "tsx");
     expect(lines).toHaveLength(counterSource.split("\n").length);
     expect(JSON.stringify(lines)).toContain('"color":"#');
+    expect(counterSource).toContain('$rpcQuery(\n  "website-message"');
+    expect(counterSource).toContain("query: websiteMessage");
+    expect(counterSource).toContain("Call named RPC");
   });
 });

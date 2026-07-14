@@ -48,6 +48,7 @@ export interface CompilerContext {
   refCreatorNames: Set<string>;
   requestHelperNames: Set<string>;
   declarationHelperNames: Map<string, "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute">;
+  declarationHelperNamespaces: Set<string>;
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;

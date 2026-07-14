@@ -294,6 +294,32 @@ describe("server declarations", () => {
     expect(streamed?.status).toBe(413);
     expect(await streamed!.json()).toMatchObject({ error: { name: "Error" } });
     expect(invoked).toBe(false);
+
+    let cancelled = false;
+    const openBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("abcdef"));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const openInit: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: openBody,
+      duplex: "half",
+    };
+    const openResult = await Promise.race([
+      dispatchServerEndpoint([route], new Request("https://example.test/streamed", openInit), {
+        maxBodyBytes: 5,
+      }),
+      Bun.sleep(100).then(() => "timeout" as const),
+    ]);
+    expect(openResult).not.toBe("timeout");
+    expect((openResult as Response).status).toBe(413);
+    await Bun.sleep(0);
+    expect(cancelled).toBe(true);
   });
 
   test("treats user-thrown status fields as logged production failures", async () => {

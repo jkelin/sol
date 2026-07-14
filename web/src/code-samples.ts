@@ -1,13 +1,29 @@
-export const counterSource = `import { $component } from "solix";
+export const counterSource = `import { $component, $query, $rpcQuery } from "solix";
+import * as v from "valibot";
+
+export const websiteMessage = $rpcQuery(
+  "website-message",
+  { schema: v.tuple([]) },
+  async () => ({ message: "Validated on the Solix server." }),
+);
 
 const Counter = $component(function Counter() {
   let count = 0;
   const doubled = count * 2;
+  const serverMessage = $query({
+    queryKey: ["website", "message"],
+    query: websiteMessage,
+    enabled: false,
+  });
 
   return (
-    <button onClick={() => count++}>
-      {count} / {doubled}
-    </button>
+    <>
+      <button onClick={() => count++}>{count} / {doubled}</button>
+      <button onClick={() => void serverMessage.refetch({ suspense: false })}>
+        {serverMessage.isFetching ? "Calling server…" : "Call named RPC"}
+      </button>
+      {serverMessage.data && <p>{serverMessage.data.message}</p>}
+    </>
   );
 });`;
 

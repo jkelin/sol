@@ -80,8 +80,45 @@ test("dispatches server endpoints before rendering documents", async () => {
     { template: templateHtml },
   );
   expect(oversized.status).toBe(413);
+
+  const mutableOptions = { maxBodyBytes: 3 };
+  const snapshotted = createRequestHandler(Root, [endpoint], mutableOptions);
+  mutableOptions.maxBodyBytes = 100;
+  const stillLimited = await snapshotted(
+    new Request("https://example.test/api/rpc/greeting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(["Solix"]),
+    }),
+    { template: templateHtml },
+  );
+  expect(stillLimited.status).toBe(413);
 });
 
 test("validates request body limit options", () => {
   expect(() => createRequestHandler(Root, [], { maxBodyBytes: -1 })).toThrow("maxBodyBytes");
+});
+
+test("cancels bodies for unmatched non-document requests", async () => {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("pending"));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const init: RequestInit & { duplex: "half" } = {
+    method: "POST",
+    body,
+    duplex: "half",
+  };
+  const response = await createRequestHandler(Root)(
+    new Request("https://example.test/missing", init),
+    { template: templateHtml },
+  );
+  expect(response.status).toBe(404);
+  await Bun.sleep(0);
+  expect(cancelled).toBe(true);
 });

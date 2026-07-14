@@ -7,6 +7,44 @@ import { canonicalHttpRoutePath } from "./http-path.ts";
 import { parseRoutePath } from "./route-path.ts";
 import { compileFunction } from "./setup.ts";
 
+type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
+
+export function declarationCallHelper(
+  compiler: CompilationState["compiler"],
+  callee: t.Expression | t.V8IntrinsicIdentifier,
+): DeclarationHelper | undefined {
+  if (t.isIdentifier(callee)) return compiler.declarationHelperNames.get(callee.name);
+  if (
+    t.isMemberExpression(callee) &&
+    !callee.computed &&
+    t.isIdentifier(callee.object) &&
+    t.isIdentifier(callee.property) &&
+    compiler.declarationHelperNamespaces.has(callee.object.name)
+  ) {
+    return ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(callee.property.name)
+      ? (callee.property.name as DeclarationHelper)
+      : undefined;
+  }
+  return undefined;
+}
+
+function exportedLocalNames(ast: t.File): Set<string> {
+  const names = new Set<string>();
+  for (const statement of ast.program.body) {
+    if (!t.isExportNamedDeclaration(statement) || statement.source) continue;
+    if (statement.declaration) {
+      for (const name of Object.keys(t.getBindingIdentifiers(statement.declaration)))
+        names.add(name);
+    }
+    for (const specifier of statement.specifiers) {
+      if (t.isExportSpecifier(specifier) && t.isIdentifier(specifier.local)) {
+        names.add(specifier.local.name);
+      }
+    }
+  }
+  return names;
+}
+
 export function compileComponentDeclarations(state: CompilationState): void {
   const { ast, compiler, edits, compiledJsxRanges, componentCallRanges } = state;
   for (const statement of ast.program.body) {
@@ -48,6 +86,7 @@ export function compileComponentDeclarations(state: CompilationState): void {
 
 export function compileRouteDeclarations(state: CompilationState): void {
   const { ast, compiler, edits, routeCallRanges } = state;
+  const exportedNames = exportedLocalNames(ast);
   for (const statement of ast.program.body) {
     const exported = t.isExportNamedDeclaration(statement);
     const declaration = exported ? statement.declaration : statement;
@@ -55,15 +94,16 @@ export function compileRouteDeclarations(state: CompilationState): void {
     const routeVariables = declaration.declarations.filter(
       (variable) =>
         t.isCallExpression(variable.init) &&
-        t.isIdentifier(variable.init.callee) &&
-        compiler.declarationHelperNames.get(variable.init.callee.name) === "$route",
+        declarationCallHelper(compiler, variable.init.callee) === "$route",
     );
     if (routeVariables.length === 0) continue;
     const variable = routeVariables[0]!;
     if (!isSolFilename(compiler.filename)) {
       codeFrame(compiler, variable, "$route() is only valid in *.sol.ts or *.sol.tsx files");
     }
-    if (!exported) codeFrame(compiler, declaration, "$route() declarations must be exported");
+    if (!t.isIdentifier(variable.id) || !exportedNames.has(variable.id.name)) {
+      codeFrame(compiler, declaration, "$route() declarations must be exported");
+    }
     if (declaration.kind !== "const" || declaration.declarations.length !== 1) {
       codeFrame(
         compiler,
@@ -113,7 +153,7 @@ export function compileRouteDeclarations(state: CompilationState): void {
     edits.push({
       start: statement.start!,
       end: statement.end!,
-      code: `export const ${variable.id.name} = __solix_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
+      code: `${exported ? "export " : ""}const ${variable.id.name} = __solix_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
     });
     routeCallRanges.add(`${call.start}:${call.end}`);
   }
@@ -134,8 +174,18 @@ function rangeWithOwnedComments(node: t.Node, source: string): { start: number; 
   return { start: commentStart ?? node.start!, end: commentEnd ?? node.end! };
 }
 
+function isSimpleServerEffectArgument(argument: t.Node | null): boolean {
+  return (
+    argument !== null &&
+    (t.isIdentifier(argument) ||
+      t.isLiteral(argument) ||
+      (t.isMemberExpression(argument) && !argument.computed))
+  );
+}
+
 export function compileServerDeclarations(state: CompilationState): void {
   const { ast, compiler, edits, serverCallRanges } = state;
+  const exportedNames = exportedLocalNames(ast);
   for (const statement of ast.program.body) {
     const exported = t.isExportNamedDeclaration(statement);
     const declaration = exported ? statement.declaration : statement;
@@ -143,18 +193,19 @@ export function compileServerDeclarations(state: CompilationState): void {
     const variables = declaration.declarations.filter(
       (variable) =>
         t.isCallExpression(variable.init) &&
-        t.isIdentifier(variable.init.callee) &&
-        compiler.declarationHelperNames.has(variable.init.callee.name) &&
-        compiler.declarationHelperNames.get(variable.init.callee.name) !== "$route",
+        declarationCallHelper(compiler, variable.init.callee) !== undefined &&
+        declarationCallHelper(compiler, variable.init.callee) !== "$route",
     );
     if (variables.length === 0) continue;
     const variable = variables[0]!;
     const call = variable.init as t.CallExpression;
-    const helper = compiler.declarationHelperNames.get((call.callee as t.Identifier).name)!;
+    const helper = declarationCallHelper(compiler, call.callee)!;
     if (!isSolFilename(compiler.filename)) {
       codeFrame(compiler, variable, `${helper}() is only valid in *.sol.ts or *.sol.tsx files`);
     }
-    if (!exported) codeFrame(compiler, declaration, `${helper}() declarations must be exported`);
+    if (!t.isIdentifier(variable.id) || !exportedNames.has(variable.id.name)) {
+      codeFrame(compiler, declaration, `${helper}() declarations must be exported`);
+    }
     if (declaration.kind !== "const" || declaration.declarations.length !== 1) {
       codeFrame(
         compiler,
@@ -273,10 +324,10 @@ export function compileServerDeclarations(state: CompilationState): void {
     }
     const code =
       compiler.target === "server"
-        ? `export const ${variable.id.name} = ${runtime}(${emittedArguments.map((argument) => generate(argument).code).join(", ")});`
+        ? `${exported ? "export " : ""}const ${variable.id.name} = ${runtime}(${emittedArguments.map((argument) => generate(argument).code).join(", ")});`
         : helper === "$httpRoute"
-          ? `export const ${variable.id.name} = ${runtime}({ method: ${generate(properties.get("method")!.value).code}, path: ${JSON.stringify(canonicalPath)} });`
-          : `export const ${variable.id.name} = ${runtime}(${nameCode});`;
+          ? `${exported ? "export " : ""}const ${variable.id.name} = ${runtime}({ method: ${generate(properties.get("method")!.value).code}, path: ${JSON.stringify(canonicalPath)} });`
+          : `${exported ? "export " : ""}const ${variable.id.name} = ${runtime}(${nameCode});`;
     const statementRange =
       compiler.target === "client" ? rangeWithOwnedComments(statement, compiler.source) : statement;
     edits.push({ start: statementRange.start!, end: statementRange.end!, code });
@@ -333,6 +384,21 @@ function pruneClientServerDependencies(state: CompilationState): void {
           for (const reference of references) {
             const statement = effectFor(reference.node);
             if (!statement || removedStatements.has(statement)) continue;
+            const expression = statement.expression;
+            const call =
+              t.isCallExpression(expression) || t.isNewExpression(expression)
+                ? expression
+                : undefined;
+            if (
+              !call ||
+              call.arguments.some((argument) => !isSimpleServerEffectArgument(argument))
+            ) {
+              codeFrame(
+                state.compiler,
+                statement,
+                "Ambiguous top-level server dependency effect; move server setup into a declaration initializer",
+              );
+            }
             const range = rangeWithOwnedComments(statement, state.compiler.source);
             removedStatements.add(statement);
             removedRanges.push([range.start, range.end]);

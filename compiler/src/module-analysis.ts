@@ -49,6 +49,10 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         }
       } else if (statement.source.value === "solix") {
         for (const specifier of statement.specifiers) {
+          if (t.isImportNamespaceSpecifier(specifier)) {
+            compiler.declarationHelperNamespaces.add(specifier.local.name);
+            continue;
+          }
           if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
           if (specifier.importKind === "type") continue;
           if (declarationHelpers.has(specifier.imported.name)) {

@@ -25,7 +25,9 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
   selecting direct server definitions or browser stubs and pruning imports, declarators,
   assignments, effect statements, attached comments, and exported dependency closures used only
-  by stripped server expressions. Declaration helpers are resolved by their Solix import binding.
+  by stripped server expressions. Declaration helpers are resolved through named, aliased, or
+  namespace Solix import bindings and may be published by inline or later export declarations;
+  ambiguous mixed frontend/server effects receive a diagnostic instead of being deleted.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
 - `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax,
   redacts stripped server ranges from client source content, and creates the final source map.

@@ -17,11 +17,12 @@ The root `bun run verify` includes the website's Markdown/compiler tests. Root `
 
 - `src/App.tsx` owns the shared header, responsive navigation, route outlet, pending state, and footer.
 - `src/landing.route.tsx` contains the landing page and its three compiled interactive examples.
+- `src/code-samples.ts` is the single source for landing-page example text and build-time Shiki tokens.
 - `src/docs.route.tsx` contains the desktop/mobile documentation shell, route handles, navigation, and adjacent-page links.
 - `src/components/ui/` contains Solix-native, shadcn-inspired leaf components and variant recipes. They intentionally do not use React, Radix, or `components.json`.
 - `src/docs/*.md` contains every documentation page and validated live Solix fences.
 - `src/markdown/compile.ts` validates frontmatter and examples, parses Remark/GFM nodes, tokenizes source with Shiki, and generates Solix JSX.
-- `src/markdown/vite.ts` compiles Markdown modules, generates the ordered virtual documentation registry, and invalidates it during development.
+- `src/markdown/vite.ts` compiles Markdown modules, pre-highlights landing examples with Shiki, generates the ordered virtual documentation registry, and invalidates it during development.
 - `src/styles.css` contains Tailwind v4 tokens, global Sunblock surfaces, documentation typography, and motion classes.
 - `DESIGN_SYSTEM.md` is the visual and interaction source of truth.
 - `designs/` preserves the six original standalone HTML direction studies.

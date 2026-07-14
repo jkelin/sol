@@ -12,3 +12,11 @@ declare module "virtual:solix-docs" {
   export const docs: readonly DocNavigationItem[];
   export const DocsContent: Component<{ readonly slug: string }>;
 }
+
+declare module "virtual:solix-code-tokens" {
+  import type { CodeLine } from "../components/ui/CodePanel.tsx";
+
+  export const counterLines: readonly CodeLine[];
+  export const listLines: readonly CodeLine[];
+  export const formLines: readonly CodeLine[];
+}

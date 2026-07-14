@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { markdownModule, parseDocument, type DocMetadata } from "../src/markdown/compile.ts";
+import {
+  highlightCode,
+  markdownModule,
+  parseDocument,
+  type DocMetadata,
+} from "../src/markdown/compile.ts";
+import { counterSource } from "../src/code-samples.ts";
 import { registrySource, validateDocuments } from "../src/markdown/registry.ts";
 import { compileModule } from "../src/markdown/vite.ts";
 
@@ -118,5 +124,11 @@ export const Demo = $component(function Demo() { return <p>{values[0]}</p>; });`
     expect(generated.moduleType).toBe("js");
     expect(generated.code).not.toContain(" as const");
     expect(generated.code).not.toContain("Array<");
+  });
+
+  test("pre-highlights landing TSX with Shiki", async () => {
+    const lines = await highlightCode(counterSource, "tsx");
+    expect(lines).toHaveLength(counterSource.split("\n").length);
+    expect(JSON.stringify(lines)).toContain('"color":"#');
   });
 });

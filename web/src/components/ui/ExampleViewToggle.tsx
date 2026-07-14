@@ -1,18 +1,18 @@
 import { $component } from "solix";
 
-export type ExampleMode = "editor" | "preview" | "both";
+export type ExampleMode = "code" | "preview" | "both";
 
 export interface ExampleViewToggleProps {
   readonly mode: ExampleMode;
   readonly onChange: (mode: ExampleMode) => void;
 }
 
-const modes: readonly ExampleMode[] = ["editor", "preview", "both"];
+const modes: readonly ExampleMode[] = ["code", "preview", "both"];
 
 export const ExampleViewToggle = $component<ExampleViewToggleProps>(
   function ExampleViewToggle(props) {
     if (!modes.includes(props.mode)) {
-      throw new TypeError("Example mode must be editor, preview, or both");
+      throw new TypeError("Example mode must be code, preview, or both");
     }
     return (
       <div class="flex flex-wrap gap-2" aria-label="Example view" role="group">

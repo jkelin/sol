@@ -250,7 +250,7 @@ function parseLiveBlock(node: Code, state: RenderState): Omit<LiveBlock, "linesN
   };
 }
 
-async function tokenize(code: string, language: string): Promise<readonly unknown[]> {
+export async function highlightCode(code: string, language: string): Promise<readonly unknown[]> {
   try {
     const languageId = (language === "solix" ? "tsx" : language) as BundledLanguage;
     const result = await codeToTokens(code, { lang: languageId, theme: "github-dark" });
@@ -264,7 +264,7 @@ async function tokenize(code: string, language: string): Promise<readonly unknow
 
 async function renderCode(node: Code, state: RenderState): Promise<string> {
   const index = state.nextCodeBlock++;
-  const lines = await tokenize(node.value, node.lang ?? "text");
+  const lines = await highlightCode(node.value, node.lang ?? "text");
   const linesName = `__code_lines_${index}`;
   state.moduleDeclarations.push(`const ${linesName} = ${JSON.stringify(lines)};`);
   if (node.lang === "solix") {
@@ -438,7 +438,7 @@ export async function markdownModule(
     </header>
     <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
       <div hidden={mode === "preview"} class="min-w-0"><CodePanel code={${JSON.stringify(block.code)}} lines={${linesName}} filename=${JSON.stringify(`${block.preview}.tsx`)} /></div>
-      <div hidden={mode === "editor"} class="min-h-72 bg-cream p-6 sm:p-8"><${block.preview} /></div>
+      <div hidden={mode === "code"} class="min-h-72 bg-cream p-6 sm:p-8"><${block.preview} /></div>
     </div>
   </section>;
 });`;

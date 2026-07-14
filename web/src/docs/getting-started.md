@@ -29,7 +29,7 @@ Set TypeScript's `jsxImportSource` to `solix`, then mount a compiled component i
 
 ## First light
 
-This source is both the editor content and the component running beside it.
+This source is both the code-panel content and the component running beside it.
 
 ```solix live preview=FirstCounter title="Your first reactive component"
 import { $component } from "solix";

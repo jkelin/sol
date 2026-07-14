@@ -2,11 +2,14 @@ import { compile } from "@solix/compiler";
 import { join } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath, transformWithOxc } from "vite";
-import { markdownModule } from "./compile.ts";
+import { counterSource, formSource, listSource } from "../code-samples.ts";
+import { highlightCode, markdownModule } from "./compile.ts";
 import { registrySource } from "./registry.ts";
 
 const virtualId = "virtual:solix-docs";
 const resolvedVirtualId = `\0/node_modules/${virtualId}.tsx`;
+const codeTokensId = "virtual:solix-code-tokens";
+const resolvedCodeTokensId = `\0${codeTokensId}`;
 const markdownPrefix = "\0/node_modules/solix-markdown:";
 
 export async function compileModule(
@@ -33,12 +36,27 @@ export function solixMarkdown(): Plugin {
     },
     resolveId(id) {
       if (id === virtualId) return resolvedVirtualId;
+      if (id === codeTokensId) return resolvedCodeTokensId;
       if (id.startsWith("/@fs/") && id.endsWith(".md")) {
         return `${markdownPrefix}${id.slice("/@fs/".length)}.tsx`;
       }
       return null;
     },
     async load(id) {
+      if (id === resolvedCodeTokensId) {
+        const [counterLines, listLines, formLines] = await Promise.all([
+          highlightCode(counterSource, "tsx"),
+          highlightCode(listSource, "tsx"),
+          highlightCode(formSource, "tsx"),
+        ]);
+        return {
+          code: `export const counterLines = ${JSON.stringify(counterLines)};
+export const listLines = ${JSON.stringify(listLines)};
+export const formLines = ${JSON.stringify(formLines)};`,
+          map: null,
+          moduleType: "js",
+        };
+      }
       if (id === resolvedVirtualId) {
         return compileModule(await registrySource(config.root), "virtual-solix-docs.tsx");
       }

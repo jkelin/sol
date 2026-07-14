@@ -58,7 +58,7 @@ Fonts are self-hosted through Fontsource so builds and visual tests do not depen
 - **Input:** cream inset field, ink boundary, solar focus ring, tomato issue text, explicit label and description relationship.
 - **Panel/Card:** content-specific internal layout with one shared boundary/depth system.
 - **Callout:** eyebrow, declarative title, concise body. Mint is informational/success; tomato is warning.
-- **Example toggle:** three pressed buttons for Editor, Preview, and Both. It is a view control, not a tab implementation, and preserves mounted preview state.
+- **Example toggle:** three pressed buttons for Code, Preview, and Both. It is a view control, not a tab implementation, and preserves mounted preview state.
 - **Code panel:** ink surface, cream rule, mono source, line numbers, build-time syntax tokens, and a clipboard status announcement.
 - **Docs sheet:** mobile-only modal layer with a real close control, backdrop control, current-page state, and the same cream canvas as the content.
 
@@ -77,7 +77,7 @@ Solix does not currently support general component children. Reusable primitives
 - Hover may shift a block by `1–4px` or rotate it by at most one degree.
 - Enter/leave demonstrations use restrained opacity and translation.
 - `prefers-reduced-motion` reduces animations and transitions to effectively immediate behavior.
-- Live previews remain mounted when their editor panel is hidden so user state survives mode changes.
+- Live previews remain mounted when their code panel is hidden so user state survives mode changes.
 
 ## Accessibility
 

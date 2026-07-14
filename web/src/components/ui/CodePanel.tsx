@@ -16,16 +16,12 @@ export interface CodePanelProps {
   readonly filename?: string;
 }
 
-export function plainCode(code: string): readonly CodeLine[] {
-  return code.split("\n").map((line) => ({ tokens: [{ content: line }] }));
-}
-
 export const CodePanel = $component<CodePanelProps>(function CodePanel(props) {
   if (typeof props.code !== "string" || !Array.isArray(props.lines)) {
     throw new TypeError("CodePanel requires code and tokenized lines");
   }
   return (
-    <section class="min-w-0 border-[3px] border-ink bg-ink text-white" aria-label="Code editor">
+    <section class="min-w-0 border-[3px] border-ink bg-ink text-white" aria-label="Code panel">
       <header class="flex flex-wrap items-center justify-between gap-3 border-b-[3px] border-cream px-4 py-3">
         <span class="font-mono text-[0.6875rem] font-bold uppercase text-solar">
           {props.filename ?? "example.tsx"}

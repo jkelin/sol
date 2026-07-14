@@ -1,59 +1,14 @@
 import { $component, $form, $route } from "solix";
 import * as v from "valibot";
+import { counterLines, formLines, listLines } from "virtual:solix-code-tokens";
+import { counterSource, formSource, listSource } from "./code-samples.ts";
 import {
   Badge,
   Button,
   CodePanel,
   ExampleViewToggle,
-  plainCode,
   type ExampleMode,
 } from "./components/ui/index.ts";
-
-const counterSource = `import { $component } from "solix";
-
-const Counter = $component(function Counter() {
-  let count = 0;
-  const doubled = count * 2;
-
-  return (
-    <button onClick={() => count++}>
-      {count} / {doubled}
-    </button>
-  );
-});`;
-
-const listSource = `import { $component } from "solix";
-
-const SolarList = $component(function SolarList() {
-  let items = [{ id: 1, label: "Static template", ready: true }];
-
-  return <ul>{items.map(item => (
-    <li key={item.id}>
-      <button onClick={() => item.ready = !item.ready}>
-        {item.ready ? "Ready" : "Draft"} — {item.label}
-      </button>
-    </li>
-  ))}</ul>;
-});`;
-
-const formSource = `import { $component, $form } from "solix";
-import * as v from "valibot";
-
-const Email = v.object({
-  email: v.pipe(v.string(), v.email("Enter a valid email.")),
-});
-
-const Signup = $component(function Signup() {
-  const form = $form({
-    schema: v.parser(Email),
-    defaultValues: { email: "" },
-  }, values => console.log(values));
-
-  return <form $form={form}>
-    <input name="email" $bind={form.values.email} />
-    <button>Join</button>
-  </form>;
-});`;
 
 const CounterExample = $component(function CounterExample() {
   let mode = "both" as ExampleMode;
@@ -71,10 +26,10 @@ const CounterExample = $component(function CounterExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={counterSource} lines={plainCode(counterSource)} filename="Counter.tsx" />
+          <CodePanel code={counterSource} lines={counterLines} filename="Counter.tsx" />
         </div>
         <div
-          hidden={mode === "editor"}
+          hidden={mode === "code"}
           class="grid min-h-80 place-items-center bg-cobalt p-8 text-white"
         >
           <div class="text-center">
@@ -114,9 +69,9 @@ const ListExample = $component(function ListExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={listSource} lines={plainCode(listSource)} filename="SolarList.tsx" />
+          <CodePanel code={listSource} lines={listLines} filename="SolarList.tsx" />
         </div>
-        <div hidden={mode === "editor"} class="min-h-80 bg-cream p-6 sm:p-8">
+        <div hidden={mode === "code"} class="min-h-80 bg-cream p-6 sm:p-8">
           <ul class="grid gap-3" aria-label="Compiler assembly list">
             {items.map((item) => (
               <li key={item.id}>
@@ -182,12 +137,9 @@ const FormExample = $component(function FormExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={formSource} lines={plainCode(formSource)} filename="Signup.tsx" />
+          <CodePanel code={formSource} lines={formLines} filename="Signup.tsx" />
         </div>
-        <div
-          hidden={mode === "editor"}
-          class="grid min-h-80 place-items-center bg-solar p-6 sm:p-8"
-        >
+        <div hidden={mode === "code"} class="grid min-h-80 place-items-center bg-solar p-6 sm:p-8">
           <form
             $form={form}
             class="w-full max-w-md border-[3px] border-ink bg-paper p-6 shadow-block"
@@ -238,7 +190,7 @@ const LandingPage = $component(function LandingPage() {
   return (
     <main id="main">
       <section
-        class="sunblock-container relative overflow-hidden pb-24 pt-14 sm:pt-20 lg:min-h-[860px]"
+        class="sunblock-container relative overflow-hidden pb-24 pt-14 sm:pt-20 2xl:min-h-[860px]"
         aria-labelledby="hero-title"
       >
         <div class="relative z-10 max-w-5xl">
@@ -251,7 +203,7 @@ const LandingPage = $component(function LandingPage() {
           </div>
           <h1
             id="hero-title"
-            class="font-display text-[clamp(4.4rem,14vw,12rem)] leading-[.76] uppercase tracking-[-.07em]"
+            class="font-display text-[clamp(4.4rem,11vw,9rem)] leading-[.76] uppercase tracking-[-.07em]"
           >
             Build in
             <br />
@@ -309,7 +261,7 @@ const LandingPage = $component(function LandingPage() {
           </div>
         </div>
         <div
-          class="relative mt-20 h-[460px] lg:absolute lg:-right-32 lg:top-32 lg:mt-0 lg:h-[620px] lg:w-[620px]"
+          class="relative mx-auto mt-20 h-[460px] w-full max-w-[620px] 2xl:absolute 2xl:right-0 2xl:top-32 2xl:mt-0 2xl:h-[620px]"
           aria-label="Solix blocks assembling around a precise DOM output"
         >
           <div class="absolute left-1/2 top-1/2 size-[22rem] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-dashed border-ink sm:size-[30rem]"></div>
@@ -326,7 +278,7 @@ const LandingPage = $component(function LandingPage() {
             <strong class="mt-2 block font-display text-lg uppercase">Writable state</strong>
             <code class="mt-3 block font-mono text-xs">let count = 0</code>
           </div>
-          <div class="absolute right-[1%] top-[12%] w-40 rotate-3 border-[3px] border-ink bg-tomato p-4 text-white shadow-block-sm">
+          <div class="absolute right-[5%] top-[12%] w-40 rotate-3 border-[3px] border-ink bg-tomato p-4 text-white shadow-block-sm">
             <span class="font-mono text-[0.625rem] font-bold uppercase text-solar">Block / 02</span>
             <strong class="mt-2 block font-display text-lg uppercase">Computed</strong>
             <code class="mt-3 block font-mono text-xs">count * 2</code>
@@ -428,8 +380,8 @@ const LandingPage = $component(function LandingPage() {
             </h2>
           </div>
           <p class="max-w-md text-lg font-medium">
-            Switch between editor, preview, or both. Every preview is compiled by Solix and keeps
-            its state while the panels move.
+            Switch between code, preview, or both. Every preview is compiled by Solix and keeps its
+            state while the panels move.
           </p>
         </div>
         <div class="mt-14 grid gap-12">

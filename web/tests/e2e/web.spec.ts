@@ -23,12 +23,23 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await expect(page.getByRole("heading", { name: "Build in sunlight." })).toBeVisible();
 
   const counter = page.getByTestId("counter-example");
+  const syntaxColorCount = await counter
+    .locator("code")
+    .evaluate(
+      (code) =>
+        new Set(
+          [...code.querySelectorAll<HTMLElement>("span[style]")].map(
+            (token) => getComputedStyle(token).color,
+          ),
+        ).size,
+    );
+  expect(syntaxColorCount).toBeGreaterThan(3);
   await expect(counter.getByRole("button", { name: "−" })).toBeDisabled();
   await counter.getByRole("button", { name: "Add one" }).click();
   await expect(counter.locator("output")).toHaveText("1");
   await expect(counter.getByRole("button", { name: "−" })).toBeEnabled();
-  await counter.getByRole("button", { name: "editor", exact: true }).click();
-  await expect(counter.getByLabel("Code editor")).toBeVisible();
+  await counter.getByRole("button", { name: "code", exact: true }).click();
+  await expect(counter.getByLabel("Code panel")).toBeVisible();
   await expect(counter.getByRole("button", { name: "Add one" })).toBeHidden();
   await counter.getByRole("button", { name: "both", exact: true }).click();
   await expect(counter.locator("output")).toHaveText("1");
@@ -81,7 +92,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   const example = page.locator('[data-live-example="AssemblyQueue"]');
   await example.getByRole("button", { name: "Add block" }).click();
   await expect(example.getByText("Block 3", { exact: true })).toBeVisible();
-  await example.getByRole("button", { name: "editor", exact: true }).click();
+  await example.getByRole("button", { name: "code", exact: true }).click();
   await expect(example.getByText("Block 3", { exact: true })).toBeHidden();
   await example.getByRole("button", { name: "both", exact: true }).click();
   await expect(example.getByText("Block 3", { exact: true })).toBeVisible();
@@ -103,6 +114,23 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
+  const heroLayout = await page.evaluate(() => {
+    const headline = document.querySelector<HTMLElement>("#hero-title span.relative")!;
+    const orbit = document.querySelector<HTMLElement>(
+      '[aria-label="Solix blocks assembling around a precise DOM output"]',
+    )!;
+    const headlineBounds = headline.getBoundingClientRect();
+    const orbitBounds = orbit.getBoundingClientRect();
+    const cards = [...orbit.querySelectorAll<HTMLElement>(":scope > div")].slice(2);
+    return {
+      separated: orbitBounds.top > headlineBounds.bottom,
+      cardsContained: cards.every((card) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= window.innerWidth;
+      }),
+    };
+  });
+  expect(heroLayout).toEqual({ separated: true, cardsContained: true });
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   const animationDuration = await page
@@ -115,6 +143,26 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
     )
     .toBe(true);
   await page.screenshot({ path: "test-results/web-landing-desktop.png", fullPage: true });
+
+  await page.setViewportSize({ width: 1632, height: 1000 });
+  const wideHeroLayout = await page.evaluate(() => {
+    const headline = document
+      .querySelector<HTMLElement>("#hero-title span.relative")!
+      .getBoundingClientRect();
+    const orbit = document.querySelector<HTMLElement>(
+      '[aria-label="Solix blocks assembling around a precise DOM output"]',
+    )!;
+    const cards = [...orbit.querySelectorAll<HTMLElement>(":scope > div")].slice(2);
+    const writable = cards[0]!.getBoundingClientRect();
+    return {
+      headlineClearsWritableBlock: headline.right < writable.left,
+      cardsContained: cards.every((card) => {
+        const bounds = card.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= window.innerWidth;
+      }),
+    };
+  });
+  expect(wideHeroLayout).toEqual({ headlineClearsWritableBlock: true, cardsContained: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/docs");

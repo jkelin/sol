@@ -1,6 +1,12 @@
 import { renderToStringAsync } from "solix";
 import { dispatchServerEndpoint } from "solix/compiler-runtime";
-import type { RequestHandler, RenderContext, ServerEndpoint, SolkitRoot } from "./types.ts";
+import type {
+  RequestHandler,
+  RequestHandlerOptions,
+  RenderContext,
+  ServerEndpoint,
+  SolkitRoot,
+} from "./types.ts";
 
 const HEAD_OUTLET = "<!--solkit-head-->";
 const BODY_OUTLET = "<!--solkit-body-->";
@@ -22,8 +28,20 @@ function validateRequest(request: unknown): asserts request is Request {
 export function createRequestHandler(
   root: SolkitRoot,
   endpoints: readonly ServerEndpoint[] = [],
+  options: RequestHandlerOptions = {},
 ): RequestHandler {
   if (typeof root !== "function") throw new TypeError("Solkit root must be a compiled component");
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new TypeError("Solkit request handler options must be an object");
+  }
+  const unexpected = Object.keys(options).find((key) => key !== "maxBodyBytes");
+  if (unexpected) throw new TypeError(`Unknown Solkit request handler option ${unexpected}`);
+  if (
+    options.maxBodyBytes !== undefined &&
+    (!Number.isSafeInteger(options.maxBodyBytes) || options.maxBodyBytes < 0)
+  ) {
+    throw new TypeError("Solkit maxBodyBytes must be a non-negative safe integer");
+  }
   return async (request: Request, context: RenderContext): Promise<Response> => {
     validateRequest(request);
     if (!context || typeof context !== "object") {
@@ -31,6 +49,7 @@ export function createRequestHandler(
     }
     const endpoint = await dispatchServerEndpoint(endpoints, request, {
       development: context.development,
+      maxBodyBytes: options.maxBodyBytes,
     });
     if (endpoint) return endpoint;
     validateTemplate(context.template);
@@ -59,6 +78,7 @@ export function createRequestHandler(
 
 export type {
   RequestHandler,
+  RequestHandlerOptions,
   RenderContext,
   SolkitAdapter,
   SolkitAdapterContext,

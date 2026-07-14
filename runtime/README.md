@@ -71,7 +71,11 @@ diagnostics. On the server they validate the full argument tuple before directly
 handler. Browser declarations POST JSON argument tuples to `/api/rpc/:name`, decode JSON response
 envelopes, and reject with reconstructed server errors. RPC arguments and results must be
 JSON-serializable. `$httpRoute()` validates decoded path parameters, repeated query values, headers,
-and automatic JSON/text or explicit byte bodies before passing the original `Request` to a handler.
+and automatic JSON/text or explicit byte bodies before passing the still-readable original `Request`
+to a handler. Endpoint bodies are capped at 1 MiB by default; Solkit's `maxBodyBytes` option changes
+the limit and oversized requests receive a structured 413 response. Static HTTP path segments are
+canonicalized to URL pathname encoding, while query, fragment, backslash, control, and dot-segment
+syntax is rejected.
 
 Public interfaces validate inputs before mutating runtime state. Keep that validation intact when moving implementation details between modules.
 

@@ -139,14 +139,16 @@ describe("server declarations", () => {
 
   test("decodes structured HTTP input and passes through Responses", async () => {
     let received: HttpRouteInput | undefined;
+    let rawBody: unknown;
     const route = httpRouteServer(
       {
         method: "POST",
         path: "/api/items/:id",
         schema: (input: HttpRouteInput) => input,
       },
-      async (input) => {
+      async (input, request) => {
         received = input;
+        rawBody = await request.json();
         return Response.json({ id: input.params.id, body: input.body });
       },
     ) as unknown as ServerEndpoint;
@@ -162,6 +164,7 @@ describe("server declarations", () => {
     expect(received?.params).toEqual({ id: "one" });
     expect(received?.query).toEqual({ tag: ["a", "b"] });
     expect(received?.body).toEqual({ ready: true });
+    expect(rawBody).toEqual({ ready: true });
   });
 
   test("dispatches root HTTP routes and preserves special record keys", async () => {
@@ -234,6 +237,63 @@ describe("server declarations", () => {
       new Request("https://example.test/api/value"),
     );
     expect(method?.status).toBe(405);
+  });
+
+  test("rejects declared and streamed bodies above the configured limit", async () => {
+    let invoked = false;
+    const rpc = rpcQueryServer(
+      "limited",
+      { schema: (args: readonly []) => args as [] },
+      async () => {
+        invoked = true;
+        return true;
+      },
+    ) as unknown as ServerEndpoint;
+    const declared = await dispatchServerEndpoint(
+      [rpc],
+      new Request("https://example.test/api/rpc/limited", {
+        method: "POST",
+        headers: { "content-length": "100", "content-type": "application/json" },
+        body: "[]",
+      }),
+      { maxBodyBytes: 5 },
+    );
+    expect(declared?.status).toBe(413);
+    expect(await declared!.json()).toMatchObject({ ok: false, error: { name: "Error" } });
+    expect(invoked).toBe(false);
+
+    const route = httpRouteServer(
+      {
+        method: "POST",
+        path: "/streamed",
+        schema: (input: HttpRouteInput) => input,
+      },
+      async () => {
+        invoked = true;
+        return new Response("unreachable");
+      },
+    ) as unknown as ServerEndpoint;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("abc"));
+        controller.enqueue(new TextEncoder().encode("def"));
+        controller.close();
+      },
+    });
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body,
+      duplex: "half",
+    };
+    const streamed = await dispatchServerEndpoint(
+      [route],
+      new Request("https://example.test/streamed", init),
+      { maxBodyBytes: 5 },
+    );
+    expect(streamed?.status).toBe(413);
+    expect(await streamed!.json()).toMatchObject({ error: { name: "Error" } });
+    expect(invoked).toBe(false);
   });
 
   test("treats user-thrown status fields as logged production failures", async () => {
@@ -319,6 +379,72 @@ describe("server declarations", () => {
       }),
     );
     expect(malformed?.status).toBe(400);
+  });
+
+  test("keeps validation and development error details JSON-safe", async () => {
+    const invalid = rpcQueryServer(
+      "unsafe-issues",
+      {
+        schema: () => {
+          throw { issues: [Symbol("unsafe")] };
+        },
+      },
+      async () => true,
+    ) as unknown as ServerEndpoint;
+    const validation = await dispatchServerEndpoint([invalid], rpcRequest("unsafe-issues", []));
+    expect(validation?.status).toBe(400);
+    expect(await validation!.json()).toEqual({
+      ok: false,
+      error: {
+        name: "ValidationError",
+        message: "Input validation failed",
+        issues: "Unserializable error details",
+      },
+    });
+
+    const cause = {
+      [Symbol.toPrimitive]() {
+        throw new Error("coercion failed");
+      },
+    };
+    const failed = rpcQueryServer(
+      "unsafe-cause",
+      { schema: (args: readonly []) => args as [] },
+      async () => {
+        throw new Error("failed", { cause });
+      },
+    ) as unknown as ServerEndpoint;
+    const development = await dispatchServerEndpoint([failed], rpcRequest("unsafe-cause", []), {
+      development: true,
+    });
+    expect(development?.status).toBe(500);
+    expect(await development!.json()).toMatchObject({
+      error: { message: "failed", cause: "Unserializable error details" },
+    });
+  });
+
+  test("canonicalizes static HTTP paths and rejects unreachable syntax", async () => {
+    const route = httpRouteServer(
+      {
+        method: "GET",
+        path: "/café au lait",
+        schema: (input: HttpRouteInput) => input,
+      },
+      async () => new Response("matched"),
+    ) as unknown as ServerEndpoint;
+    const response = await dispatchServerEndpoint(
+      [route],
+      new Request("https://example.test/café au lait"),
+    );
+    expect(await response!.text()).toBe("matched");
+
+    for (const path of ["/query?value", "/fragment#value", "/back\\slash", "/./value", "/%2e"])
+      expect(() =>
+        httpRouteServer(
+          { method: "GET", path: path as `/${string}`, schema: (input: HttpRouteInput) => input },
+          async () => new Response("unreachable"),
+        ),
+      ).toThrow();
   });
 
   test("includes RPC failure details only in development", async () => {

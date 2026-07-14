@@ -5,10 +5,19 @@ import { codeFrame } from "./diagnostics.ts";
 import * as t from "@babel/types";
 
 export function analyzeModule({ ast, compiler }: CompilationState): void {
+  const declarationHelpers = new Set(["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"]);
   traverse(ast, {
     Program(path) {
       for (const binding of Object.values(path.scope.bindings)) {
         validateReservedIdentifier(compiler, binding.identifier);
+      }
+      for (const helper of declarationHelpers) {
+        if (!path.scope.hasBinding(helper)) {
+          compiler.declarationHelperNames.set(
+            helper,
+            helper as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
+          );
+        }
       }
       path.stop();
     },
@@ -42,6 +51,12 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         for (const specifier of statement.specifiers) {
           if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
           if (specifier.importKind === "type") continue;
+          if (declarationHelpers.has(specifier.imported.name)) {
+            compiler.declarationHelperNames.set(
+              specifier.local.name,
+              specifier.imported.name as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
+            );
+          }
           if (specifier.imported.name === "Route") {
             compiler.componentNames.add(specifier.local.name);
           }

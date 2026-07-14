@@ -8,6 +8,10 @@ export interface RenderContext {
 
 export type RequestHandler = (request: Request, context: RenderContext) => Promise<Response>;
 
+export interface RequestHandlerOptions {
+  readonly maxBodyBytes?: number;
+}
+
 export interface SolkitAdapterContext {
   readonly serverDirectory: string;
   readonly clientDirectory: string;
@@ -22,6 +26,7 @@ export interface SolkitOptions {
   readonly entry: string;
   readonly exportName?: string;
   readonly adapter: SolkitAdapter;
+  readonly maxBodyBytes?: number;
 }
 
 export type SolkitRoot = Component;

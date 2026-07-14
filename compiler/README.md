@@ -24,14 +24,16 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 - `module-analysis.ts` validates bindings and classifies framework, builtin, Head, Link, and component imports.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
   selecting direct server definitions or browser stubs and pruning imports, declarators,
-  assignments, attached comments, and exported dependency closures used only by stripped server
-  expressions.
+  assignments, effect statements, attached comments, and exported dependency closures used only
+  by stripped server expressions. Declaration helpers are resolved by their Solix import binding.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
 - `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax,
   redacts stripped server ranges from client source content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames and preserves source-map origins while accepting the
   client-safe source content emitted by `output.ts`.
 - `route-path.ts` validates route templates and produces compiled matching metadata.
+- `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
+  manifest collision checks.
 - `codegen.ts` owns identifier rewriting and reusable Babel-to-code helpers.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists, conditionals, and child expressions into templates and runtime operations.
 - `setup.ts` analyzes component setup and rewrites local state, derived values, props, frame-explicit context reads, and component factories while preserving `createRef()` objects as non-reactive handles and attaching authored locations to query/mutation diagnostics.

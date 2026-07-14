@@ -69,4 +69,19 @@ test("dispatches server endpoints before rendering documents", async () => {
   );
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ ok: true, value: "Hello Solix" });
+
+  const limited = createRequestHandler(Root, [endpoint], { maxBodyBytes: 3 });
+  const oversized = await limited(
+    new Request("https://example.test/api/rpc/greeting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(["Solix"]),
+    }),
+    { template: templateHtml },
+  );
+  expect(oversized.status).toBe(413);
+});
+
+test("validates request body limit options", () => {
+  expect(() => createRequestHandler(Root, [], { maxBodyBytes: -1 })).toThrow("maxBodyBytes");
 });

@@ -38,12 +38,18 @@ function validateOptions(options: unknown): asserts options is SolkitOptions {
     throw new TypeError("solkit() adapter must provide a name and write() method");
   }
   const unexpected = Object.keys(options).find(
-    (key) => key !== "entry" && key !== "exportName" && key !== "adapter",
+    (key) => key !== "entry" && key !== "exportName" && key !== "adapter" && key !== "maxBodyBytes",
   );
   if (unexpected) throw new TypeError(`Unknown solkit() option ${unexpected}`);
+  if (
+    candidate.maxBodyBytes !== undefined &&
+    (!Number.isSafeInteger(candidate.maxBodyBytes) || candidate.maxBodyBytes < 0)
+  ) {
+    throw new TypeError("solkit() maxBodyBytes must be a non-negative safe integer");
+  }
 }
 
-async function requestFromNode(request: IncomingMessage): Promise<Request> {
+function requestFromNode(request: IncomingMessage): Request {
   const host = request.headers.host ?? "localhost";
   const headers = new Headers();
   for (const [name, value] of Object.entries(request.headers)) {
@@ -51,19 +57,14 @@ async function requestFromNode(request: IncomingMessage): Promise<Request> {
     else if (value !== undefined) headers.set(name, value);
   }
   const method = request.method ?? "GET";
-  let body: ArrayBuffer | undefined;
-  if (method !== "GET" && method !== "HEAD") {
-    const collected = Buffer.concat(await Array.fromAsync(request));
-    body = collected.buffer.slice(
-      collected.byteOffset,
-      collected.byteOffset + collected.byteLength,
-    ) as ArrayBuffer;
-  }
-  return new Request(new URL(request.url ?? "/", `http://${host}`), {
+  const isRead = method === "GET" || method === "HEAD";
+  const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
-    body,
-  });
+    body: isRead ? undefined : (request as unknown as BodyInit),
+    duplex: isRead ? undefined : "half",
+  };
+  return new Request(new URL(request.url ?? "/", `http://${host}`), init);
 }
 
 async function sendResponse(response: Response, target: ServerResponse): Promise<void> {
@@ -164,7 +165,7 @@ document.documentElement.dataset.solkitHydrated = "true";`;
         return `import { createRequestHandler } from "solkit";
 import endpoints from "virtual:solix/server-endpoints";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
-export const handle = createRequestHandler(Root, endpoints);`;
+export const handle = createRequestHandler(Root, endpoints, { maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });`;
       }
       return null;
     },
@@ -192,7 +193,7 @@ export const handle = createRequestHandler(Root, endpoints);`;
               throw new TypeError("Solkit server entry did not export a request handler");
             }
             await sendResponse(
-              await module.handle(await requestFromNode(incoming), { template, development: true }),
+              await module.handle(requestFromNode(incoming), { template, development: true }),
               outgoing,
             );
           })().catch((error: unknown) => {

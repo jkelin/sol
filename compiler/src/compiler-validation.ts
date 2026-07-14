@@ -26,7 +26,9 @@ export function validateCompiledModule(state: CompilationState): boolean {
           "$component() is only valid as a direct top-level const initializer",
         );
       }
-      if (t.isIdentifier(path.node.callee, { name: "$route" })) {
+      const declarationHelper =
+        calleeName === undefined ? undefined : compiler.declarationHelperNames.get(calleeName);
+      if (declarationHelper === "$route") {
         if (routeCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(
           compiler,
@@ -36,17 +38,14 @@ export function validateCompiledModule(state: CompilationState): boolean {
             : "$route() is only valid in *.sol.ts or *.sol.tsx files",
         );
       }
-      if (
-        calleeName !== undefined &&
-        ["$rpcQuery", "$rpcMutation", "$httpRoute"].includes(calleeName)
-      ) {
+      if (declarationHelper !== undefined) {
         if (serverCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(
           compiler,
           path.node,
           isSolFilename(compiler.filename)
-            ? `${calleeName}() is only valid as an exported top-level const initializer`
-            : `${calleeName}() is only valid in *.sol.ts or *.sol.tsx files`,
+            ? `${declarationHelper}() is only valid as an exported top-level const initializer`
+            : `${declarationHelper}() is only valid in *.sol.ts or *.sol.tsx files`,
         );
       }
     },

@@ -27,6 +27,7 @@ export function compile(
     linkNames: new Set(),
     refCreatorNames: new Set(),
     requestHelperNames: new Set(),
+    declarationHelperNames: new Map(),
     mappingOrigins: [],
     nextListId: 0,
     nextAsyncId: 0,

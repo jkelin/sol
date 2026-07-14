@@ -5,6 +5,7 @@ const ENDPOINT = Symbol.for("solix.server.endpoint");
 const REQUEST_ERROR_STATUS = Symbol("solix.request.error.status");
 const RPC_PREFIX = "/api/rpc/";
 const RPC_CONTENT_TYPE = "application/json";
+export const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 
 export type RpcName = string;
 export type RpcArgs = readonly unknown[];
@@ -63,6 +64,7 @@ interface CompiledHttpPath {
 
 export interface ServerDispatchOptions {
   readonly development?: boolean;
+  readonly maxBodyBytes?: number;
 }
 
 const rpcMetadata = new WeakMap<
@@ -88,14 +90,14 @@ function validationError(error: unknown): error is { readonly issues: readonly u
   return isObject(error) && Array.isArray((error as { issues?: unknown }).issues);
 }
 
-function requestError(message: string, status: 400 | 415): TypeError {
+function requestError(message: string, status: 400 | 413 | 415): TypeError {
   return Object.assign(new TypeError(message), { [REQUEST_ERROR_STATUS]: status });
 }
 
-function requestErrorStatus(error: unknown): 400 | 415 | undefined {
+function requestErrorStatus(error: unknown): 400 | 413 | 415 | undefined {
   if (!isObject(error)) return undefined;
   const status = (error as { [REQUEST_ERROR_STATUS]?: unknown })[REQUEST_ERROR_STATUS];
-  return status === 400 || status === 415 ? status : undefined;
+  return status === 400 || status === 413 || status === 415 ? status : undefined;
 }
 
 function serializeJson(value: unknown, label: string): string {
@@ -162,7 +164,11 @@ function jsonErrorValue(value: unknown): unknown {
   try {
     return JSON.parse(serializeJson(value, "RPC error details"));
   } catch {
-    return String(value);
+    try {
+      return String(value);
+    } catch {
+      return "Unserializable error details";
+    }
   }
 }
 
@@ -293,6 +299,19 @@ function compileHttpPath(path: string): CompiledHttpPath {
   if (!path.startsWith("/") || (path.length > 1 && path.endsWith("/"))) {
     throw new TypeError("HTTP route path must start with one slash and have no trailing slash");
   }
+  let containsControl = false;
+  for (let index = 0; index < path.length; index += 1) {
+    const code = path.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) {
+      containsControl = true;
+      break;
+    }
+  }
+  if (/[?#\\]/.test(path) || containsControl) {
+    throw new TypeError(
+      "HTTP route path cannot contain query, fragment, backslash, or control syntax",
+    );
+  }
   const names: string[] = [];
   const specificity: number[] = [];
   if (path === "/") {
@@ -312,8 +331,20 @@ function compileHttpPath(path: string): CompiledHttpPath {
         specificity.push(0);
         return "([^/]+)";
       }
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(segment);
+      } catch {
+        throw new TypeError("HTTP route path contains malformed percent encoding");
+      }
+      if (decoded === "." || decoded === "..") {
+        throw new TypeError("HTTP route path cannot contain dot segments");
+      }
       specificity.push(1);
-      return segment.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const canonical = new URL(`/solix/${segment}`, "http://solix.invalid").pathname
+        .slice("/solix/".length)
+        .replaceAll(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
+      return canonical.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
     })
     .join("/");
   return { pattern: new RegExp(`^${pattern}$`), parameterNames: names, specificity };
@@ -394,11 +425,65 @@ function headerRecord(headers: Headers): Readonly<Record<string, string>> {
   return Object.freeze(Object.fromEntries(headers));
 }
 
-async function decodedBody(request: Request, mode: "auto" | "bytes"): Promise<unknown> {
+function bodyLimit(options: ServerDispatchOptions): number {
+  const value = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError("maxBodyBytes must be a non-negative safe integer");
+  }
+  return value;
+}
+
+function assertDeclaredBodyLimit(request: Request, limit: number): void {
+  const declared = request.headers.get("content-length");
+  if (declared && /^\d+$/.test(declared) && BigInt(declared) > BigInt(limit)) {
+    void request.body?.cancel().catch(() => undefined);
+    throw requestError(`Request body exceeds the ${limit} byte limit`, 413);
+  }
+}
+
+async function bodyBytes(request: Request, limit: number): Promise<Uint8Array> {
+  assertDeclaredBodyLimit(request, limit);
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      // Stream chunks must be consumed sequentially to enforce the cumulative limit.
+      // eslint-disable-next-line no-await-in-loop
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        // Cancellation must settle before releasing the reader lock.
+        // eslint-disable-next-line no-await-in-loop
+        await reader.cancel().catch(() => undefined);
+        throw requestError(`Request body exceeds the ${limit} byte limit`, 413);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+}
+
+async function decodedBody(
+  request: Request,
+  mode: "auto" | "bytes",
+  limit: number,
+): Promise<unknown> {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
-  const bytes = await request.arrayBuffer();
+  assertDeclaredBodyLimit(request, limit);
+  const bytes = await bodyBytes(request.clone(), limit);
   if (bytes.byteLength === 0) return undefined;
-  if (mode === "bytes") return bytes;
+  if (mode === "bytes") return bytes.buffer;
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
   const text = new TextDecoder().decode(bytes);
   if (contentType === "application/json" || contentType?.endsWith("+json")) {
@@ -456,13 +541,14 @@ export async function dispatchServerEndpoint(
   request: Request,
   options: ServerDispatchOptions = {},
 ): Promise<Response | undefined> {
+  const maxBodyBytes = bodyLimit(options);
   const url = new URL(request.url);
+  const pathname = url.pathname.replaceAll(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
   const rpcPath = endpoints.filter(
-    (endpoint): endpoint is RpcEndpoint =>
-      endpoint.kind !== "http" && endpoint.path === url.pathname,
+    (endpoint): endpoint is RpcEndpoint => endpoint.kind !== "http" && endpoint.path === pathname,
   );
   const rpc = rpcPath.find((endpoint) => endpoint.method === request.method);
-  if (rpcPath.length === 0 && url.pathname.startsWith(RPC_PREFIX)) {
+  if (rpcPath.length === 0 && pathname.startsWith(RPC_PREFIX)) {
     return new Response("Not Found", { status: 404 });
   }
   if (!rpc && rpcPath.length > 0) {
@@ -478,7 +564,7 @@ export async function dispatchServerEndpoint(
       if (contentType !== RPC_CONTENT_TYPE) {
         throw requestError("RPC requests must use application/json", 415);
       }
-      const payload = await request.text();
+      const payload = new TextDecoder().decode(await bodyBytes(request, maxBodyBytes));
       if (payload === "") throw requestError("Missing RPC input", 400);
       let args: unknown;
       try {
@@ -499,7 +585,7 @@ export async function dispatchServerEndpoint(
   }
   const matchingPath = endpoints
     .filter((endpoint): endpoint is HttpEndpoint => endpoint.kind === "http")
-    .map((endpoint) => ({ endpoint, match: endpoint.compiled.pattern.exec(url.pathname) }))
+    .map((endpoint) => ({ endpoint, match: endpoint.compiled.pattern.exec(pathname) }))
     .filter((candidate): candidate is { endpoint: HttpEndpoint; match: RegExpExecArray } =>
       Boolean(candidate.match),
     )
@@ -530,7 +616,7 @@ export async function dispatchServerEndpoint(
       params: Object.freeze(params),
       query: queryRecord(url.searchParams),
       headers: headerRecord(request.headers),
-      body: await decodedBody(request, selected.endpoint.body),
+      body: await decodedBody(request, selected.endpoint.body, maxBodyBytes),
     });
     return await selected.endpoint.invoke(input, request);
   } catch (error) {

@@ -7,5 +7,8 @@ test("validates Vite integration options", () => {
   expect(() =>
     solkit({ entry: "/src/app.tsx", exportName: "not-valid!", adapter: bunAdapter() }),
   ).toThrow("identifier");
+  expect(() => solkit({ entry: "/src/app.tsx", adapter: bunAdapter(), maxBodyBytes: 1.5 })).toThrow(
+    "maxBodyBytes",
+  );
   expect(solkit({ entry: "/src/app.tsx", adapter: bunAdapter() }).name).toBe("solkit");
 });

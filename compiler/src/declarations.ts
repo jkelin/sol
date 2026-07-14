@@ -3,6 +3,7 @@ import { generate, traverse } from "./ast.ts";
 import { isSolFilename } from "./codegen.ts";
 import type { CompilationState } from "./context.ts";
 import { codeFrame } from "./diagnostics.ts";
+import { canonicalHttpRoutePath } from "./http-path.ts";
 import { parseRoutePath } from "./route-path.ts";
 import { compileFunction } from "./setup.ts";
 
@@ -54,7 +55,8 @@ export function compileRouteDeclarations(state: CompilationState): void {
     const routeVariables = declaration.declarations.filter(
       (variable) =>
         t.isCallExpression(variable.init) &&
-        t.isIdentifier(variable.init.callee, { name: "$route" }),
+        t.isIdentifier(variable.init.callee) &&
+        compiler.declarationHelperNames.get(variable.init.callee.name) === "$route",
     );
     if (routeVariables.length === 0) continue;
     const variable = routeVariables[0]!;
@@ -117,39 +119,19 @@ export function compileRouteDeclarations(state: CompilationState): void {
   }
 }
 
-const serverDeclarationNames = new Set(["$rpcQuery", "$rpcMutation", "$httpRoute"]);
-
-function rangeWithLeadingComments(node: t.Node): { start: number; end: number } {
+function rangeWithOwnedComments(node: t.Node, source: string): { start: number; end: number } {
   const commentStart = node.leadingComments
     ?.filter((comment) => comment.start !== null && comment.start !== undefined)
     .reduce((start, comment) => Math.min(start, comment.start!), node.start!);
-  return { start: commentStart ?? node.start!, end: node.end! };
-}
-
-function validateHttpRoutePath(
-  compiler: CompilationState["compiler"],
-  node: t.StringLiteral,
-): void {
-  const path = node.value;
-  if (!path.startsWith("/") || path.startsWith("//")) {
-    codeFrame(compiler, node, "HTTP route paths must start with exactly one slash");
-  }
-  if (path.includes("?") || path.includes("#")) {
-    codeFrame(compiler, node, "HTTP route paths must not contain a query or hash");
-  }
-  if (path !== "/" && (path.endsWith("/") || path.includes("//"))) {
-    codeFrame(compiler, node, "HTTP route paths must not contain empty or trailing segments");
-  }
-  const names = new Set<string>();
-  for (const segment of path.slice(1).split("/")) {
-    if (!segment.startsWith(":")) continue;
-    const name = segment.slice(1);
-    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
-      codeFrame(compiler, node, `Invalid HTTP route parameter ${segment}`);
-    }
-    if (names.has(name)) codeFrame(compiler, node, `Duplicate HTTP route parameter ${name}`);
-    names.add(name);
-  }
+  const commentEnd = node.trailingComments
+    ?.filter(
+      (comment) =>
+        comment.end !== null &&
+        comment.end !== undefined &&
+        source.slice(comment.end).trim() === "",
+    )
+    .reduce((end, comment) => Math.max(end, comment.end!), node.end!);
+  return { start: commentStart ?? node.start!, end: commentEnd ?? node.end! };
 }
 
 export function compileServerDeclarations(state: CompilationState): void {
@@ -162,12 +144,13 @@ export function compileServerDeclarations(state: CompilationState): void {
       (variable) =>
         t.isCallExpression(variable.init) &&
         t.isIdentifier(variable.init.callee) &&
-        serverDeclarationNames.has(variable.init.callee.name),
+        compiler.declarationHelperNames.has(variable.init.callee.name) &&
+        compiler.declarationHelperNames.get(variable.init.callee.name) !== "$route",
     );
     if (variables.length === 0) continue;
     const variable = variables[0]!;
     const call = variable.init as t.CallExpression;
-    const helper = (call.callee as t.Identifier).name;
+    const helper = compiler.declarationHelperNames.get((call.callee as t.Identifier).name)!;
     if (!isSolFilename(compiler.filename)) {
       codeFrame(compiler, variable, `${helper}() is only valid in *.sol.ts or *.sol.tsx files`);
     }
@@ -224,6 +207,7 @@ export function compileServerDeclarations(state: CompilationState): void {
     }
     if (!properties.has("schema")) codeFrame(compiler, config, `${helper}() requires a schema`);
     let nameCode: string | undefined;
+    let canonicalPath: string | undefined;
     if (helper !== "$httpRoute") {
       const name = call.arguments[0]!;
       if (!t.isStringLiteral(name) || !/^[A-Za-z0-9_-]+$/.test(name.value)) {
@@ -251,7 +235,13 @@ export function compileServerDeclarations(state: CompilationState): void {
           "$httpRoute() path must be a root-relative string literal",
         );
       }
-      if (t.isStringLiteral(path)) validateHttpRoutePath(compiler, path);
+      if (t.isStringLiteral(path)) {
+        try {
+          canonicalPath = canonicalHttpRoutePath(path.value);
+        } catch (error) {
+          codeFrame(compiler, path, error instanceof Error ? error.message : String(error));
+        }
+      }
       if (t.isStringLiteral(path) && path.value.startsWith("/api/rpc/")) {
         codeFrame(compiler, path, "$httpRoute() path uses the reserved /api/rpc namespace");
       }
@@ -271,14 +261,24 @@ export function compileServerDeclarations(state: CompilationState): void {
           : compiler.target === "server"
             ? "__solix_http_route_server"
             : "__solix_http_route_client";
+    const emittedArguments = call.arguments.map((argument) => argument as t.Node);
+    if (helper === "$httpRoute") {
+      const emittedConfig = t.cloneNode(config, true);
+      const path = emittedConfig.properties.find(
+        (property) =>
+          t.isObjectProperty(property) && t.isIdentifier(property.key, { name: "path" }),
+      );
+      if (path && t.isObjectProperty(path)) path.value = t.stringLiteral(canonicalPath!);
+      emittedArguments[0] = emittedConfig;
+    }
     const code =
       compiler.target === "server"
-        ? `export const ${variable.id.name} = ${runtime}(${call.arguments.map((argument) => generate(argument as t.Node).code).join(", ")});`
+        ? `export const ${variable.id.name} = ${runtime}(${emittedArguments.map((argument) => generate(argument).code).join(", ")});`
         : helper === "$httpRoute"
-          ? `export const ${variable.id.name} = ${runtime}({ method: ${generate(properties.get("method")!.value).code}, path: ${generate(properties.get("path")!.value).code} });`
+          ? `export const ${variable.id.name} = ${runtime}({ method: ${generate(properties.get("method")!.value).code}, path: ${JSON.stringify(canonicalPath)} });`
           : `export const ${variable.id.name} = ${runtime}(${nameCode});`;
     const statementRange =
-      compiler.target === "client" ? rangeWithLeadingComments(statement) : statement;
+      compiler.target === "client" ? rangeWithOwnedComments(statement, compiler.source) : statement;
     edits.push({ start: statementRange.start!, end: statementRange.end!, code });
     serverCallRanges.add(`${call.start}:${call.end}`);
     if (compiler.target === "client") {
@@ -302,9 +302,44 @@ function pruneClientServerDependencies(state: CompilationState): void {
     Program(path) {
       const removedDeclarators = new Set<t.VariableDeclarator>();
       const removedStatements = new Set<t.Statement>();
+      const effectStatements = ast.program.body.filter(
+        (statement): statement is t.ExpressionStatement =>
+          t.isExpressionStatement(statement) && !t.isAssignmentExpression(statement.expression),
+      );
       let changed = true;
       while (changed) {
         changed = false;
+        for (const binding of Object.values(path.scope.bindings)) {
+          const declarationStatement = ast.program.body.find(
+            (candidate) =>
+              candidate.start! <= binding.identifier.start! &&
+              candidate.end! >= binding.identifier.end!,
+          );
+          const references = binding.referencePaths.filter(
+            (reference) => reference.node !== declarationStatement,
+          );
+          if (!references.some((reference) => removed(reference.node))) continue;
+          const effectFor = (node: t.Node): t.ExpressionStatement | undefined =>
+            effectStatements.find(
+              (statement) => node.start! >= statement.start! && node.end! <= statement.end!,
+            );
+          if (
+            references.some(
+              (reference) => !removed(reference.node) && effectFor(reference.node) === undefined,
+            )
+          ) {
+            continue;
+          }
+          for (const reference of references) {
+            const statement = effectFor(reference.node);
+            if (!statement || removedStatements.has(statement)) continue;
+            const range = rangeWithOwnedComments(statement, state.compiler.source);
+            removedStatements.add(statement);
+            removedRanges.push([range.start, range.end]);
+            state.clientServerSourceRanges.push(range);
+            changed = true;
+          }
+        }
         for (const statement of ast.program.body) {
           if (
             removedStatements.has(statement) ||
@@ -329,7 +364,7 @@ function pruneClientServerDependencies(state: CompilationState): void {
             (reference) => reference.node !== target && reference.node !== declarationStatement,
           );
           if (reads.length === 0 || reads.some((reference) => !removed(reference.node))) continue;
-          const range = rangeWithLeadingComments(statement);
+          const range = rangeWithOwnedComments(statement, state.compiler.source);
           removedStatements.add(statement);
           removedRanges.push([range.start, range.end]);
           state.clientServerSourceRanges.push(range);
@@ -366,7 +401,7 @@ function pruneClientServerDependencies(state: CompilationState): void {
             ) {
               continue;
             }
-            const range = rangeWithLeadingComments(candidate);
+            const range = rangeWithOwnedComments(candidate, state.compiler.source);
             removedRanges.push([range.start, range.end]);
             state.clientServerSourceRanges.push(range);
             if (t.isVariableDeclarator(candidate)) removedDeclarators.add(candidate);
@@ -377,7 +412,7 @@ function pruneClientServerDependencies(state: CompilationState): void {
       }
       for (const statement of ast.program.body) {
         if (removedStatements.has(statement)) {
-          const range = rangeWithLeadingComments(statement);
+          const range = rangeWithOwnedComments(statement, state.compiler.source);
           edits.push({ start: range.start, end: range.end, code: "" });
           continue;
         }
@@ -391,7 +426,7 @@ function pruneClientServerDependencies(state: CompilationState): void {
         );
         if (retained.length === dependency.declarations.length) continue;
         if (retained.length === 0) {
-          const range = rangeWithLeadingComments(statement);
+          const range = rangeWithOwnedComments(statement, state.compiler.source);
           edits.push({ start: range.start, end: range.end, code: "" });
           state.clientServerSourceRanges.push(range);
           continue;
@@ -399,7 +434,7 @@ function pruneClientServerDependencies(state: CompilationState): void {
         const replacement = t.cloneNode(dependency);
         replacement.declarations = retained.map((declarator) => t.cloneNode(declarator));
         const code = generate(replacement).code;
-        const range = rangeWithLeadingComments(statement);
+        const range = rangeWithOwnedComments(statement, state.compiler.source);
         edits.push({
           start: range.start,
           end: range.end,
@@ -419,7 +454,7 @@ function pruneClientServerDependencies(state: CompilationState): void {
         if (retained.length === statement.specifiers.length) continue;
         const replacement = t.cloneNode(statement);
         replacement.specifiers = retained.map((specifier) => t.cloneNode(specifier));
-        const range = rangeWithLeadingComments(statement);
+        const range = rangeWithOwnedComments(statement, state.compiler.source);
         edits.push({
           start: range.start!,
           end: range.end!,

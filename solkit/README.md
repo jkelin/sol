@@ -45,6 +45,8 @@ export default defineConfig({
 
 The entry exports `App` by default. Set `exportName` when the root uses another named export, for
 example `solkit({ entry: "/src/entry.tsx", exportName: "Shell", adapter: bunAdapter() })`.
+RPC and HTTP request bodies are limited to 1 MiB by default. Set `maxBodyBytes` to a non-negative
+safe integer to choose another limit; declared and streamed oversized bodies receive 413 responses.
 
 Use `vite` for development and `solkit build` for production. The build writes browser assets to
 `dist/client`, the bundled Fetch-style SSR handler to `dist/server/app.mjs`, and the selected host
@@ -76,9 +78,9 @@ assets. Public adapter implementations should validate these paths before writin
 
 ## Low-level request handler
 
-`createRequestHandler(root, endpoints?)` exposes the Fetch-style handler used by the Vite integration and
-generated launchers. `root` is the compiled application component and `endpoints` is the generated
-server manifest. The returned `RequestHandler`
+`createRequestHandler(root, endpoints?, options?)` exposes the Fetch-style handler used by the Vite
+integration and generated launchers. `root` is the compiled application component, `endpoints` is
+the generated server manifest, and `options.maxBodyBytes` overrides the 1 MiB body limit. The returned `RequestHandler`
 accepts a standard `Request` plus a `RenderContext` containing the full
 HTML `template`; it dispatches endpoints, handles GET and HEAD document requests, and returns a standard `Response`.
 Templates must contain exactly one `<!--solkit-head-->` outlet and one `<!--solkit-body-->` outlet.
@@ -99,8 +101,8 @@ const response = await handle(request, { template });
 - `index.ts` dispatches compiled endpoints, validates document requests and templates, renders the
   root, and composes full HTML.
 - `types.ts` defines the request handler, Vite options, adapter, and build context contracts.
-- `vite.ts` provides virtual browser/server entries, Vite development middleware, build targets,
-  hydration readiness, and adapter handoff.
+- `vite.ts` provides virtual browser/server entries, streaming Vite development request bridging,
+  build targets, hydration readiness, and adapter handoff.
 - `cli.ts` runs the paired Vite client and SSR production builds with Bun.
 - `adapter-utils.ts` loads launcher source through Bun's text loader or Node's file API, validates
   adapter output paths, and writes launchers.

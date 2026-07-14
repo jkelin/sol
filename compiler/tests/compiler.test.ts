@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SourceMapConsumer } from "source-map-js";
 import {
@@ -112,6 +114,24 @@ describe("compiler", () => {
     );
     expect(client.code).not.toContain('new Response("ok")');
     expect(client.code).not.toContain("async (id)");
+  });
+
+  test("resolves server declaration helpers by Solix binding identity", () => {
+    const alias = compile(
+      `import { $rpcQuery as declareQuery } from "solix";
+       import { backend } from "./backend-secret";
+       export const load = declareQuery("load", { schema: value => value }, backend);`,
+      "alias.sol.ts",
+      { target: "client" },
+    );
+    expect(alias.code).toContain('__solix_rpc_query_client("load")');
+    expect(alias.code).not.toContain("backend-secret");
+    const shadowed = `function $rpcQuery() { return "local"; }
+      export const value = $rpcQuery("local", { schema: true }, 42);`;
+    expect(compile(shadowed, "shadowed.sol.ts", { target: "client" })).toEqual({
+      code: shadowed,
+      map: null,
+    });
   });
 
   test("removes imports referenced only by stripped browser handlers", () => {
@@ -237,6 +257,15 @@ describe("compiler", () => {
     expect(mixed.code).not.toContain("BACKEND_MIXED_SCHEMA_SECRET");
     expect(mixed.code).not.toContain("backendValidator");
     expect(mixed.map?.sourcesContent?.join("\n")).not.toContain("BACKEND_MIXED");
+    const effect = compile(
+      `import { configure, secret } from "./backend-effect-secret";
+       const schema = {}; configure(schema, secret);
+       export const load = $rpcQuery("load", { schema }, async () => 1);`,
+      "effect.sol.ts",
+      { target: "client" },
+    );
+    expect(effect.code).not.toContain("backend-effect-secret");
+    expect(effect.code).not.toContain("configure(");
   });
 
   test("removes comments attached to stripped server dependencies", () => {
@@ -252,6 +281,14 @@ describe("compiler", () => {
     );
     expect(result.code).not.toContain("BACKEND_HANDLER_COMMENT_SECRET");
     expect(result.map?.sourcesContent?.join("\n")).not.toContain("BACKEND_HANDLER_COMMENT_SECRET");
+    const trailing = compile(
+      `export const load = $rpcQuery("load", { schema: value => value }, backend);
+       function backend() { return Promise.resolve("secret"); } // TRAILING_BACKEND_SECRET`,
+      "trailing.sol.ts",
+      { target: "client" },
+    );
+    expect(trailing.code).not.toContain("TRAILING_BACKEND_SECRET");
+    expect(trailing.map?.sourcesContent?.join("\n")).not.toContain("TRAILING_BACKEND_SECRET");
   });
 
   test("validates server declaration boundaries and literal configs", () => {
@@ -313,6 +350,19 @@ describe("compiler", () => {
         "api.sol.ts",
       ),
     ).not.toThrow();
+    const canonical = compile(
+      `export const route = $httpRoute({ method: "GET", path: "/cafe\u0301 space/:id", schema: x => x }, async () => new Response());`,
+      "api.sol.ts",
+    );
+    expect(canonical.code).toContain('path: "/caf%C3%A9%20space/:id"');
+    for (const path of ["/back\\slash", "/dot/../path", "/encoded/%20path", "/hash#part"]) {
+      expect(() =>
+        compile(
+          `export const route = $httpRoute({ method: "GET", path: ${JSON.stringify(path)}, schema: x => x }, async () => new Response());`,
+          "api.sol.ts",
+        ),
+      ).toThrow(/backslashes|dot segments|decoded static characters|query or hash/);
+    }
   });
 
   test("validates the compiler-specialized Link interface", () => {
@@ -1528,6 +1578,44 @@ test("the Vite plugin invalidates both manifests when an existing sol module cha
   listeners.get("change")!("/project/api.sol.ts");
   expect(invalidated).toEqual(["\0virtual:solix/routes", "\0virtual:solix/server-endpoints"]);
   expect(messages).toEqual([{ type: "full-reload" }]);
+});
+
+test("the endpoint manifest respects helper bindings and canonical HTTP paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "solix-endpoints-"));
+  try {
+    await writeFile(
+      join(root, "real.sol.ts"),
+      `export const load = $rpcQuery("load", { schema: x => x }, async () => 1);`,
+    );
+    await writeFile(
+      join(root, "shadow.sol.ts"),
+      `function $rpcQuery() { return null; } export const local = $rpcQuery("load", {}, null);`,
+    );
+    const plugin = solix();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const resolved = (plugin.resolveId as (id: string) => string)("virtual:solix/server-endpoints");
+    const manifest = await (plugin.load as (id: string) => Promise<unknown>)(resolved);
+    expect(manifest).toBeString();
+
+    await writeFile(
+      join(root, "unicode-a.sol.ts"),
+      `import { $httpRoute as route } from "solix"; export const a = route({ method: "GET", path: "/café space", schema: x => x }, async () => new Response());`,
+    );
+    await writeFile(
+      join(root, "unicode-b.sol.ts"),
+      `export const b = $httpRoute({ method: "GET", path: "/cafe\u0301 space", schema: x => x }, async () => new Response());`,
+    );
+    const collision = await (plugin.load as (id: string) => Promise<unknown>)(resolved).catch(
+      (error: unknown) => error,
+    );
+    expect(collision).toBeInstanceOf(Error);
+    expect((collision as Error).message).toContain("Duplicate server endpoint");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("emits authored source metadata for query and mutation diagnostics", () => {

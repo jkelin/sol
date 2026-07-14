@@ -418,7 +418,10 @@ browser assets; type checking still runs against the authored declarations befor
 `$httpRoute({ method, path, schema, body? }, handler)` declares a lower-level Fetch endpoint. The
 schema receives `{ params, query, headers, body }`; repeated query values are arrays. Automatic
 body parsing accepts JSON and text, while `body: "bytes"` supplies an `ArrayBuffer`. The handler
-also receives the original `Request` and must return a `Response`.
+also receives the still-readable original `Request` and must return a `Response`. Endpoint bodies
+are limited to 1 MiB by default; Solkit's `maxBodyBytes` option changes the limit. Static path
+segments are URL-canonicalized, while query, fragment, backslash, control, dot-segment, and authored
+percent-escape syntax is rejected.
 
 ## Routing
 

@@ -4,7 +4,9 @@ import { parse } from "@babel/parser";
 import * as t from "@babel/types";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath } from "vite";
+import { traverse } from "./ast.ts";
 import { compile } from "./compile.ts";
+import { canonicalHttpRoutePath } from "./http-path.ts";
 
 const virtualRoutes = "virtual:solix/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
@@ -68,12 +70,41 @@ const __solix_modules = [${modules}];
 export default __solix_modules.flatMap(module => Object.values(module).filter(__solix_is_endpoint));`;
 }
 
+type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
+
+function declarationHelperNames(ast: t.File): Map<string, DeclarationHelper> {
+  const helpers = new Set<DeclarationHelper>(["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"]);
+  const names = new Map<string, DeclarationHelper>();
+  for (const statement of ast.program.body) {
+    if (!t.isImportDeclaration(statement) || statement.source.value !== "solix") continue;
+    for (const specifier of statement.specifiers) {
+      if (
+        t.isImportSpecifier(specifier) &&
+        t.isIdentifier(specifier.imported) &&
+        helpers.has(specifier.imported.name as DeclarationHelper)
+      ) {
+        names.set(specifier.local.name, specifier.imported.name as DeclarationHelper);
+      }
+    }
+  }
+  traverse(ast, {
+    Program(path) {
+      for (const helper of helpers) {
+        if (!path.scope.hasBinding(helper)) names.set(helper, helper);
+      }
+      path.stop();
+    },
+  });
+  return names;
+}
+
 function declaredRoutePaths(source: string, filename: string): string[] {
   const ast = parse(source, {
     sourceType: "module",
     sourceFilename: filename,
     plugins: ["typescript", "jsx"],
   });
+  const helpers = declarationHelperNames(ast);
   const paths: string[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
@@ -81,7 +112,8 @@ function declaredRoutePaths(source: string, filename: string): string[] {
     for (const variable of declaration.declarations) {
       if (
         !t.isCallExpression(variable.init) ||
-        !t.isIdentifier(variable.init.callee, { name: "$route" }) ||
+        !t.isIdentifier(variable.init.callee) ||
+        helpers.get(variable.init.callee.name) !== "$route" ||
         !t.isObjectExpression(variable.init.arguments[0])
       )
         continue;
@@ -110,16 +142,15 @@ function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[]
     sourceFilename: filename,
     plugins: ["typescript", "jsx"],
   });
+  const helpers = declarationHelperNames(ast);
   const endpoints: DeclaredEndpoint[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
     if (!t.isVariableDeclaration(declaration)) continue;
     for (const variable of declaration.declarations) {
       if (!t.isCallExpression(variable.init) || !t.isIdentifier(variable.init.callee)) continue;
-      if (
-        variable.init.callee.name === "$rpcQuery" ||
-        variable.init.callee.name === "$rpcMutation"
-      ) {
+      const helper = helpers.get(variable.init.callee.name);
+      if (helper === "$rpcQuery" || helper === "$rpcMutation") {
         const name = variable.init.arguments[0];
         if (t.isStringLiteral(name)) {
           endpoints.push({
@@ -127,10 +158,7 @@ function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[]
             path: `/api/rpc/${name.value}`,
           });
         }
-      } else if (
-        variable.init.callee.name === "$httpRoute" &&
-        t.isObjectExpression(variable.init.arguments[0])
-      ) {
+      } else if (helper === "$httpRoute" && t.isObjectExpression(variable.init.arguments[0])) {
         const properties = variable.init.arguments[0].properties;
         const method = properties.find(
           (property) =>
@@ -148,7 +176,10 @@ function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[]
           t.isObjectProperty(path) &&
           t.isStringLiteral(path.value)
         ) {
-          endpoints.push({ method: method.value.value, path: path.value.value });
+          endpoints.push({
+            method: method.value.value,
+            path: canonicalHttpRoutePath(path.value.value),
+          });
         }
       }
     }

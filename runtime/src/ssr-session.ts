@@ -20,6 +20,14 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
 export class SsrSession {
   readonly templates: string[] = [];
   readonly async: AsyncEntry[] = [];
@@ -27,13 +35,18 @@ export class SsrSession {
   private rootPending = 0;
   private boundaryPending = 0;
   private completion = deferred();
+  private failed = false;
   private failure: unknown;
 
   recordTemplate(signature: string): void {
     this.templates.push(signature);
   }
 
-  capture<T>(site: string, thunk: () => T | PromiseLike<T>): Promise<T> {
+  capture<T>(
+    site: string,
+    thunk: () => T | PromiseLike<T>,
+    requirePromiseLike = false,
+  ): Promise<T> {
     const entry: { site: string; status: "pending" | "fulfilled" | "rejected"; value?: unknown } = {
       site,
       status: "pending",
@@ -46,6 +59,10 @@ export class SsrSession {
       entry.status = "rejected";
       entry.value = error;
       return Promise.reject(error);
+    }
+    if (requirePromiseLike && !isPromiseLike(result)) {
+      this.async.pop();
+      throw new TypeError("Await $promise must be promise-like");
     }
     return Promise.resolve(result).then(
       (value) => {
@@ -105,13 +122,15 @@ export class SsrSession {
   }
 
   fail(error: unknown): void {
-    this.failure ??= error;
+    if (this.failed) return;
+    this.failed = true;
+    this.failure = error;
   }
 
   async wait(timeoutMs: number): Promise<void> {
     this.checkComplete();
     if (this.rootPending === 0 && this.boundaryPending === 0) {
-      if (this.failure !== undefined) throw this.failure;
+      if (this.failed) throw this.failure;
       return;
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -124,7 +143,7 @@ export class SsrSession {
     });
     try {
       await Promise.race([this.completion.promise, rootTimeout]);
-      if (this.failure !== undefined) throw this.failure;
+      if (this.failed) throw this.failure;
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -217,13 +236,23 @@ export class HydrationSession {
     return state;
   }
 
-  capture<T>(site: string, thunk: () => T | PromiseLike<T>): Promise<T> {
+  capture<T>(
+    site: string,
+    thunk: () => T | PromiseLike<T>,
+    requirePromiseLike = false,
+  ): Promise<T> {
     const entry = this.payload.async[this.asyncIndex++];
     if (!entry) throw new Error(`Solix hydration async payload is missing for ${site}`);
     if (entry.site !== site) {
       throw new Error(`Solix hydration async mismatch: expected ${entry.site}, received ${site}`);
     }
-    if (entry.status === "pending") return Promise.resolve().then(thunk);
+    if (entry.status === "pending") {
+      const result = thunk();
+      if (requirePromiseLike && !isPromiseLike(result)) {
+        throw new TypeError("Await $promise must be promise-like");
+      }
+      return Promise.resolve(result);
+    }
     const replay =
       entry.status === "fulfilled"
         ? Promise.resolve(entry.value as T)
@@ -278,11 +307,18 @@ export function asyncValue<T>(
   frame: { readonly ssr?: SsrSession; readonly hydration?: HydrationSession },
   site: string,
   thunk: () => T | PromiseLike<T>,
+  requirePromiseLike = false,
 ): Promise<T> {
-  if (frame.ssr) return frame.ssr.capture(site, thunk);
-  if (frame.hydration && !frame.hydration.committed) return frame.hydration.capture(site, thunk);
+  if (frame.ssr) return frame.ssr.capture(site, thunk, requirePromiseLike);
+  if (frame.hydration && !frame.hydration.committed) {
+    return frame.hydration.capture(site, thunk, requirePromiseLike);
+  }
   try {
-    return Promise.resolve(thunk());
+    const result = thunk();
+    if (requirePromiseLike && !isPromiseLike(result)) {
+      throw new TypeError("Await $promise must be promise-like");
+    }
+    return Promise.resolve(result);
   } catch (error) {
     return Promise.reject(error);
   }

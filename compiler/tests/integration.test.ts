@@ -1249,6 +1249,62 @@ test("reports the await site when replay data cannot be serialized", async () =>
   await expectRejection(renderToStringAsync(module.App as Component), "async site await:0");
 });
 
+test("preserves undefined root rejections", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(async function App() {
+      await Promise.reject(undefined);
+      return <main>Unexpected</main>;
+    });
+  `);
+  let rejected = false;
+  let reason: unknown = "not rejected";
+  try {
+    await renderToStringAsync(module.App as Component);
+  } catch (error) {
+    rejected = true;
+    reason = error;
+  }
+  expect(rejected).toBe(true);
+  expect(reason).toBeUndefined();
+});
+
+test("does not capture fire-and-forget helper awaits", async () => {
+  globalThis.integrationSetups.app = 0;
+  const module = await loadCompiled(`
+    export const App = $component(async function App() {
+      async function sideEffect() {
+        await Promise.resolve();
+        globalThis.integrationSetups.app += 1;
+      }
+      void sideEffect();
+      const value = await Promise.resolve("ready");
+      return <main>{value}</main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expect(globalThis.integrationSetups.app).toBe(1);
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { async: unknown[] };
+  expect(payload.async).toHaveLength(1);
+  const dispose = await hydrate(App, target);
+  expect(globalThis.integrationSetups.app).toBe(2);
+  dispose();
+});
+
+test("SSR preserves Await promise-like validation", async () => {
+  const module = await loadCompiled(`
+    import { Await } from "solix";
+    export const App = $component(function App() {
+      const invalid = 123 as unknown as Promise<number>;
+      return <Await $promise={invalid}>{value => <main>{value}</main>}</Await>;
+    });
+  `);
+  await expectRejection(renderToStringAsync(module.App as Component), "promise-like");
+});
+
 test("SSR and hydration preserve Await, Suspense, and ErrorBoundary failures", async () => {
   globalThis.integrationSetups.app = 0;
   const module = await loadCompiled(`

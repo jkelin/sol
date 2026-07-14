@@ -426,6 +426,7 @@ function instrumentAwaitExpressions(
   const file = t.file(t.program([t.expressionStatement(declaration)]));
   traverse(file, {
     AwaitExpression(path: NodePath<t.AwaitExpression>) {
+      if (path.getFunctionParent()?.node !== declaration) return;
       const argument = path.node.argument;
       path.node.argument = t.callExpression(t.identifier("__solix_async_value"), [
         t.identifier("__solix_frame"),

@@ -239,7 +239,7 @@ export function awaitBlock<T>(
   if (isServerRegion(region)) {
     let candidate: PromiseLike<T>;
     try {
-      candidate = asyncValue(frame, site, getPromise);
+      candidate = asyncValue(frame, site, getPromise, true);
     } catch (error) {
       reportError(frame, error);
       return;
@@ -302,7 +302,7 @@ export function awaitBlock<T>(
     }
   };
   const stop = runtimeEffect(() => {
-    const promise = frame.hydration ? asyncValue(frame, site, getPromise) : getPromise();
+    const promise = frame.hydration ? asyncValue(frame, site, getPromise, true) : getPromise();
     if (!isPromiseLike(promise)) throw new TypeError("Await $promise must be promise-like");
     const currentGeneration = ++generation;
     currentFinish?.();

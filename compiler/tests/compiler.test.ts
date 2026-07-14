@@ -477,6 +477,24 @@ describe("compiler", () => {
     expect(result.code).toMatch(/"operations":\[\{"id":"o[a-z0-9]+","kind":"attribute"/);
   });
 
+  test("captures component awaits without instrumenting fire-and-forget helper work", () => {
+    const result = compile(
+      `
+      const App = $component(async function App() {
+        async function sideEffect() { await Promise.resolve("side effect"); }
+        void sideEffect();
+        const value = await Promise.resolve("captured");
+        return <p>{value}</p>;
+      });
+    `,
+      "AsyncSideEffect.tsx",
+    );
+
+    expect(result.code.match(/__solix_async_value/g)).toHaveLength(2);
+    expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(1);
+    expect(result.code).toContain('await Promise.resolve("side effect")');
+  });
+
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {

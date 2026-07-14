@@ -475,6 +475,7 @@ function instrumentAwaitExpressions(
     },
   });
   const awaitedInitializers = new WeakMap<t.AwaitExpression, t.VariableDeclarator>();
+  const awaitedInitializerDeclarations = new WeakSet<t.VariableDeclarator>();
   traverse(file, {
     AwaitExpression(path: NodePath<t.AwaitExpression>) {
       if (path.getFunctionParent()?.node !== declaration) return;
@@ -492,6 +493,7 @@ function instrumentAwaitExpressions(
       const variable = binding.path.node;
       if (!t.isExpression(variable.init)) return;
       awaitedInitializers.set(path.node, variable);
+      awaitedInitializerDeclarations.add(variable);
       if (t.isCallExpression(variable.init)) {
         const helper = callTargets.get(variable.init);
         if (helper) reachable.add(helper);
@@ -592,11 +594,64 @@ function instrumentAwaitExpressions(
       const helper = directlyAwaitedHelper(argument);
       if (helper && reachable.has(helper) && hasCapturedAwait(helper)) return;
       if (capturedHelperAggregate(argument)) return;
-      path.node.argument = t.callExpression(t.identifier("__solix_async_value"), [
+      const captured = t.callExpression(t.identifier("__solix_async_value"), [
         t.identifier("__solix_frame"),
         t.stringLiteral(nextAsyncSite(compiler)),
         t.arrowFunctionExpression([], argument),
       ]);
+      path.node.argument =
+        owner === declaration
+          ? captured
+          : t.conditionalExpression(t.identifier("__solix_capture_enabled"), captured, argument);
+      path.skip();
+    },
+  });
+
+  for (const helper of reachable) {
+    if (!hasCapturedAwait(helper)) continue;
+    if (t.isArrowFunctionExpression(helper) && !t.isBlockStatement(helper.body)) {
+      helper.body = t.blockStatement([t.returnStatement(helper.body)]);
+    }
+    if (!t.isBlockStatement(helper.body)) continue;
+    helper.body.body.unshift(
+      t.variableDeclaration("const", [
+        t.variableDeclarator(
+          t.identifier("__solix_capture_enabled"),
+          t.callExpression(t.identifier("__solix_async_capture_active"), []),
+        ),
+      ]),
+    );
+  }
+
+  traverse(file, {
+    CallExpression(path: NodePath<t.CallExpression>) {
+      const helper = callTargets.get(path.node);
+      if (!helper || !reachable.has(helper) || !hasCapturedAwait(helper)) return;
+      const owner = path.getFunctionParent()?.node;
+      const awaited = path.findParent((parent) => parent.isAwaitExpression());
+      const awaitedOwner = awaited?.isAwaitExpression()
+        ? awaited.getFunctionParent()?.node
+        : undefined;
+      const initializer = path.findParent((parent) => parent.isVariableDeclarator());
+      const returned = path.findParent((parent) => parent.isReturnStatement());
+      const capture = Boolean(
+        awaitedOwner === declaration ||
+        (awaitedOwner !== undefined && reachable.has(awaitedOwner as LocalFunction)) ||
+        (initializer?.isVariableDeclarator() &&
+          awaitedInitializerDeclarations.has(initializer.node)) ||
+        (returned?.isReturnStatement() && reachable.has(owner as LocalFunction)),
+      );
+      const captureExpression =
+        capture && owner !== declaration && reachable.has(owner as LocalFunction)
+          ? t.identifier("__solix_capture_enabled")
+          : t.booleanLiteral(capture);
+      const call = path.node;
+      path.replaceWith(
+        t.callExpression(t.identifier("__solix_async_capture_call"), [
+          t.arrowFunctionExpression([], call),
+          captureExpression,
+        ]),
+      );
       path.skip();
     },
   });

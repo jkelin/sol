@@ -1557,6 +1557,38 @@ test("does not capture fire-and-forget helper awaits", async () => {
   dispose();
 });
 
+test("captures awaited and fire-and-forget invocations of one helper independently", async () => {
+  globalThis.integrationLoad = async (id) => {
+    globalThis.integrationLoads += 1;
+    return `${id} result`;
+  };
+  const module = await loadCompiled(`
+    export const App = $component(async function App() {
+      async function load(id: string) {
+        return await globalThis.integrationLoad(id);
+      }
+      void load("background");
+      const value = await load("render");
+      return <p id="invocation-result">{value}</p>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expect(globalThis.integrationLoads).toBe(2);
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { async: { status: string }[] };
+  expect(payload.async).toHaveLength(1);
+  expect(payload.async[0]?.status).toBe("fulfilled");
+  const paragraph = target.querySelector("#invocation-result");
+  const dispose = await hydrate(App, target);
+  expect(globalThis.integrationLoads).toBe(3);
+  expect(target.querySelector("#invocation-result")).toBe(paragraph);
+  expect(paragraph?.textContent).toBe("render result");
+  dispose();
+});
+
 test("replays repeated same-site component awaits resolved out of order", async () => {
   const resolvers = new Map<string, (value: unknown) => void>();
   globalThis.integrationLoad = (id) => {
@@ -1773,6 +1805,47 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
   globalThis.integrationResolve("nested");
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(target.querySelector("#nested-ready")?.textContent).toBe("nested");
+  dispose();
+});
+
+test("keeps late settlements from timed-out boundaries uncaptured", async () => {
+  globalThis.integrationLoad = (id) => {
+    globalThis.integrationLoads += 1;
+    const delay = id === "late" ? 10 : 30;
+    return new Promise((resolve) => setTimeout(() => resolve(`${id} result`), delay));
+  };
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Child = $component(async function Child(props: { id: string }) {
+      const value = await globalThis.integrationLoad(props.id);
+      return <p data-id={props.id}>{String(value)}</p>;
+    });
+    export const App = $component(function App() {
+      return <main>
+        <Suspense fallback={<p id="late-fallback">Late fallback</p>} timeoutMs={0}>
+          <Child id="late" />
+        </Suspense>
+        <Suspense fallback={<p>Slow fallback</p>} timeoutMs={100}>
+          <Child id="slow" />
+        </Suspense>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 100 });
+  expect(globalThis.integrationLoads).toBe(2);
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { async: { status: string }[] };
+  expect(payload.async.map((entry) => entry.status)).toEqual(["pending", "fulfilled"]);
+  const fallback = target.querySelector("#late-fallback");
+
+  const dispose = await hydrate(App, target);
+  expect(globalThis.integrationLoads).toBe(3);
+  expect(target.querySelector("#late-fallback")).toBe(fallback);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(target.querySelector('[data-id="late"]')?.textContent).toBe("late result");
   dispose();
 });
 

@@ -66,6 +66,9 @@ and `ErrorBoundary` renderers so hydration always rejects instead of converting 
 Compiler-owned replay sites include promise initializers later consumed by an await and the individual
 helper awaits that make up supported `Promise.all` aggregates.
 Timed-out entries execute in the browser after the fallback is claimed.
+SSR associates replay entries with their nearest Suspense boundary; once that boundary times out,
+its pending entries remain uncaptured even if the server-side promises settle before another boundary
+allows the final HTML response to complete.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or

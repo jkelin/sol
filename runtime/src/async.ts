@@ -160,7 +160,11 @@ export function suspense(
         boundary?.finish();
       },
     };
-    const contentFrame: RenderFrame = { ...frame, suspense: controller };
+    const contentFrame: RenderFrame = {
+      ...frame,
+      suspense: controller,
+      ssrBoundary: boundary?.index,
+    };
     try {
       content = render(contentFrame);
       if (pending === 0) {

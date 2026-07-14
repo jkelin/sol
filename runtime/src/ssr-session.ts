@@ -7,6 +7,22 @@ export class HydrationMismatchError extends Error {
   }
 }
 
+let activeAsyncCapture = false;
+
+export function asyncCaptureActive(): boolean {
+  return activeAsyncCapture;
+}
+
+export function asyncCaptureCall<T>(thunk: () => T, capture: boolean): T {
+  const previous = activeAsyncCapture;
+  activeAsyncCapture = capture;
+  try {
+    return thunk();
+  } finally {
+    activeAsyncCapture = previous;
+  }
+}
+
 export type AsyncEntry =
   | { readonly site: string; status: "pending" }
   | { readonly site: string; status: "fulfilled"; value: unknown }
@@ -44,6 +60,10 @@ export class SsrSession {
   private completion = deferred();
   private failed = false;
   private failure: unknown;
+  private readonly boundaryEntries = new Map<
+    number,
+    Array<{ site: string; status: "pending" | "fulfilled" | "rejected"; value?: unknown }>
+  >();
 
   recordTemplate(signature: string): void {
     this.templates.push(signature);
@@ -53,12 +73,18 @@ export class SsrSession {
     site: string,
     thunk: () => T | PromiseLike<T>,
     requirePromiseLike = false,
+    boundary?: number,
   ): Promise<T> {
     const entry: { site: string; status: "pending" | "fulfilled" | "rejected"; value?: unknown } = {
       site,
       status: "pending",
     };
     this.async.push(entry as AsyncEntry);
+    if (boundary !== undefined) {
+      const entries = this.boundaryEntries.get(boundary) ?? [];
+      entries.push(entry);
+      this.boundaryEntries.set(boundary, entries);
+    }
     let result: T | PromiseLike<T>;
     try {
       result = thunk();
@@ -73,13 +99,17 @@ export class SsrSession {
     }
     return Promise.resolve(result).then(
       (value) => {
-        entry.status = "fulfilled";
-        entry.value = value;
+        if (boundary === undefined || this.boundaries[boundary] !== "timeout") {
+          entry.status = "fulfilled";
+          entry.value = value;
+        }
         return value;
       },
       (error) => {
-        entry.status = "rejected";
-        entry.value = error;
+        if (boundary === undefined || this.boundaries[boundary] !== "timeout") {
+          entry.status = "rejected";
+          entry.value = error;
+        }
         throw error;
       },
     );
@@ -102,6 +132,10 @@ export class SsrSession {
       if (settled) return;
       settled = true;
       this.boundaries[index] = "timeout";
+      for (const entry of this.boundaryEntries.get(index) ?? []) {
+        entry.status = "pending";
+        delete entry.value;
+      }
       this.boundaryPending -= 1;
       try {
         onTimeout();
@@ -324,12 +358,16 @@ function validAsyncEntry(entry: unknown): entry is AsyncEntry {
 }
 
 export function asyncValue<T>(
-  frame: { readonly ssr?: SsrSession; readonly hydration?: HydrationSession },
+  frame: {
+    readonly ssr?: SsrSession;
+    readonly ssrBoundary?: number;
+    readonly hydration?: HydrationSession;
+  },
   site: string,
   thunk: () => T | PromiseLike<T>,
   requirePromiseLike = false,
 ): Promise<T> {
-  if (frame.ssr) return frame.ssr.capture(site, thunk, requirePromiseLike);
+  if (frame.ssr) return frame.ssr.capture(site, thunk, requirePromiseLike, frame.ssrBoundary);
   if (frame.hydration && !frame.hydration.committed) {
     return frame.hydration.capture(site, thunk, requirePromiseLike);
   }

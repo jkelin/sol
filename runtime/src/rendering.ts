@@ -114,6 +114,7 @@ export interface RenderFrame {
   readonly handleError?: (error: unknown) => void;
   readonly mode?: "server" | "hydrate" | "resume";
   readonly ssr?: SsrSession;
+  readonly ssrBoundary?: number;
   readonly hydration?: HydrationSession;
   readonly claim?: HydrationClaim;
   readonly waitForResume?: boolean;

@@ -1,4 +1,6 @@
 export const RUNTIME_IMPORT = `import {
+  asyncCaptureActive as __solix_async_capture_active,
+  asyncCaptureCall as __solix_async_capture_call,
   asyncValue as __solix_async_value,
   computedInFrame as __solix_computed,
   $signal as __solix_signal,

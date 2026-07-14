@@ -496,9 +496,11 @@ describe("compiler", () => {
     expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(2);
     expect(result.code).toContain('await Promise.resolve("side effect")');
     expect(result.code).toContain(
-      'await __solix_async_value(__solix_frame, "await:AsyncSideEffect.tsx:0"',
+      '__solix_capture_enabled ? __solix_async_value(__solix_frame, "await:AsyncSideEffect.tsx:0"',
     );
-    expect(result.code).toContain("const nested = __solix_signal(await load())");
+    expect(result.code).toContain(
+      "const nested = __solix_signal(await __solix_async_capture_call(() => load(), true))",
+    );
   });
 
   test("namespaces async sites by compiled module", () => {
@@ -529,9 +531,11 @@ describe("compiler", () => {
 
     expect(result.code).toContain('await Promise.resolve("shadow")');
     expect(result.code).toContain(
-      'await __solix_async_value(__solix_frame, "await:ShadowedHelper.tsx:0", () => Promise.resolve("outer"))',
+      '__solix_capture_enabled ? __solix_async_value(__solix_frame, "await:ShadowedHelper.tsx:0", () => Promise.resolve("outer"))',
     );
-    expect(result.code).toContain("const value = __solix_signal(await load())");
+    expect(result.code).toContain(
+      "const value = __solix_signal(await __solix_async_capture_call(() => load(), true))",
+    );
   });
 
   test("validates async boundary and context provider JSX contracts", () => {

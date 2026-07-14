@@ -50,7 +50,8 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             specifier.imported.name === "Await" ||
             specifier.imported.name === "ErrorBoundary" ||
             specifier.imported.name === "Portal" ||
-            specifier.imported.name === "GlobalPortal"
+            specifier.imported.name === "GlobalPortal" ||
+            specifier.imported.name === "Head"
           ) {
             compiler.builtinNames.set(specifier.local.name, specifier.imported.name);
           }

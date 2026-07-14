@@ -185,6 +185,91 @@ test("compiled components update fine-grained DOM without rerunning setup", asyn
   expect(target.childNodes).toHaveLength(0);
 });
 
+test("Head mounts reactive owned content into document.head", async () => {
+  window.happyDOM.settings.enableJavaScriptEvaluation = true;
+  const preserved = document.createElement("meta");
+  preserved.setAttribute("name", "preserved");
+  const preservedTitle = document.createElement("title");
+  preservedTitle.textContent = "Static title";
+  document.head.append(preserved, preservedTitle);
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App() {
+      let title = "First";
+      let description = "Initial description";
+      let color = "red";
+      return <main>
+        <Head>
+          <title>Page: {title}</title>
+          <meta name="description" content={description} />
+          <style>{"body { color: " + color + "; }"}</style>
+          <script>{"globalThis.integrationHeadScripts = (globalThis.integrationHeadScripts ?? 0) + 1;"}</script>
+        </Head>
+        <button id="update-head" onClick={() => {
+          title = "Second";
+          description = "Updated description";
+          color = "blue";
+        }}>Update</button>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(document.title).toBe("Page: First");
+  expect(document.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+    "Initial description",
+  );
+  expect(document.head.querySelector("style")?.textContent).toBe("body { color: red; }");
+  expect((window as unknown as { integrationHeadScripts?: number }).integrationHeadScripts).toBe(1);
+
+  target.querySelector<HTMLButtonElement>("#update-head")!.click();
+  expect(document.title).toBe("Page: Second");
+  expect(document.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+    "Updated description",
+  );
+  expect(document.head.querySelector("style")?.textContent).toBe("body { color: blue; }");
+  expect((window as unknown as { integrationHeadScripts?: number }).integrationHeadScripts).toBe(1);
+
+  dispose();
+  expect(document.title).toBe("Static title");
+  expect(document.head.querySelector('meta[name="preserved"]')).toBe(preserved);
+  expect(document.head.querySelector('meta[name="description"]')).toBeNull();
+  expect(document.head.querySelector("style")).toBeNull();
+  expect(document.head.querySelector("script")).toBeNull();
+});
+
+test("conditional and sibling Head blocks retain independent ownership", async () => {
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App() {
+      let showOptional = true;
+      return <main>
+        <Head><meta name="shared" content="always" /></Head>
+        {showOptional && <Head><meta name="shared" content="optional" /></Head>}
+        <button onClick={() => showOptional = false}>Hide</button>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(
+    [...document.head.querySelectorAll('meta[name="shared"]')].map((meta) =>
+      meta.getAttribute("content"),
+    ),
+  ).toEqual(["optional", "always"]);
+  target.querySelector("button")!.click();
+  expect(
+    [...document.head.querySelectorAll('meta[name="shared"]')].map((meta) =>
+      meta.getAttribute("content"),
+    ),
+  ).toEqual(["always"]);
+
+  dispose();
+  expect(document.head.querySelector('meta[name="shared"]')).toBeNull();
+});
+
 test("compiled conditionals and keyed lists transition dynamic blocks", async () => {
   const animations = installAnimations();
   const module = await loadCompiled(`

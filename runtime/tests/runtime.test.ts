@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import * as v from "valibot";
 import { z } from "zod";
-import { $component, $context, contextUse, type Context } from "../src/components.ts";
+import { $component, $context, contextUse, Head, type Context } from "../src/components.ts";
 import { normalizeClass } from "../src/dom.ts";
 import { $form } from "../src/forms.ts";
 import { $computed, $signal, type Signal } from "../src/reactivity.ts";
@@ -1067,6 +1067,10 @@ describe("compiled DOM runtime", () => {
     expect(() => mount((() => undefined) as never, target, "bad props" as never)).toThrow(
       "props must be an object",
     );
+  });
+
+  test("rejects calling the compiler-specialized Head handle directly", () => {
+    expect(() => Head({})).toThrow("Head must be rendered as JSX inside a compiled component");
   });
 
   test("rejects every reflective mutation of readonly component props", () => {

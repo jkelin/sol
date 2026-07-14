@@ -159,6 +159,14 @@ export function instantiate(definition: TemplateDefinition, frame?: RenderFrame)
   definition.element ??= document.createElement("template");
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
   const fragment = definition.element.content.cloneNode(true) as DocumentFragment;
+  for (const inertScript of fragment.querySelectorAll("script")) {
+    const executableScript = document.createElement("script");
+    for (const attribute of inertScript.attributes) {
+      executableScript.setAttribute(attribute.name, attribute.value);
+    }
+    executableScript.textContent = inertScript.textContent;
+    inertScript.replaceWith(executableScript);
+  }
   const elements: Element[] = [];
   for (const element of fragment.querySelectorAll<HTMLElement>("[data-solix-e]")) {
     const index = Number(element.dataset.solixE);

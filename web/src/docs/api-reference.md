@@ -9,6 +9,7 @@ order: 10
 
 - `$component(setup)` defines a compiler-managed component.
 - `mount(component, target)` mounts one compiled component into a validated DOM target.
+- `Head` mounts owned JSX children into `document.head` without a body wrapper or deduplication.
 - `class`, `className`, and `classNames` are equivalent on intrinsic elements.
 - `createRef<T>()` creates a mutable, non-reactive `{ current: T | null }` DOM ref; intrinsic `ref` also accepts callback and structurally compatible object refs.
 - `Portal` renders JSX, text, and primitive children into a required reactive `Element` target without recreating them during retargeting.

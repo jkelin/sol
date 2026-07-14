@@ -36,7 +36,27 @@ Only use one class alias on an element. The compiler normalizes dynamic values a
 
 ## Component composition
 
-General component children are not supported in the first version. Prefer explicit typed props and focused leaf components. `Suspense`, `ErrorBoundary`, context providers, `Await`, and `Link` have compiler-specialized child contracts.
+General component children are not supported in the first version. Prefer explicit typed props and focused leaf components. `Head`, `Suspense`, `ErrorBoundary`, context providers, `Await`, and `Link` have compiler-specialized child contracts.
+
+## Document head
+
+`Head` appends its JSX children directly to `document.head` and renders no body wrapper:
+
+```tsx
+import { Head } from "solix";
+
+<Head>
+  <title>{pageTitle}</title>
+  <meta name="description" content={description} />
+  <meta property="og:title" content={pageTitle} />
+  <style>{pageStyles}</style>
+  <script src="/analytics.js" async />
+</Head>;
+```
+
+Title, metadata, styles, script attributes, and raw text update reactively. Managed blocks precede static head content so titles take effect, and newer blocks precede older blocks. Each block removes only its own nodes when disposed and preserves entries authored in the HTML document or by other mounted blocks. Overlapping entries are not deduplicated.
+
+Scripts execute under native browser rules when inserted. Updating an inline script's text does not execute it again, and removing the element cannot undo effects caused by an earlier execution.
 
 ## DOM refs and portals
 

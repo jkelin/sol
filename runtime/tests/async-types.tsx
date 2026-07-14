@@ -3,6 +3,7 @@ import {
   $context,
   Await,
   ErrorBoundary,
+  Head,
   Suspense,
   hydrate,
   renderToStringAsync,
@@ -29,18 +30,24 @@ const promise = Promise.resolve({ text: "ready" });
 
 const Valid = $component(function Valid() {
   return (
-    <shared.Provider data={{ count: 0, label: "provided" }}>
-      <ErrorBoundary fallback={(error: unknown) => <p>{String(error)}</p>}>
-        <Suspense
-          fallback={<p>Loading</p>}
-          error={(error: unknown) => <p>{String(error)}</p>}
-          timeoutMs={100}
-        >
-          <AsyncChild />
-          <Await $promise={promise}>{(data) => <p>{data.text}</p>}</Await>
-        </Suspense>
-      </ErrorBoundary>
-    </shared.Provider>
+    <>
+      <Head>
+        <title>Typed head</title>
+        <meta name="description" content="Typed description" />
+      </Head>
+      <shared.Provider data={{ count: 0, label: "provided" }}>
+        <ErrorBoundary fallback={(error: unknown) => <p>{String(error)}</p>}>
+          <Suspense
+            fallback={<p>Loading</p>}
+            error={(error: unknown) => <p>{String(error)}</p>}
+            timeoutMs={100}
+          >
+            <AsyncChild />
+            <Await $promise={promise}>{(data) => <p>{data.text}</p>}</Await>
+          </Suspense>
+        </ErrorBoundary>
+      </shared.Provider>
+    </>
   );
 });
 
@@ -58,5 +65,9 @@ const InvalidProvider = <shared.Provider data={{ label: "missing count" }} />;
 // @ts-expect-error Await requires a promise-like value.
 const InvalidAwait = <Await $promise={{ text: "not a promise" }}>{(data) => <p>{data}</p>}</Await>;
 
+// @ts-expect-error Head accepts children but no convenience properties.
+const InvalidHead = <Head title="Invalid" />;
+
 void InvalidProvider;
 void InvalidAwait;
+void InvalidHead;

@@ -1,6 +1,17 @@
 export { contextProvider } from "./dom.ts";
 export { contextUse } from "./components.ts";
-export { attribute, bindValue, child, event, link, list, text, when } from "./dom.ts";
+export {
+  attribute,
+  bindValue,
+  child,
+  event,
+  head,
+  link,
+  list,
+  rawText,
+  text,
+  when,
+} from "./dom.ts";
 export { awaitBlock, errorBoundary, suspense } from "./async.ts";
 export { asyncCaptureActive, asyncCaptureCall, asyncValue } from "./ssr-session.ts";
 export { $signal, batch, computedInFrame, runtimeEffect } from "./reactivity.ts";

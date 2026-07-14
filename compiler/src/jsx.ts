@@ -23,6 +23,8 @@ import {
 import { codeFrame, mappedCode } from "./diagnostics.ts";
 import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
 
+const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+
 export function compileBinding(
   compiler: CompilerContext,
   expression: t.Expression,
@@ -223,12 +225,23 @@ export function isDefinitelyPrimitive(expression: Expression): boolean {
 
 export function compileBuiltinElement(
   compiler: CompilerContext,
-  kind: "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal",
+  kind: "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal" | "Head",
   node: t.JSXElement,
   context: TemplateContext,
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
 ): void {
+  if (kind === "Head") {
+    validateBuiltinAttributes(compiler, node, new Set());
+    context.operations.push(
+      mappedCode(
+        compiler,
+        node,
+        `__solix_head(${blockFactory(compiler, childrenRoot(node), bindings, scope)}, __solix_cleanups, __solix_frame);`,
+      ),
+    );
+    return;
+  }
   const index = region(context);
   if (kind === "Portal" || kind === "GlobalPortal") {
     const allowed = kind === "Portal" ? new Set(["target", "key"]) : new Set(["key"]);
@@ -333,6 +346,36 @@ export function compileBuiltinElement(
       `__solix_await(__solix_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__solix_value, __solix_frame) => (${renderer})(__solix_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${JSON.stringify(nextAsyncSite(compiler))});`,
     ),
   );
+}
+
+function rawTextValues(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  tag: string,
+  scope: Scope,
+): string[] {
+  const values: string[] = [];
+  for (const child of node.children) {
+    if (t.isJSXText(child)) {
+      const value =
+        tag === "script" || tag === "style" ? child.value : normalizeJsxText(child.value);
+      if (value) values.push(JSON.stringify(value));
+      continue;
+    }
+    if (t.isJSXSpreadChild(child)) {
+      codeFrame(compiler, child, "JSX spread children are not supported in v1");
+    }
+    if (t.isJSXExpressionContainer(child)) {
+      if (t.isJSXEmptyExpression(child.expression)) continue;
+      if (!t.isExpression(child.expression)) {
+        codeFrame(compiler, child, "Raw-text element children must be text or expressions");
+      }
+      values.push(expressionCode(child.expression, scope));
+      continue;
+    }
+    codeFrame(compiler, child, "Raw-text element children must be text or expressions");
+  }
+  return values;
 }
 
 export function compileProviderElement(
@@ -593,6 +636,16 @@ export function compileIntrinsicElement(
     }
   }
 
+  if (RAW_TEXT_ELEMENTS.has(tag)) {
+    const values = rawTextValues(compiler, node, tag, scope);
+    if (values.length > 0) {
+      deferredOperations.push(
+        (element) =>
+          `__solix_raw_text(__solix_view.elements[${element}], () => [${values.join(", ")}], __solix_cleanups);`,
+      );
+    }
+  }
+
   deferredOperations.push(...injectedOperations);
   if (deferredOperations.length > 0) {
     const index = elementId(context, node.openingElement);
@@ -602,7 +655,9 @@ export function compileIntrinsicElement(
   }
   context.html.push(`<${tag}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}>`);
   if (!VOID_ELEMENTS.has(tag)) {
-    for (const child of node.children) compileNode(compiler, child, context, bindings, scope);
+    if (!RAW_TEXT_ELEMENTS.has(tag)) {
+      for (const child of node.children) compileNode(compiler, child, context, bindings, scope);
+    }
     context.html.push(`</${tag}>`);
   } else if (node.children.length > 0) {
     codeFrame(compiler, node, `Void element <${tag}> cannot have children`);

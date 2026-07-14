@@ -26,6 +26,7 @@ import { HydrationMismatchError } from "./ssr-session.ts";
 
 type ContextRecord = Context<object> & { readonly [CONTEXT]: symbol };
 type RenderFactory = (frame: RenderFrame) => Block;
+const RAW_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE"]);
 
 function displayValue(value: unknown): string {
   return value == null || typeof value === "boolean" ? "" : String(value);
@@ -88,6 +89,32 @@ export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[
       textNode.data = value;
     }),
   );
+}
+
+export function rawText(
+  element: Element,
+  getValues: () => readonly unknown[],
+  cleanups: Cleanup[],
+): void {
+  if (!element || element.nodeType !== Node.ELEMENT_NODE || !RAW_TEXT_TAGS.has(element.tagName)) {
+    throw new TypeError("rawText() expects a script, style, textarea, or title element");
+  }
+  cleanups.push(
+    runtimeEffect(() => {
+      const values = getValues();
+      if (!Array.isArray(values)) throw new TypeError("rawText() values must be an array");
+      element.textContent = values.map(displayValue).join("");
+    }),
+  );
+}
+
+export function head(render: RenderFactory, cleanups: Cleanup[], frame: RenderFrame): void {
+  if (typeof document === "undefined" || !document.head) {
+    throw new Error("Head requires a browser document with a head element");
+  }
+  const rendered = render(frame);
+  cleanups.push(() => rendered.dispose());
+  rendered.mount(document.head, document.head.firstChild);
 }
 
 function setDomValue(element: Element, name: string, value: unknown): void {

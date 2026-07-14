@@ -601,6 +601,54 @@ describe("compiler", () => {
     );
   });
 
+  test("compiles Head children and raw-text elements", () => {
+    const result = compile(
+      `
+      import { $component, Head as DocumentHead } from "solix";
+      const App = $component(function App() {
+        let title = "First";
+        const description = "Reactive description";
+        return <main>
+          <DocumentHead>
+            <title>Page: {title}</title>
+            <meta name="description" content={description} />
+            <style>{"body { color: red; }"}</style>
+            <script>{"globalThis.headScriptRan = true;"}</script>
+          </DocumentHead>
+          <textarea>Draft: {title}</textarea>
+        </main>;
+      });
+    `,
+      "Head.tsx",
+    );
+
+    expect(result.code).toContain("__solix_head");
+    expect(result.code).toContain("__solix_raw_text");
+    expect(result.code).not.toContain("<DocumentHead");
+    expect(result.code).not.toContain("<!--solix:s:");
+  });
+
+  test("validates the compiler-specialized Head interface", () => {
+    const cases = [
+      {
+        source: `import { $component, Head } from "solix"; const App = $component(function App() { return <Head title="Invalid" />; });`,
+        message: "Unexpected title property",
+      },
+      {
+        source: `import { $component, Head } from "solix"; const props = {}; const App = $component(function App() { return <Head {...props} />; });`,
+        message: "JSX spread attributes are not supported in v1",
+      },
+      {
+        source: `import { $component, Head } from "solix"; const App = $component(function App() { return <Head><title><span>Invalid</span></title></Head>; });`,
+        message: "Raw-text element children must be text or expressions",
+      },
+    ];
+
+    for (const fixture of cases) {
+      expect(() => compile(fixture.source, "Head.tsx")).toThrow(fixture.message);
+    }
+  });
+
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {

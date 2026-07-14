@@ -1,6 +1,6 @@
 # Solix runtime
 
-The `solix` package is the browser and server runtime plus author-facing interface for Solix applications. It provides compiled components, fine-grained reactive state, DOM refs, portals, forms, cached queries, mutations, context, async rendering, hydration, transitions, typed routes, and the browser router.
+The `solix` package is the browser and server runtime plus author-facing interface for Solix applications. It provides compiled components, fine-grained reactive state, document-head content, DOM refs, portals, forms, cached queries, mutations, context, async rendering, hydration, transitions, typed routes, and the browser router.
 
 ```tsx
 import { $component, mount } from "solix";
@@ -23,7 +23,7 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `reactivity.ts` implements signals, computed values, effects, batching, proxies, and render ownership state.
 - `forms.ts` implements form controllers, validation normalization, and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, and Suspense participation.
-- `components.ts` defines compiler-specialized component, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
+- `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
 - `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers.
@@ -32,7 +32,7 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, parsing, URL generation, and route handles.
-- `dom.ts` implements the fine-grained DOM operations emitted by the compiler.
+- `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned document-head mounting and reactive raw text.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.
@@ -74,3 +74,7 @@ boundary timers, marking those descendants uncaptured without rendering hidden f
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or
 host-specific values, and the embedded JSON escapes script-closing characters.
+
+## Document head
+
+`Head` accepts JSX children such as `title`, `meta`, `link`, `style`, and `script`, then mounts them directly into `document.head`. Managed blocks precede static head content so their titles take effect, and newer blocks precede older blocks. Each instance owns and cleans up only its nodes without deduplicating overlaps. Reactive title, style, script, and textarea text is assigned through `textContent`. Scripts execute when inserted according to native browser behavior, while later text updates do not rerun an already-connected script.

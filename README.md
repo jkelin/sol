@@ -191,6 +191,32 @@ Query keys accept only JSON values and use their exact `JSON.stringify()` result
 
 `staleTime` defaults to `0`, `cacheTime` to five minutes, and polling is disabled by default. Polling runs only while an enabled observer is mounted and the document is visible. Initial uncached requests participate in the nearest parent Suspense by default; cached refetches and mutations opt in through their config or per-call `suspense` option. Manual methods reject on failure. Call `refetch()` without arguments to reuse the most recently requested argument tuple; when passing new function arguments, an options object comes first so object-valued arguments remain unambiguous.
 
+## Document head
+
+Use the compiler-managed `Head` component to add reactive content to `document.head` without rendering a body wrapper:
+
+```tsx
+import { $component, Head } from "solix";
+
+const Article = $component(function Article(props: { title: string; description: string }) {
+  return (
+    <article>
+      <Head>
+        <title>{props.title}</title>
+        <meta name="description" content={props.description} />
+        <meta property="og:title" content={props.title} />
+        <style>{"article { text-wrap: pretty; }"}</style>
+      </Head>
+      <h1>{props.title}</h1>
+    </article>
+  );
+});
+```
+
+Each `Head` block owns the nodes it inserts and removes only those nodes when its component or conditional branch is disposed. Managed blocks are inserted before static document-head content so their titles take effect; newer blocks precede older blocks. Existing content is preserved, and overlapping entries are not deduplicated.
+
+Scripts are recreated as executable DOM elements before insertion. Inline and external scripts therefore follow native browser execution rules: insertion executes them, later inline-text updates do not rerun them, and cleanup cannot reverse their side effects.
+
 ## Transitions
 
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string, so the application can define animation details with Tailwind, another CSS framework, or its own stylesheet. Transitions run only for updates after the initial render:

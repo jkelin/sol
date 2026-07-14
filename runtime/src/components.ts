@@ -38,6 +38,10 @@ export interface ErrorBoundaryProps {
   readonly children?: JSX.Element | readonly JSX.Element[];
 }
 
+export interface HeadProps {
+  readonly children?: JSX.Element | readonly JSX.Element[];
+}
+
 const contexts = new WeakSet<object>();
 
 export function $component<Props extends object>(
@@ -124,6 +128,10 @@ export const Await = (() => {
 export const ErrorBoundary = (() => {
   throw new Error("ErrorBoundary must be rendered as JSX inside a compiled component");
 }) as Component<ErrorBoundaryProps>;
+
+export const Head = (() => {
+  throw new Error("Head must be rendered as JSX inside a compiled component");
+}) as Component<HeadProps>;
 
 export function $route<
   const Path extends `/${string}`,

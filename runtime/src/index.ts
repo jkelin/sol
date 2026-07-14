@@ -4,12 +4,14 @@ export {
   $route,
   Await,
   ErrorBoundary,
+  Head,
   Link,
   Suspense,
   type AwaitProps,
   type Component,
   type Context,
   type ErrorBoundaryProps,
+  type HeadProps,
   type SuspenseProps,
 } from "./components.ts";
 export type { ClassValue } from "./dom.ts";

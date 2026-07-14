@@ -8,6 +8,7 @@ export interface ServerRenderable {
 export interface ServerElement {
   readonly kind: "server-element";
   readonly index: number;
+  readonly tag: string;
   readonly attributes: Map<string, string | true | undefined>;
 }
 
@@ -46,18 +47,12 @@ export function instantiateServer(
   definition: TemplateDefinition,
   session?: SsrSession,
 ): ServerFragment {
-  const elementIndexes = [...definition.html.matchAll(/data-solix-e="(\d+)"/g)].map((match) =>
-    Number(match[1]),
-  );
-  const regionIndexes = [...definition.html.matchAll(/<!--solix:s:(\d+)-->/g)].map((match) =>
-    Number(match[1]),
-  );
   const elements: ServerElement[] = [];
-  for (const index of elementIndexes) {
-    elements[index] = { kind: "server-element", index, attributes: new Map() };
+  for (const [index, tag] of definition.metadata.elements.entries()) {
+    elements[index] = { kind: "server-element", index, tag, attributes: new Map() };
   }
   const regions: ServerRegion[] = [];
-  for (const index of regionIndexes) {
+  for (const index of definition.metadata.regions) {
     regions[index] = { kind: "server-region", index, blocks: [] };
   }
   const fragment = {
@@ -77,6 +72,60 @@ function escapeAttribute(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function renderAttributes(html: string, element: ServerElement): string {
+  const marker = `data-solix-e="${element.index}"`;
+  const dynamic = [...element.attributes]
+    .filter(
+      ([name]) => !(name === "value" && (element.tag === "textarea" || element.tag === "select")),
+    )
+    .flatMap(([name, value]) =>
+      value === undefined ? [] : [value === true ? name : `${name}="${escapeAttribute(value)}"`],
+    )
+    .join(" ");
+  return html.replace(marker, `${dynamic ? `${dynamic} ` : ""}${marker}`);
+}
+
+function renderTextareaValue(html: string, element: ServerElement): string {
+  const value = element.attributes.get("value");
+  if (element.tag !== "textarea" || typeof value !== "string") return html;
+  const marker = `data-solix-e="${element.index}"`;
+  const markerIndex = html.indexOf(marker);
+  const contentStart = html.indexOf(">", markerIndex) + 1;
+  const contentEnd = html.indexOf("</textarea>", contentStart);
+  if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
+    throw new Error(`Invalid server textarea metadata ${element.index}`);
+  }
+  return `${html.slice(0, contentStart)}${escapeText(value)}${html.slice(contentEnd)}`;
+}
+
+function renderSelectValue(html: string, element: ServerElement): string {
+  const value = element.attributes.get("value");
+  if (element.tag !== "select" || typeof value !== "string") return html;
+  const marker = `data-solix-e="${element.index}"`;
+  const markerIndex = html.indexOf(marker);
+  const contentStart = html.indexOf(">", markerIndex) + 1;
+  const contentEnd = html.indexOf("</select>", contentStart);
+  if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
+    throw new Error(`Invalid server select metadata ${element.index}`);
+  }
+  const expected = escapeAttribute(value);
+  const content = html
+    .slice(contentStart, contentEnd)
+    .replaceAll(/<option\b([^>]*)>/gi, (opening, attributes: string) => {
+      const withoutSelected = attributes.replace(
+        /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
+        "",
+      );
+      const optionValue = /\svalue\s*=\s*"([^"]*)"/i.exec(withoutSelected)?.[1];
+      return `<option${withoutSelected}${optionValue === expected ? " selected" : ""}>`;
+    });
+  return `${html.slice(0, contentStart)}${content}${html.slice(contentEnd)}`;
 }
 
 export function setServerAttribute(
@@ -99,20 +148,6 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
   const render = (): string => {
     fragment.session?.recordTemplate(fragment.definition.signature);
     let html = fragment.definition.html;
-    for (const element of fragment.elements) {
-      if (!element) continue;
-      const dynamic = [...element.attributes]
-        .flatMap(([name, value]) =>
-          value === undefined
-            ? []
-            : [value === true ? name : `${name}="${escapeAttribute(value)}"`],
-        )
-        .join(" ");
-      html = html.replace(
-        `data-solix-e="${element.index}"`,
-        `${dynamic ? `${dynamic} ` : ""}data-solix-e="${element.index}"`,
-      );
-    }
     for (const region of fragment.regions) {
       if (!region) continue;
       const marker = `<!--solix:s:${region.index}--><!--solix:e:${region.index}-->`;
@@ -126,6 +161,15 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
         marker,
         `<!--solix:s:${region.index}-->${content}<!--solix:e:${region.index}-->`,
       );
+    }
+    for (const element of fragment.elements) {
+      if (element && element.tag !== "select") html = renderAttributes(html, element);
+    }
+    for (const element of fragment.elements) {
+      if (!element) continue;
+      if (element.tag === "select") html = renderAttributes(html, element);
+      html = renderTextareaValue(html, element);
+      html = renderSelectValue(html, element);
     }
     return `<!--solix:block:start:${fragment.definition.signature}-->${html}<!--solix:block:end-->`;
   };

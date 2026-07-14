@@ -228,8 +228,19 @@ export function link<Path extends string, Values extends RouteValues>(
     setServerAttribute(element, "href", href());
     return;
   }
+  let hydrating = element.hasAttribute("data-solix-e");
   cleanups.push(
-    runtimeEffect(() => element.setAttribute("href", href())),
+    runtimeEffect(() => {
+      const value = href();
+      if (hydrating) {
+        hydrating = false;
+        if (element.getAttribute("href") !== value) {
+          throw new Error("Solix hydration mismatch: Link href differs");
+        }
+        return;
+      }
+      element.setAttribute("href", value);
+    }),
     (() => {
       const listener = (domEvent: MouseEvent): void => {
         if (
@@ -269,10 +280,22 @@ export function bindValue(
   }
   const eventName =
     property === "checked" || element instanceof HTMLSelectElement ? "change" : "input";
+  let hydrating = element.hasAttribute("data-solix-e");
   const stopEffect = runtimeEffect(() => {
     const next = getValue();
-    if (property === "checked") (element as HTMLInputElement).checked = Boolean(next);
-    else if (element.value !== displayValue(next)) element.value = displayValue(next);
+    const expected = property === "checked" ? Boolean(next) : displayValue(next);
+    const actual = property === "checked" ? (element as HTMLInputElement).checked : element.value;
+    if (hydrating) {
+      hydrating = false;
+      if (actual !== expected) {
+        throw new Error(`Solix hydration mismatch: bound ${property} differs`);
+      }
+      return;
+    }
+    if (actual !== expected) {
+      if (property === "checked") (element as HTMLInputElement).checked = expected as boolean;
+      else element.value = expected as string;
+    }
   });
   const listener = (): void => {
     batch(() =>

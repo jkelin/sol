@@ -8,7 +8,7 @@ import { $mutation, $query } from "../../runtime/src/queries.ts";
 import { mount } from "../../runtime/src/rendering.ts";
 import { renderToStringAsync } from "../../runtime/src/ssr.ts";
 import { hydrate } from "../../runtime/src/hydrate.ts";
-import { serializeGraph } from "../../runtime/src/serialization.ts";
+import { deserializeGraph, serializeGraph } from "../../runtime/src/serialization.ts";
 
 interface SetupCounts {
   app: number;
@@ -100,7 +100,7 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtimeModule).toString("base64")}`;
   const compilerRuntimeUrl = new URL("../../runtime/src/compiler-runtime.ts", import.meta.url).href;
   const sourceWithRuntime = result.code
-    .replace('"solix/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
+    .replaceAll('"solix/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
     .replaceAll('"solix"', JSON.stringify(runtimeUrl));
   const javascript =
     ts.transpileModule(sourceWithRuntime, {
@@ -1091,7 +1091,7 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
   target.innerHTML = await renderToStringAsync(App);
   const signedStart = target.firstChild as Comment;
   signedStart.data = "solix:block:start:tstale";
-  await expectRejection(hydrate(App, target), "block signature");
+  await expectRejection(hydrate(App, target), "template payload order mismatch");
   expect((target.firstChild as Comment).data).toBe("solix:block:start:tstale");
 });
 
@@ -1109,6 +1109,94 @@ test("rejects dynamic hydration prop mismatches without mutating server DOM", as
   expect(target.querySelector("main")).toBe(main);
   expect(main.getAttribute("data-tone")).toBe("calm");
   expect(main.textContent).toBe("server");
+});
+
+test("server form bindings parse correctly and hydration validates instead of mutating", async () => {
+  const module = await loadCompiled(`
+    const Child = $component(function Child() { return <p id="binding-child">Stable</p>; });
+    export const App = $component(function App(props: { selected: string; note: string }) {
+      let selected = props.selected;
+      let note = props.note;
+      return <main>
+        <select id="bound-select" $bind={selected}>
+          <option value="first">First</option>
+          <option value="second">Second</option>
+        </select>
+        <textarea id="bound-note" $bind={note}></textarea>
+        <Child />
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ selected: string; note: string }>;
+  const props = { selected: "second", note: "server note" };
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, props);
+  const select = target.querySelector<HTMLSelectElement>("#bound-select")!;
+  const note = target.querySelector<HTMLTextAreaElement>("#bound-note")!;
+  expect(select.value).toBe("second");
+  expect(note.value).toBe("server note");
+  const dispose = await hydrate(App, target, props);
+  expect(target.querySelector("#bound-select")).toBe(select);
+  expect(target.querySelector("#bound-note")).toBe(note);
+  dispose();
+
+  target.innerHTML = await renderToStringAsync(App, props);
+  const mismatchedSelect = target.querySelector<HTMLSelectElement>("#bound-select")!;
+  const mismatchedNote = target.querySelector<HTMLTextAreaElement>("#bound-note")!;
+  await expectRejection(
+    hydrate(App, target, { selected: "first", note: "client note" }),
+    "bound value differs",
+  );
+  expect(mismatchedSelect.value).toBe("second");
+  expect(mismatchedNote.value).toBe("server note");
+});
+
+test("hydration rejects a Link destination mismatch without rewriting href", async () => {
+  const module = await loadCompiled(`
+    import { Link } from "solix";
+    import { route as runtimeRoute } from "solix/compiler-runtime";
+    const Page = $component(function Page() { return <main>Page</main>; });
+    const destination = runtimeRoute(
+      { path: "/item/:id" },
+      Page,
+      {
+        pattern: "^/item/([^/]+)$",
+        parameterNames: ["id"],
+        pathnameParameterNames: ["id"],
+        queryParameters: [],
+        specificity: [1, 0],
+      },
+    );
+    export const App = $component(function App(props: { id: string }) {
+      const params = { id: props.id };
+      return <Link route={destination} params={params}><a id="bound-link">Open</a></Link>;
+    });
+  `);
+  const App = module.App as Component<{ id: string }>;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { id: "server" });
+  const anchor = target.querySelector<HTMLAnchorElement>("#bound-link")!;
+  expect(anchor.getAttribute("href")).toBe("/item/server");
+  await expectRejection(hydrate(App, target, { id: "client" }), "Link href differs");
+  expect(target.querySelector("#bound-link")).toBe(anchor);
+  expect(anchor.getAttribute("href")).toBe("/item/server");
+});
+
+test("rejects reordered template payload entries", async () => {
+  const module = await loadCompiled(`
+    const Child = $component(function Child() { return <p>Child</p>; });
+    export const App = $component(function App() { return <main><Child /></main>; });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const script = target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!;
+  const payload = deserializeGraph(script.textContent) as { templates: string[] };
+  payload.templates.reverse();
+  script.textContent = serializeGraph(payload);
+  const original = target.firstChild;
+  await expectRejection(hydrate(App, target), "template payload order mismatch");
+  expect(target.firstChild).toBe(original);
 });
 
 test("validates SSR and hydration public interfaces and payloads", async () => {

@@ -11,10 +11,15 @@ export function emitCompilation(state: CompilationState): CompileResult {
   const transformedSource = new MagicString(compiler.source);
   for (const edit of edits) transformedSource.overwrite(edit.start, edit.end, edit.code);
   const templates = compiler.templates
-    .map(
-      (html, index) =>
-        `const __solix_template_${index} = __solix_template(\`${escapeTemplate(html)}\`, ${JSON.stringify(templateSignature(html))});`,
-    )
+    .map((template, index) => {
+      const metadata = {
+        elements: template.elementTags,
+        regions: Array.from({ length: template.regionCount }, (_, region) => region),
+        operations: template.operations.map(operationMetadata),
+      };
+      const signature = templateSignature(template.html, metadata);
+      return `const __solix_template_${index} = __solix_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
+    })
     .join("\n");
   transformedSource.prepend(`${RUNTIME_IMPORT}\n${templates}\n`);
   const transformed = transformedSource.toString();
@@ -30,11 +35,33 @@ export function emitCompilation(state: CompilationState): CompileResult {
   };
 }
 
-function templateSignature(html: string): string {
+function identityHash(value: string, prefix: string): string {
   let hash = 2_166_136_261;
-  for (let index = 0; index < html.length; index += 1) {
-    hash ^= html.charCodeAt(index);
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16_777_619);
   }
-  return `t${(hash >>> 0).toString(36)}`;
+  return `${prefix}${(hash >>> 0).toString(36)}`;
+}
+
+function operationMetadata(operation: string): {
+  id: string;
+  kind: string;
+  target: "element" | "region";
+  index: number;
+} {
+  const code = operation.replaceAll(/\/\*__solix_source_\d+__\*\//g, "");
+  const kind = /__solix_([a-z_]+)\(/.exec(code)?.[1];
+  const target = /__solix_view\.(elements|regions)\[(\d+)\]/.exec(code);
+  if (!kind || !target) throw new Error(`Cannot describe compiled operation ${code}`);
+  return {
+    id: identityHash(code, "o"),
+    kind,
+    target: target[1] === "elements" ? "element" : "region",
+    index: Number(target[2]),
+  };
+}
+
+function templateSignature(html: string, metadata: object): string {
+  return identityHash(`${html}\0${JSON.stringify(metadata)}`, "t");
 }

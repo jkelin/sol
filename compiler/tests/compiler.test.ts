@@ -444,7 +444,7 @@ describe("compiler", () => {
       const AsyncChild = $component(async function AsyncChild() {
         const context = messageContext.use();
         const data = await Promise.resolve({ text: "ready" });
-        return <p>{context.message}: {data.text}</p>;
+        return <p data-state={data.text}>{context.message}: {data.text}</p>;
       });
       const App = $component(function App() {
         const shared = { message: "hello" };
@@ -471,7 +471,10 @@ describe("compiler", () => {
     expect(result.code).toContain("__solix_await");
     expect(result.code).toContain('__solix_async_value(__solix_frame, "await:0"');
     expect(result.code).toContain("__solix_frame, 250)");
-    expect(result.code).toMatch(/__solix_template\(`[^`]*`, "t[a-z0-9]+"\)/);
+    expect(result.code).toMatch(/__solix_template\(`[^`]*`, "t[a-z0-9]+", \{/);
+    expect(result.code).toContain('"elements":["p"]');
+    expect(result.code).toContain('"regions":[0,1]');
+    expect(result.code).toMatch(/"operations":\[\{"id":"o[a-z0-9]+","kind":"attribute"/);
   });
 
   test("validates async boundary and context provider JSX contracts", () => {

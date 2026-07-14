@@ -75,7 +75,21 @@ interface MountCoordinator {
 export interface TemplateDefinition {
   readonly html: string;
   readonly signature: string;
+  readonly metadata: TemplateMetadata;
   element?: HTMLTemplateElement;
+}
+
+export interface TemplateMetadata {
+  readonly elements: readonly string[];
+  readonly regions: readonly number[];
+  readonly operations: readonly TemplateOperationMetadata[];
+}
+
+export interface TemplateOperationMetadata {
+  readonly id: string;
+  readonly kind: string;
+  readonly target: "element" | "region";
+  readonly index: number;
 }
 
 export interface PendingBlock extends PromiseLike<Block> {
@@ -119,8 +133,12 @@ export function configureRouteRuntime(adapter: RouteRuntimeAdapter): void {
   routeRuntime = adapter;
 }
 
-export function template(html: string, signature = html): TemplateDefinition {
-  return { html, signature };
+export function template(
+  html: string,
+  signature = html,
+  metadata: TemplateMetadata = { elements: [], regions: [], operations: [] },
+): TemplateDefinition {
+  return { html, signature, metadata };
 }
 
 export function instantiate(definition: TemplateDefinition): View;

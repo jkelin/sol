@@ -587,6 +587,7 @@ export function compileIntrinsicElement(
   deferredOperations.push(...injectedOperations);
   if (deferredOperations.length > 0) {
     const index = elementId(context, node.openingElement);
+    context.elementTags[index] = tag;
     attributes.push(`data-solix-e="${index}"`);
     context.operations.push(...deferredOperations.map((operation) => operation(index)));
   }
@@ -853,12 +854,19 @@ export function compileBlockBody(
   const context: TemplateContext = {
     html: [],
     operations: [],
+    elementTags: [],
     nextElement: 0,
     nextRegion: 0,
     elementIds: new WeakMap(),
   };
   compileNode(compiler, root, context, bindings, scope);
-  const templateIndex = compiler.templates.push(context.html.join("")) - 1;
+  const templateIndex =
+    compiler.templates.push({
+      html: context.html.join(""),
+      elementTags: context.elementTags,
+      regionCount: context.nextRegion,
+      operations: context.operations,
+    }) - 1;
   return `
     const __solix_view = __solix_instantiate(__solix_template_${templateIndex}, __solix_frame);
     const __solix_cleanups: Array<() => void> = [];

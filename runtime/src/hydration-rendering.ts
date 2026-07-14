@@ -65,6 +65,7 @@ function matchChildren(
   actualEnd: Node | null,
   elements: Element[],
   regions: { start: Comment; end: Comment }[],
+  boundElements: ReadonlySet<number>,
 ): void {
   let actual = actualStart;
   const expected = Array.from(expectedParent.childNodes);
@@ -115,7 +116,22 @@ function matchChildren(
         if (!Number.isInteger(parsed)) mismatch("invalid element marker");
         elements[parsed] = actualElement;
       }
-      matchChildren(expectedElement, actualElement.firstChild, null, elements, regions);
+      if (
+        !(
+          elementIndex !== null &&
+          boundElements.has(Number(elementIndex)) &&
+          actualElement.tagName === "TEXTAREA"
+        )
+      ) {
+        matchChildren(
+          expectedElement,
+          actualElement.firstChild,
+          null,
+          elements,
+          regions,
+          boundElements,
+        );
+      }
     }
     actual = actual.nextSibling;
   }
@@ -137,7 +153,19 @@ export function instantiateHydrated(
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
   const elements: Element[] = [];
   const regions: { start: Comment; end: Comment }[] = [];
-  matchChildren(definition.element.content, start.nextSibling, end, elements, regions);
+  const boundElements = new Set(
+    definition.metadata.operations
+      .filter((operation) => operation.kind === "bind" && operation.target === "element")
+      .map((operation) => operation.index),
+  );
+  matchChildren(
+    definition.element.content,
+    start.nextSibling,
+    end,
+    elements,
+    regions,
+    boundElements,
+  );
   claim.cursor = end.nextSibling;
   return { fragment: { kind: "hydrated-fragment", start, end, session }, elements, regions };
 }

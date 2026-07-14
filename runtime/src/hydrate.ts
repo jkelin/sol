@@ -21,6 +21,16 @@ function hydrationPayload(value: unknown): HydrationPayload {
   return payload as HydrationPayload;
 }
 
+function templateSignatures(target: Element): string[] {
+  const signatures: string[] = [];
+  const walker = document.createTreeWalker(target, NodeFilter.SHOW_COMMENT);
+  while (walker.nextNode()) {
+    const match = /^solix:block:start:(t[a-z0-9]+)$/.exec((walker.currentNode as Comment).data);
+    if (match) signatures.push(match[1]!);
+  }
+  return signatures;
+}
+
 export async function hydrate<Props extends object>(
   candidate: Component<Props>,
   target: Element,
@@ -41,6 +51,7 @@ export async function hydrate<Props extends object>(
   const script = scripts[0]!;
   const payload = hydrationPayload(deserializeGraph(script.textContent ?? ""));
   const session = new HydrationSession(payload);
+  session.validateTemplateOrder(templateSignatures(target));
   const claim = rootHydrationClaim(target);
   const frame: RenderFrame = {
     owner: [],

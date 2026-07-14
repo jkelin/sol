@@ -17,15 +17,23 @@ export interface CompiledFunction {
 export interface TemplateContext {
   html: string[];
   operations: string[];
+  elementTags: string[];
   nextElement: number;
   nextRegion: number;
   elementIds: WeakMap<t.JSXOpeningElement, number>;
 }
 
+export interface CompiledTemplate {
+  html: string;
+  elementTags: string[];
+  regionCount: number;
+  operations: string[];
+}
+
 export interface CompilerContext {
   filename: string;
   source: string;
-  templates: string[];
+  templates: CompiledTemplate[];
   componentNames: Set<string>;
   builtinNames: Map<string, "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal">;
   linkNames: Set<string>;

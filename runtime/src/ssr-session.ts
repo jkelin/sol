@@ -202,6 +202,15 @@ export class HydrationSession {
     else this.templates.set(signature, remaining - 1);
   }
 
+  validateTemplateOrder(signatures: readonly string[]): void {
+    if (
+      signatures.length !== this.payload.templates.length ||
+      signatures.some((signature, index) => signature !== this.payload.templates[index])
+    ) {
+      throw new Error("Solix hydration template payload order mismatch");
+    }
+  }
+
   claimBoundary(): "resolved" | "timeout" | "error" {
     const state = this.payload.boundaries[this.boundaryIndex++];
     if (!state) throw new Error("Solix hydration boundary payload is missing");

@@ -359,6 +359,7 @@ export function compileFunction(
   }
   if (declaration.generator)
     codeFrame(compiler, declaration, "Components must not be generator functions");
+  instrumentRequestSources(compiler, declaration);
   instrumentAwaitExpressions(compiler, declaration);
   if (declaration.params.length > 1)
     codeFrame(compiler, declaration, "Components accept at most one props parameter");
@@ -419,9 +420,38 @@ export function compileFunction(
     code: `${exported ? "export " : ""}const ${name} = __solix_component(${declaration.async ? "async " : ""}(${parameterCode}, __solix_frame) => {
       ${compiledSetup.code}
       ${body}
-    });`,
+    }, { name: ${JSON.stringify(name)}, file: ${JSON.stringify(compiler.filename)}, line: ${declaration.loc?.start.line ?? 0} });`,
     returned,
   };
+}
+
+function instrumentRequestSources(
+  compiler: CompilerContext,
+  declaration: t.FunctionExpression,
+): void {
+  const file = t.file(t.program([t.expressionStatement(declaration)]));
+  traverse(file, {
+    CallExpression(path: NodePath<t.CallExpression>) {
+      const call = path.node;
+      if (
+        !t.isIdentifier(call.callee) ||
+        !compiler.requestHelperNames.has(call.callee.name) ||
+        path.scope.hasBinding(call.callee.name)
+      ) {
+        return;
+      }
+      const config = call.arguments[0];
+      if (!config || !t.isExpression(config)) return;
+      call.arguments[0] = t.callExpression(t.identifier("__solix_request_source"), [
+        config,
+        t.objectExpression([
+          t.objectProperty(t.identifier("file"), t.stringLiteral(compiler.filename)),
+          t.objectProperty(t.identifier("line"), t.numericLiteral(call.loc?.start.line ?? 0)),
+          t.objectProperty(t.identifier("column"), t.numericLiteral(call.loc?.start.column ?? 0)),
+        ]),
+      ]);
+    },
+  });
 }
 
 function ancestorWithinFunction<T extends t.Node>(

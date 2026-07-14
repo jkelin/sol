@@ -11,6 +11,7 @@ import {
   type Region,
   type RenderFrame,
 } from "./rendering.ts";
+import { devtoolsComponentPropsUpdated } from "./devtools-hook.ts";
 import { routeHref, type RouteDefinition, type RouteValues } from "./routes.ts";
 import { CONTEXT, ROUTE } from "./symbols.ts";
 import {
@@ -583,6 +584,7 @@ export function child<Props extends object>(
     cleanups.push(
       runtimeEffect(() => {
         state[name] = getter();
+        devtoolsComponentPropsUpdated(props);
       }),
     );
   }

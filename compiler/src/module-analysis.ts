@@ -61,6 +61,12 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
           if (t.isIdentifier(specifier.imported, { name: "createRef" })) {
             compiler.refCreatorNames.add(specifier.local.name);
           }
+          if (
+            t.isIdentifier(specifier.imported) &&
+            (specifier.imported.name === "$query" || specifier.imported.name === "$mutation")
+          ) {
+            compiler.requestHelperNames.add(specifier.local.name);
+          }
         }
       }
     }

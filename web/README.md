@@ -13,6 +13,11 @@ bun run --cwd web test:e2e
 
 The root `bun run verify` includes the website's Markdown/compiler tests. Root `bun run test:e2e` builds and tests both the existing example application and this website.
 
+`bun run dev:web` includes Solix devtools by default: use the circular `S` launcher or
+`globalThis.__solix` to inspect the component ownership tree, loaders and requests with authored
+query/mutation locations, routing, and form validation.
+Production builds omit devtools; pass `{ devtools: false }` to `solix()` to opt out during development.
+
 ## Source structure
 
 - `src/App.tsx` owns the shared header, responsive navigation, route outlet, pending state, and footer.

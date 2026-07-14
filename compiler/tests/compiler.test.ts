@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { SourceMapConsumer } from "source-map-js";
+import { build, type IndexHtmlTransformResult, type ResolvedConfig } from "vite";
 import { compile } from "../src/index.ts";
+import { solix } from "../src/vite.ts";
 
 function linkSource(link: string): string {
   return `
@@ -16,6 +19,16 @@ function componentSource(jsx: string, imports = ""): string {
     const Child = $component(function Child() { return <p>Child</p>; });
     const App = $component(function App() { return ${jsx}; });
   `;
+}
+
+function injectedDevtools(command: "serve" | "build", enabled?: boolean): IndexHtmlTransformResult {
+  const plugin = enabled === undefined ? solix() : solix({ devtools: enabled });
+  const resolve = plugin.configResolved as unknown as (config: ResolvedConfig) => void;
+  const transform = plugin.transformIndexHtml as unknown as {
+    handler(): IndexHtmlTransformResult;
+  };
+  resolve({ command, root: "/project" } as ResolvedConfig);
+  return transform.handler();
 }
 
 describe("compiler", () => {
@@ -156,6 +169,7 @@ describe("compiler", () => {
     const result = compile(source, "Counter.tsx");
 
     expect(result.code).toContain("const Counter = __solix_component");
+    expect(result.code).toContain('{ name: "Counter", file: "Counter.tsx", line: 3 }');
     expect(result.code).toContain("const count = __solix_signal(0)");
     expect(result.code).toContain(
       "const doubled = __solix_computed(() => (count.value * 2), __solix_frame)",
@@ -1220,4 +1234,72 @@ describe("compiler", () => {
       ),
     ).toThrow("component or $computed()");
   });
+});
+
+test("the Vite plugin enables devtools only for development by default", () => {
+  expect(injectedDevtools("serve")).toEqual([
+    {
+      tag: "script",
+      attrs: {
+        type: "module",
+        src: "/@id/solix/devtools",
+        "data-solix-devtools": "",
+      },
+      injectTo: "head-prepend",
+    },
+  ]);
+  expect(injectedDevtools("build")).toEqual([]);
+  expect(injectedDevtools("build", true)).toEqual([
+    {
+      tag: "script",
+      attrs: {
+        type: "module",
+        src: "/@solix/devtools",
+        "data-solix-devtools": "",
+      },
+      injectTo: "head-prepend",
+    },
+  ]);
+  expect(injectedDevtools("serve", false)).toEqual([]);
+  expect(() => solix({ devtools: "yes" as never })).toThrow("must be a boolean");
+});
+
+test("emits authored source metadata for query and mutation diagnostics", () => {
+  const result = compile(
+    `
+      import { $component, $query as query, $mutation } from "solix";
+      const Requests = $component(function Requests() {
+        const project = query({ queryKey: ["project"], query: async () => 1 });
+        const save = $mutation({ mutation: async () => 1 });
+        return <button onClick={() => save.mutate({})}>{project.data}</button>;
+      });
+    `,
+    "Requests.tsx",
+  );
+
+  expect(result.code).toMatch(
+    /query\(__solix_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 4,[\s\S]*?column: 24/,
+  );
+  expect(result.code).toMatch(
+    /\$mutation\(__solix_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 5,[\s\S]*?column: 21/,
+  );
+});
+
+test("an explicitly enabled production build bundles devtools", async () => {
+  const result = await build({
+    root: join(import.meta.dir, "fixtures/devtools-build"),
+    logLevel: "silent",
+    plugins: [solix({ devtools: true })],
+    build: { write: false },
+  });
+  const outputs = (Array.isArray(result) ? result : [result]).flatMap((item) => {
+    if (!("output" in item)) throw new Error("Expected a completed Vite build");
+    return item.output;
+  });
+  const bundled = outputs
+    .map((output) => (output.type === "chunk" ? output.code : String(output.source)))
+    .join("\n");
+
+  expect(bundled).toContain("solix_get_diagnostics");
+  expect(bundled).not.toContain("/@id/solix/devtools");
 });

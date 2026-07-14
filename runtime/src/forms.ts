@@ -1,4 +1,5 @@
-import { $signal, isObject } from "./reactivity.ts";
+import { $signal, isObject, runtimeState } from "./reactivity.ts";
+import { devtoolsFormCreated, devtoolsFormDisposed, devtoolsFormUpdated } from "./devtools-hook.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 
 export type FormValidationStrategy = "onSubmit" | "onBlur" | "onInput";
@@ -119,6 +120,15 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
   const formErrors = $signal<string[]>([]);
   const isSubmitting = $signal(false);
   let validationId = 0;
+  const devtoolsState = (): Record<string, unknown> => ({
+    values: values.value,
+    errors: errors.value,
+    formErrors: formErrors.value,
+    isSubmitting: isSubmitting.value,
+  });
+  const devtoolsId = devtoolsFormCreated(strategy, devtoolsState());
+  runtimeState.activeOwner?.push(() => devtoolsFormDisposed(devtoolsId));
+  const publish = (): void => devtoolsFormUpdated(devtoolsId, devtoolsState());
 
   const parse = async (): Promise<TOutput> => {
     return parseValue(schema, values.value);
@@ -133,6 +143,7 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
       if (currentValidation === validationId) {
         errors.value = {};
         formErrors.value = [];
+        publish();
       }
       return { valid: true, output, current: currentValidation === validationId };
     } catch (error) {
@@ -142,6 +153,7 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
         const normalized = normalizeFormErrors(failure);
         errors.value = normalized.fields;
         formErrors.value = normalized.form;
+        publish();
       }
       return { valid: false };
     }
@@ -151,6 +163,7 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
     if (field === undefined) {
       errors.value = {};
       formErrors.value = [];
+      publish();
       return;
     }
     const next = { ...errors.value };
@@ -161,7 +174,10 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
         changed = true;
       }
     }
-    if (changed) errors.value = next;
+    if (changed) {
+      errors.value = next;
+      publish();
+    }
   };
 
   const controller: FormController<TValues> = {
@@ -181,6 +197,7 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
       domEvent?.preventDefault();
       if (isSubmitting.value) return false;
       isSubmitting.value = true;
+      publish();
       try {
         const result = await validate();
         if (!result.valid || !result.current) return false;
@@ -188,6 +205,7 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
         return true;
       } finally {
         isSubmitting.value = false;
+        publish();
       }
     },
     async handleInput(domEvent: Event): Promise<void> {
@@ -196,14 +214,17 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
         validationId += 1;
         clearErrors(eventField(domEvent));
       }
+      publish();
     },
     async handleBlur(_event: FocusEvent): Promise<void> {
       if (strategy === "onBlur") await validate();
+      publish();
     },
     reset(nextValues?: TValues): void {
       validationId += 1;
       values.value = cloneFormValue(nextValues ?? defaults);
       clearErrors();
+      publish();
     },
     clearErrors,
   };

@@ -1,5 +1,13 @@
 import type { Component } from "./components.ts";
 import {
+  devtoolsComponentCreated,
+  devtoolsComponentDisposed,
+  devtoolsComponentRendered,
+  devtoolsLoaderCreated,
+  devtoolsLoaderUpdated,
+  type ComponentMetadata,
+} from "./devtools-hook.ts";
+import {
   disposeOwner,
   isObject,
   isPromiseLike,
@@ -123,6 +131,7 @@ export interface RenderFrame {
   readonly headClaims?: HeadHydrationClaim[];
   readonly waitForResume?: boolean;
   readonly timeoutMs?: number;
+  readonly devtoolsComponentId?: number;
 }
 
 export type ComponentFactory<Props extends object> = (
@@ -389,15 +398,26 @@ export function valueBlock(getValue: () => unknown, frame?: RenderFrame): Block 
 
 export function component<Props extends object>(
   factory: ComponentFactory<Props>,
+  metadata?: ComponentMetadata,
 ): Component<Props> {
+  const resolvedMetadata = metadata ?? {
+    name: factory.name || "Anonymous",
+    file: "unknown",
+    line: 0,
+  };
   const compiled = (() => {
     throw new Error(
       "Compiled components cannot be called directly; pass them to mount() or render them in JSX",
     );
   }) as unknown as CompiledComponent<Props>;
   const ownedFactory: ComponentFactory<Props> = (props, parentFrame) => {
+    const devtoolsId = devtoolsComponentCreated(
+      resolvedMetadata,
+      props,
+      parentFrame.devtoolsComponentId,
+    );
     const owner: Cleanup[] = [];
-    const frame: RenderFrame = { ...parentFrame, owner };
+    const frame: RenderFrame = { ...parentFrame, owner, devtoolsComponentId: devtoolsId };
     const previousOwner = runtimeState.activeOwner;
     const previousFrame = runtimeState.activeFrame;
     runtimeState.activeOwner = owner;
@@ -407,29 +427,54 @@ export function component<Props extends object>(
       rendered = factory(props, frame);
     } catch (error) {
       disposeOwner(owner);
+      devtoolsComponentDisposed(devtoolsId);
       throw error;
     } finally {
       runtimeState.activeOwner = previousOwner;
       runtimeState.activeFrame = previousFrame;
     }
     if (isPromiseLike(rendered)) {
+      const loaderId = devtoolsLoaderCreated(`${resolvedMetadata.name} setup`, [props]);
+      let cancelled = false;
+      devtoolsLoaderUpdated(loaderId, { isLoading: true });
       const pending = Promise.resolve(rendered).then(
-        (resolved) => ownedBlock(resolved, owner),
+        (resolved) => {
+          if (cancelled) return ownedBlock(resolved, owner);
+          devtoolsLoaderUpdated(loaderId, {
+            isLoading: false,
+            hasData: true,
+            data: { nodes: resolved.nodes.length },
+          });
+          return ownedBlock(resolved, owner, devtoolsId);
+        },
         (error) => {
           disposeOwner(owner);
+          devtoolsComponentDisposed(devtoolsId);
+          if (!cancelled) {
+            devtoolsLoaderUpdated(loaderId, { isLoading: false, isFailed: true, error });
+          }
           throw error;
         },
       );
-      void Object.defineProperty(pending, "cancel", { value: () => disposeOwner(owner) });
+      void Object.defineProperty(pending, "cancel", {
+        value: () => {
+          if (cancelled) return;
+          cancelled = true;
+          disposeOwner(owner);
+          devtoolsComponentDisposed(devtoolsId);
+          devtoolsLoaderUpdated(loaderId, { isLoading: false, isCancelled: true });
+        },
+      });
       return pending;
     }
-    return ownedBlock(rendered, owner);
+    return ownedBlock(rendered, owner, devtoolsId);
   };
   Object.defineProperty(compiled, COMPONENT, { value: ownedFactory });
   return compiled;
 }
 
-function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
+function ownedBlock(rendered: Block, owner: Cleanup[], devtoolsId = 0): Block {
+  devtoolsComponentRendered(devtoolsId, () => rendered.nodes);
   let disposed = false;
   let retired = false;
   let retirement: Promise<void> | undefined;
@@ -448,10 +493,12 @@ function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
       const leaving = rendered.retire();
       if (!leaving) {
         disposed = true;
+        devtoolsComponentDisposed(devtoolsId);
         return undefined;
       }
       retirement = leaving.then(() => {
         disposed = true;
+        devtoolsComponentDisposed(devtoolsId);
       });
       return retirement;
     },
@@ -460,6 +507,7 @@ function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
       disposed = true;
       rendered.dispose();
       disposeOwner(owner);
+      devtoolsComponentDisposed(devtoolsId);
     },
   };
   if (isServerBlock(rendered)) {

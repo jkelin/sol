@@ -46,6 +46,7 @@ export interface CompilerContext {
   builtinElements: WeakMap<t.JSXElement, BuiltinKind>;
   linkNames: Set<string>;
   refCreatorNames: Set<string>;
+  requestHelperNames: Set<string>;
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;

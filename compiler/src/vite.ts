@@ -8,8 +8,15 @@ import { compile } from "./compile.ts";
 
 const virtualRoutes = "virtual:solix/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
+const devtoolsBuildEntry = "/@solix/devtools";
+const resolvedDevtoolsBuildEntry = "\0solix:devtools-entry";
 const componentFile = /\.tsx(?:\?.*)?$/;
 const routeFile = /\.route\.[jt]sx?(?:\?.*)?$/i;
+
+export interface SolixPluginOptions {
+  /** Inject the in-app diagnostics panel and global API. Defaults to true for Vite dev servers. */
+  readonly devtools?: boolean;
+}
 
 function isRouteFile(file: string): boolean {
   return routeFile.test(file.replaceAll("\\", "/"));
@@ -104,8 +111,15 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
   }
 }
 
-export function solix(): Plugin {
+export function solix(options: SolixPluginOptions = {}): Plugin {
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new TypeError("solix() options must be an object");
+  }
+  if (options.devtools !== undefined && typeof options.devtools !== "boolean") {
+    throw new TypeError("solix() devtools must be a boolean");
+  }
   let config: ResolvedConfig;
+  let devtoolsEnabled = false;
   const invalidateManifest = (server: ViteDevServer, file: string): void => {
     if (!isRouteFile(file) || relative(config.root, file).startsWith("..")) return;
     const module = server.moduleGraph.getModuleById(resolvedVirtualRoutes);
@@ -118,11 +132,31 @@ export function solix(): Plugin {
     enforce: "pre",
     configResolved(resolved) {
       config = resolved;
+      devtoolsEnabled = options.devtools ?? resolved.command === "serve";
+    },
+    transformIndexHtml: {
+      order: "pre",
+      handler() {
+        if (!devtoolsEnabled) return [];
+        return [
+          {
+            tag: "script",
+            attrs: {
+              type: "module",
+              src: config.command === "serve" ? "/@id/solix/devtools" : devtoolsBuildEntry,
+              "data-solix-devtools": "",
+            },
+            injectTo: "head-prepend",
+          },
+        ];
+      },
     },
     resolveId(id) {
-      return id === virtualRoutes ? resolvedVirtualRoutes : null;
+      if (id === virtualRoutes) return resolvedVirtualRoutes;
+      return id === devtoolsBuildEntry ? resolvedDevtoolsBuildEntry : null;
     },
     async load(id) {
+      if (id === resolvedDevtoolsBuildEntry) return 'import "solix/devtools";';
       if (id !== resolvedVirtualRoutes) return null;
       const files = await discoverRoutes(config.root);
       await validateRouteCollisions(files);

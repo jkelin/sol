@@ -1,3 +1,4 @@
+import { devtoolsLoaderCreated, devtoolsLoaderUpdated } from "./devtools-hook.ts";
 import { isPromiseLike, runtimeEffect } from "./reactivity.ts";
 import { asyncValue, HydrationMismatchError } from "./ssr-session.ts";
 import { isServerRegion, mountServerBlock } from "./server-rendering.ts";
@@ -315,6 +316,7 @@ export function awaitBlock<T>(
   let generation = 0;
   let current: Block | undefined;
   let currentFinish: (() => void) | undefined;
+  let activeLoader = 0;
   let disposed = false;
   const showError = (error: unknown): void => {
     if (rejectHydrationMismatch(frame, error)) return;
@@ -331,6 +333,10 @@ export function awaitBlock<T>(
     const promise = frame.hydration ? asyncValue(frame, site, getPromise, true) : getPromise();
     if (!isPromiseLike(promise)) throw new TypeError("Await $promise must be promise-like");
     const currentGeneration = ++generation;
+    devtoolsLoaderUpdated(activeLoader, { isLoading: false, isCancelled: true });
+    const loaderId = devtoolsLoaderCreated(`Await ${site}`, []);
+    activeLoader = loaderId;
+    devtoolsLoaderUpdated(loaderId, { isLoading: true });
     currentFinish?.();
     current?.dispose();
     current = undefined;
@@ -339,6 +345,8 @@ export function awaitBlock<T>(
     Promise.resolve(promise).then(
       (value) => {
         if (disposed || currentGeneration !== generation) return finish?.();
+        devtoolsLoaderUpdated(loaderId, { isLoading: false, hasData: true, data: value });
+        if (activeLoader === loaderId) activeLoader = 0;
         try {
           const claim = regionHydrationClaim(region);
           current = render(value, claim ? { ...frame, claim } : frame);
@@ -351,6 +359,8 @@ export function awaitBlock<T>(
       },
       (error) => {
         if (disposed || currentGeneration !== generation) return finish?.();
+        devtoolsLoaderUpdated(loaderId, { isLoading: false, isFailed: true, error });
+        if (activeLoader === loaderId) activeLoader = 0;
         showError(error);
         finish?.();
         if (currentFinish === finish) currentFinish = undefined;
@@ -360,6 +370,8 @@ export function awaitBlock<T>(
   cleanups.push(stop, () => {
     disposed = true;
     generation += 1;
+    devtoolsLoaderUpdated(activeLoader, { isLoading: false, isCancelled: true });
+    activeLoader = 0;
     currentFinish?.();
     current?.dispose();
   });

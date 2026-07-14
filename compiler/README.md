@@ -9,6 +9,10 @@ import { defineConfig } from "vite";
 export default defineConfig({ plugins: [solix()] });
 ```
 
+`solix()` injects `solix/devtools` into development HTML by default and omits it from production
+builds. Pass `{ devtools: false }` to disable the development panel, or `{ devtools: true }` to
+include it explicitly for another Vite command. The option boundary rejects non-boolean values.
+
 Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It returns transformed code and a source map.
 
 ## Source files
@@ -25,15 +29,15 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 - `route-path.ts` validates route templates and produces compiled matching metadata.
 - `codegen.ts` owns identifier rewriting and reusable Babel-to-code helpers.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists, conditionals, and child expressions into templates and runtime operations.
-- `setup.ts` analyzes component setup and rewrites local state, derived values, props, frame-explicit context reads, and component factories while preserving `createRef()` objects as non-reactive handles.
+- `setup.ts` analyzes component setup and rewrites local state, derived values, props, frame-explicit context reads, and component factories while preserving `createRef()` objects as non-reactive handles and attaching authored locations to query/mutation diagnostics.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
 - `runtime-import.ts` defines the single generated import from `solix/compiler-runtime`.
 - `compile.ts` validates input, creates compilation state, and sequences analysis, declaration lowering, final validation, and emission.
-- `vite.ts` discovers routes, provides `virtual:solix/routes`, invalidates it during development, and applies the compiler before Vite's JSX transform.
+- `vite.ts` discovers routes, provides `virtual:solix/routes`, invalidates it during development, injects the opt-out development devtools entry, and applies the compiler before Vite's JSX transform.
 
 ## How it works
 
-Compilation parses the source with Babel, then `compile.ts` passes shared state through module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. Context-compatible `use()` calls are routed through the runtime's non-observable context registry so direct, imported, aliased, and prop-supplied contexts receive the render frame across async continuations while ordinary methods retain their authored behavior. Await expressions are wrapped in lazy, module-qualified replay sites, including promise initializers later consumed by an await and awaits in lexically resolved local helper chains. Await ancestry stops at function boundaries, and helper capture is propagated per invocation, so an awaited call is replayable even when another call to the same helper is fire-and-forget. Redundant aggregate capture is omitted when `Promise.all` inputs already own replay sites. `Await` receives its own site, and Suspense forwards its validated server timeout. Generated templates carry deterministic signatures plus element tags, region indexes, and stable identities for each dynamic operation. They receive the active render frame so the same compiled operations can target a cloned DOM, server strings, or hydration claims. The output phase applies edits with `magic-string`, injects the generated runtime import and templates, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
+Compilation parses the source with Babel, then `compile.ts` passes shared state through module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. Context-compatible `use()` calls are routed through the runtime's non-observable context registry so direct, imported, aliased, and prop-supplied contexts receive the render frame across async continuations while ordinary methods retain their authored behavior. Await expressions are wrapped in lazy, module-qualified replay sites, including promise initializers later consumed by an await and awaits in lexically resolved local helper chains. Await ancestry stops at function boundaries, and helper capture is propagated per invocation, so an awaited call is replayable even when another call to the same helper is fire-and-forget. Redundant aggregate capture is omitted when `Promise.all` inputs already own replay sites. `Await` receives its own site, and Suspense forwards its validated server timeout. Generated component factories carry component names and authored file/line metadata for development introspection. Generated templates carry deterministic signatures plus element tags, region indexes, and stable identities for each dynamic operation. They receive the active render frame so the same compiled operations can target a cloned DOM, server strings, or hydration claims. The output phase applies edits with `magic-string`, injects the generated runtime import and templates, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
 
 Compiler diagnostics are part of the module interface: keep their validation and authored source locations intact when reorganizing internals.
 

@@ -256,6 +256,27 @@ import { solix } from "@solix/compiler/vite";
 export default defineConfig({ plugins: [solix()] });
 ```
 
+During `vite serve`, the plugin injects Solix devtools by default. A circular `S` launcher in the
+bottom-right toggles a movable, resizable panel for component, loader/query/mutation, route-manifest,
+and form diagnostics, including an element picker. Component, request, and route views use a
+resizable master-detail layout, and the panel geometry persists locally. The same live metadata is
+available at `globalThis.__solix`; browsers implementing WebMCP
+also receive the read-only `solix_get_diagnostics` and `solix_inspect_element` tools. Production
+builds do not include the entry or define the global unless explicitly enabled:
+
+```ts
+solix({ devtools: false }); // opt out during development
+solix({ devtools: true }); // explicitly include it in any Vite command
+```
+
+`__solix.getSnapshot()` returns all diagnostic areas, while `getSnapshot("components")` and the
+`components`, `requests`, `router`, and `forms` getters return individual areas. Components include
+ownership through `parentId`; compiled queries and mutations include authored `source` file/line
+metadata; router diagnostics include every compiled route definition. Use
+`inspectElement(elementOrSelector)`, `open(tab?)`, `close()`, `startElementPicker()`, and
+`subscribe(listener)` for integrations. These interfaces validate their inputs and are intended
+only for trusted development environments.
+
 ## Context and async rendering
 
 Create a shared object context with `$context<T>()`. A provider accepts the object through its

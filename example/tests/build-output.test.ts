@@ -15,6 +15,11 @@ test("the example build keeps compiler output readable", async () => {
   expect(output).toContain("function matchRoute(pathname, searchParams)");
   expect(output).toContain("function cleanupEffect(effect)");
   expect(output).toContain("function queryEntry(key)");
+  expect(output).toContain("function requestSource(config, source)");
+  expect(output).toContain("$query(requestSource({");
+  expect(output).toContain("$mutation(requestSource(");
   expect(output).toContain("function runTransitions(");
   expect(output).toContain("element.getAnimations(");
+  expect(output).not.toContain("solix_get_diagnostics");
+  expect(output).not.toContain("solix-devtools");
 });

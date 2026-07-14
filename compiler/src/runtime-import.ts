@@ -24,6 +24,7 @@ export const RUNTIME_IMPORT = `import {
   portal as __solix_portal,
   rawText as __solix_raw_text,
   ref as __solix_ref,
+  requestSource as __solix_request_source,
   route as __solix_route,
   suspense as __solix_suspense,
   template as __solix_template,

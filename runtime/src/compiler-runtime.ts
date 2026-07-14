@@ -42,4 +42,5 @@ export {
   type RouteValues,
 } from "./routes.ts";
 export { transition } from "./transitions.ts";
+export { requestSource } from "./queries.ts";
 export type { Component } from "./components.ts";

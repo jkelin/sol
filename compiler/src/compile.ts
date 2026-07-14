@@ -18,6 +18,7 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     builtinElements: new WeakMap(),
     linkNames: new Set(),
     refCreatorNames: new Set(),
+    requestHelperNames: new Set(),
     mappingOrigins: [],
     nextListId: 0,
     nextAsyncId: 0,

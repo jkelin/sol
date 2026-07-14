@@ -3,6 +3,7 @@
 
 import routes from "virtual:solix/routes";
 import type { Component } from "./components.ts";
+import { devtoolsRouterUpdated } from "./devtools-hook.ts";
 import { $signal, runtimeEffect } from "./reactivity.ts";
 import {
   block,
@@ -67,6 +68,29 @@ function readLocation(): RouterState {
 }
 
 const state = $signal<RouterState>(readLocation());
+
+function setRouterState(next: RouterState): void {
+  state.value = next;
+  devtoolsRouterUpdated({
+    pathname: next.pathname,
+    search: next.search,
+    hash: next.hash,
+    searchParams: Object.fromEntries(next.searchParams),
+    params: next.values ?? {},
+    route: next.route ? { path: next.route.path } : null,
+    pattern: next.pattern,
+    status: next.status,
+    error: next.error,
+    routes: preparedRoutes.map((definition) => ({
+      path: definition.config.path,
+      pattern: definition.compiled.pattern,
+      parameterNames: definition.compiled.parameterNames,
+      pathnameParameterNames: definition.compiled.pathnameParameterNames,
+      queryParameters: definition.compiled.queryParameters,
+      specificity: definition.compiled.specificity,
+    })),
+  });
+}
 
 function compareRoutes(left: RouteDefinition, right: RouteDefinition): number {
   const length = Math.max(left.compiled.specificity.length, right.compiled.specificity.length);
@@ -157,7 +181,7 @@ function synchronizeLocation(): void {
   const location = readLocation();
   const match = matchRoute(location.pathname, location.searchParams);
   if (!match) {
-    state.value = unmatchedState(location);
+    setRouterState(unmatchedState(location));
     return;
   }
 
@@ -165,28 +189,30 @@ function synchronizeLocation(): void {
   try {
     result = resolveRoute(match.definition, match.params);
   } catch (error) {
-    state.value = { ...unmatchedState(location), status: "error", error };
+    setRouterState({ ...unmatchedState(location), status: "error", error });
     return;
   }
 
   if (!(result && typeof result === "object" && "then" in result)) {
-    state.value = result.matched
-      ? resolvedState(location, match, result.values)
-      : unmatchedState(location);
+    setRouterState(
+      result.matched ? resolvedState(location, match, result.values) : unmatchedState(location),
+    );
     return;
   }
 
-  state.value = { ...unmatchedState(location), status: "pending" };
+  setRouterState({ ...unmatchedState(location), status: "pending" });
   void Promise.resolve(result).then(
     (resolution) => {
       if (currentResolution !== resolutionId) return;
-      state.value = resolution.matched
-        ? resolvedState(location, match, resolution.values)
-        : unmatchedState(location);
+      setRouterState(
+        resolution.matched
+          ? resolvedState(location, match, resolution.values)
+          : unmatchedState(location),
+      );
     },
     (error: unknown) => {
       if (currentResolution !== resolutionId) return;
-      state.value = { ...unmatchedState(location), status: "error", error };
+      setRouterState({ ...unmatchedState(location), status: "error", error });
     },
   );
 }
@@ -293,7 +319,7 @@ function listenForNavigation(): () => void {
 
 const routeTemplate = template("<!--solix:s:0--><!--solix:e:0-->");
 
-export const Route = component((props: Readonly<{ pending?: Component }>) => {
+export const Route = component(function Route(props: Readonly<{ pending?: Component }>) {
   const view = instantiate(routeTemplate);
   const cleanups: Array<() => void> = [];
   let active: Block | undefined;

@@ -57,3 +57,10 @@ export {
 } from "./routes.ts";
 export type { Transition } from "./transitions.ts";
 export type { Parser, StandardSchema } from "./validation.ts";
+export type {
+  SolixComponentSnapshot,
+  SolixDevtools,
+  SolixFormSnapshot,
+  SolixRequestSnapshot,
+  SolixSnapshot,
+} from "./devtools.ts";

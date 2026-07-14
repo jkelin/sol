@@ -10,4 +10,10 @@ bun run build
 bun run test:e2e
 ```
 
+The development server includes Solix devtools by default. Use the circular `S` launcher in the
+bottom-right to inspect the mounted component ownership tree, loaders and requests with authored
+query/mutation locations, routing, and form validation, or access the
+same data through `globalThis.__solix` and supported browsers' WebMCP tooling. The production build
+does not include devtools.
+
 The production build is written to `example/dist`. The build-output test checks that readable compiler output contains Solix templates, routes, reactivity, and transitions. Playwright exercises the complete application through the Vite preview server and uses a small fixture under `tests/fixtures` to server-render and hydrate an async component tree in a real browser.

@@ -1,5 +1,14 @@
 import { $signal, batch, isObject, isPromiseLike, runtimeState } from "./reactivity.ts";
 import type { Cleanup, RenderFrame } from "./rendering.ts";
+import {
+  devtoolsMutationCreated,
+  devtoolsMutationDisposed,
+  devtoolsMutationUpdated,
+  devtoolsQueryCreated,
+  devtoolsQueryDisposed,
+  devtoolsQueryUpdated,
+  type SourceMetadata,
+} from "./devtools-hook.ts";
 
 export type QueryKey =
   | null
@@ -92,6 +101,15 @@ interface MutationState<Data> {
 
 const DEFAULT_CACHE_TIME = 5 * 60 * 1000;
 const queryCache = new Map<string, QueryCacheEntry>();
+const requestSources = new WeakMap<object, SourceMetadata>();
+
+export function requestSource<Config extends object>(
+  config: Config,
+  source: SourceMetadata,
+): Config {
+  if (config && typeof config === "object") requestSources.set(config, source);
+  return config;
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!isObject(value) || Array.isArray(value)) return false;
@@ -303,10 +321,16 @@ function requestQuery<Data, Args extends unknown[]>(
   suspend: boolean,
   owner: Cleanup[],
   frame: RenderFrame,
+  devtoolsId: number,
 ): Promise<Data> {
   const existing = entry.inFlight as Promise<Data> | undefined;
   if (existing) {
     trackSuspense(existing, suspend, owner, frame);
+    devtoolsQueryUpdated(devtoolsId, { ...entry.state.value, args });
+    void existing.then(
+      () => devtoolsQueryUpdated(devtoolsId, { ...entry.state.value, args }),
+      () => devtoolsQueryUpdated(devtoolsId, { ...entry.state.value, args }),
+    );
     return existing;
   }
   const state = entry.state.value;
@@ -316,6 +340,7 @@ function requestQuery<Data, Args extends unknown[]>(
     state.error = undefined;
     state.isFailed = false;
   });
+  devtoolsQueryUpdated(devtoolsId, { ...state, args });
   const promise = invokeAsync("$query()", operation, args);
   entry.inFlight = promise;
   trackSuspense(promise, suspend, owner, frame);
@@ -333,6 +358,7 @@ function requestQuery<Data, Args extends unknown[]>(
         state.isFailed = false;
       });
       entry.inFlight = undefined;
+      devtoolsQueryUpdated(devtoolsId, { ...state, args });
     },
     (error) => {
       if (entry.inFlight !== promise) return;
@@ -343,6 +369,7 @@ function requestQuery<Data, Args extends unknown[]>(
         state.isFailed = true;
       });
       entry.inFlight = undefined;
+      devtoolsQueryUpdated(devtoolsId, { ...state, args });
     },
   );
   return promise;
@@ -378,13 +405,16 @@ export function $query<Data, Args extends unknown[]>(
   subscribe(entry, cacheTime, owner);
   let disposed = false;
   let currentArgs = [...initialArgs] as Args;
+  const devtoolsId = devtoolsQueryCreated(key, currentArgs, requestSources.get(config));
+  devtoolsQueryUpdated(devtoolsId, { ...entry.state.value, args: currentArgs });
   owner.push(() => {
     disposed = true;
+    devtoolsQueryDisposed(devtoolsId);
   });
 
   const execute = (suspend: boolean): Promise<Data> => {
     if (disposed) return Promise.reject(new Error("$query() controller has been disposed"));
-    return requestQuery(entry, config.query, currentArgs, suspend, owner, frame);
+    return requestQuery(entry, config.query, currentArgs, suspend, owner, frame, devtoolsId);
   };
   const state = entry.state.value;
   const controller: QueryController<Data, Args> = {
@@ -470,9 +500,11 @@ export function $mutation<Data, Args extends unknown[]>(
   });
   let generation = 0;
   let disposed = false;
+  const devtoolsId = devtoolsMutationCreated(requestSources.get(config));
   owner.push(() => {
     disposed = true;
     generation += 1;
+    devtoolsMutationDisposed(devtoolsId);
   });
 
   const controller: MutationController<Data, Args> = {
@@ -501,6 +533,7 @@ export function $mutation<Data, Args extends unknown[]>(
         state.value.isFailed = false;
         state.value.error = undefined;
       });
+      devtoolsMutationUpdated(devtoolsId, { ...state.value, args });
       const promise = invokeAsync("$mutation()", config.mutation, args);
       trackSuspense(promise, options.suspense ?? config.suspense ?? false, owner, frame);
       void promise.then(
@@ -512,6 +545,7 @@ export function $mutation<Data, Args extends unknown[]>(
             state.value.hasData = true;
             state.value.isMutating = false;
           });
+          devtoolsMutationUpdated(devtoolsId, { ...state.value, args });
         },
         (error) => {
           if (disposed || currentGeneration !== generation) return;
@@ -520,6 +554,7 @@ export function $mutation<Data, Args extends unknown[]>(
             state.value.isFailed = true;
             state.value.isMutating = false;
           });
+          devtoolsMutationUpdated(devtoolsId, { ...state.value, args });
         },
       );
       return promise;

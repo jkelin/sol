@@ -2,6 +2,7 @@ import { afterAll, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import type { Component } from "../src/components.ts";
 import { $signal } from "../src/reactivity.ts";
+import { installDevtools } from "../src/devtools.ts";
 import { mount } from "../src/rendering.ts";
 import { transition } from "../src/transitions.ts";
 import { block, component, instantiate, route, template, text } from "../src/compiler-runtime.ts";
@@ -19,7 +20,9 @@ Object.assign(globalThis, {
   Node: window.Node,
   NodeFilter: window.NodeFilter,
   Element: window.Element,
+  HTMLElement: window.HTMLElement,
   HTMLSelectElement: window.HTMLSelectElement,
+  KeyboardEvent: window.KeyboardEvent,
 });
 
 const animations: ControlledAnimation[] = [];
@@ -105,11 +108,17 @@ const routes = [
 ];
 
 await mock.module("virtual:solix/routes", () => ({ default: routes }));
+const devtools = installDevtools()!;
 const { Route, router } = await import("../src/router.ts");
 
 afterAll(() => window.close());
 
 test("route transitions overlap, freeze outgoing state, and clean rapid navigation", () => {
+  expect((devtools.router.routes as Array<{ path: string }>).map((entry) => entry.path)).toEqual([
+    "/plain",
+    "/second",
+    "/",
+  ]);
   const target = document.createElement("main");
   mount(Route, target);
   expect(animations).toHaveLength(0);

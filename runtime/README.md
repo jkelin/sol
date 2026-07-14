@@ -18,11 +18,13 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 ## Source files
 
 - `index.ts` defines the small public package interface.
+- `devtools-hook.ts` defines the inert runtime instrumentation seam used only when development diagnostics are installed.
+- `devtools.ts` installs the development global, WebMCP tools, element picker, and isolated in-app diagnostics panel.
 - `symbols.ts` owns the private brands shared by compiled components, contexts, and routes.
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
 - `reactivity.ts` implements signals, computed values, effects, batching, proxies, and render ownership state.
 - `forms.ts` implements form controllers, validation normalization, and submission state.
-- `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, and Suspense participation.
+- `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, Suspense participation, and compiler-authored diagnostic source attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
 - `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, head-scoped executable script instantiation, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
@@ -46,6 +48,13 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 ## How it works
 
 The compiler turns JSX into signed static templates, element and region metadata, dynamic-operation identities, and calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Solix markers, and creates owned blocks. Block mount phases attach refs before resolving portals, and remote portal blocks delegate enter, leave, and disposal to their source owner. Server rendering uses template metadata directly; tag-aware binding serialization emits browser-correct initial state for inputs, textareas, and selects, refs are validated without attaching, and browser-owned portal children are omitted. Hydration attaches refs to claimed elements before mounting portal children as fresh browser DOM. `reactivity.ts` tracks the effects that read signals, so writes schedule only dependent DOM operations. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, queries, and route changes dispose the correct work. `queries.ts` keeps shared cache entries behind serialized JSON keys while each mounted observer owns its polling and Suspense lifecycle. `router.ts` supplies route state through an internal adapter while keeping route handles independent of browser globals.
+
+The `solix/devtools` entry installs `globalThis.__solix` and a Shadow DOM panel. Compiler-emitted
+component source metadata is joined into an ownership tree with runtime-owned nodes, async component
+loader and request state, authored query/mutation locations, the compiled route manifest and active
+router resolution, and form validation state. Its movable, resizable master-detail panel persists its
+geometry in browser storage. The hooks remain no-ops when the entry is absent, so production builds omit
+the panel and global by default. WebMCP registration is feature-detected and requires no polyfill.
 
 `$query()` and `$mutation()` must be created during component setup. Queries default to an automatic initial fetch, zero milliseconds of freshness, five minutes of unused-cache retention, and initial-only Suspense participation. Polling is visible-document and mounted-observer only. Same-key calls deduplicate while in flight; manual refetch and mutation methods accept a call-options object before their inferred argument tuple and reject on failure.
 

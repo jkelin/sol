@@ -425,7 +425,7 @@ The example uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry impo
 
 ```bash
 bun run typecheck
-bun run test
+bun test
 bun run build
 bun run test:e2e
 ```

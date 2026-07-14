@@ -9,6 +9,9 @@ function hydrationPayload(value: unknown): HydrationPayload {
   if (!isObject(value) || Array.isArray(value)) {
     throw new TypeError("Invalid Solix hydration payload");
   }
+  if (Object.keys(value).toSorted().join(",") !== "async,boundaries,templates,version") {
+    throw new TypeError("Invalid Solix hydration payload fields");
+  }
   const payload = value as Partial<HydrationPayload>;
   if (
     typeof payload.version !== "number" ||

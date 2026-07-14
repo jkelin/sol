@@ -52,3 +52,7 @@ export interface CompilationState {
   readonly componentCallRanges: Set<string>;
   readonly routeCallRanges: Set<string>;
 }
+
+export function nextAsyncSite(compiler: CompilerContext): string {
+  return `await:${compiler.filename}:${compiler.nextAsyncId++}`;
+}

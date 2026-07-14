@@ -300,8 +300,9 @@ when it exceeds the render timeout.
 Captured async data supports primitives, sparse and cyclic graphs, shared references, bigint,
 special numbers, Date, RegExp, URL, Map, Set, Error, and plain or null-prototype objects. Functions,
 symbols, DOM nodes, accessors, typed buffers, and custom-prototype instances are rejected. Awaited
-expressions in compiled components and lazy `<Await $promise={...}>` expressions are captured;
-unawaited work and eagerly created promises outside an Await getter are not replayable.
+expressions in compiled components, awaited local helper chains, and lazy `<Await $promise={...}>`
+expressions are captured at module-qualified sites; unrelated unawaited work and eagerly created
+promises outside an Await getter are not replayable.
 
 ## Routing
 

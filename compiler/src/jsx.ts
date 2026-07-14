@@ -13,7 +13,13 @@ import {
   staticAttributeValue,
   type ReactiveKind,
 } from "./codegen.ts";
-import type { CompilerContext, Expression, Scope, TemplateContext } from "./context.ts";
+import {
+  nextAsyncSite,
+  type CompilerContext,
+  type Expression,
+  type Scope,
+  type TemplateContext,
+} from "./context.ts";
 import { codeFrame, mappedCode } from "./diagnostics.ts";
 import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
 
@@ -324,7 +330,7 @@ export function compileBuiltinElement(
     mappedCode(
       compiler,
       node,
-      `__solix_await(__solix_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__solix_value, __solix_frame) => (${renderer})(__solix_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${JSON.stringify(`await:${compiler.nextAsyncId++}`)});`,
+      `__solix_await(__solix_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__solix_value, __solix_frame) => (${renderer})(__solix_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${JSON.stringify(nextAsyncSite(compiler))});`,
     ),
   );
 }

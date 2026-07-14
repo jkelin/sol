@@ -469,7 +469,7 @@ describe("compiler", () => {
     expect(result.code).toContain("__solix_error_boundary");
     expect(result.code).toContain("__solix_suspense");
     expect(result.code).toContain("__solix_await");
-    expect(result.code).toContain('__solix_async_value(__solix_frame, "await:0"');
+    expect(result.code).toContain('__solix_async_value(__solix_frame, "await:AsyncContext.tsx:0"');
     expect(result.code).toContain("__solix_frame, 250)");
     expect(result.code).toMatch(/__solix_template\(`[^`]*`, "t[a-z0-9]+", \{/);
     expect(result.code).toContain('"elements":["p"]');
@@ -482,17 +482,33 @@ describe("compiler", () => {
       `
       const App = $component(async function App() {
         async function sideEffect() { await Promise.resolve("side effect"); }
+        async function load() { return await Promise.resolve("nested"); }
         void sideEffect();
+        const nested = await load();
         const value = await Promise.resolve("captured");
-        return <p>{value}</p>;
+        return <p>{nested}: {value}</p>;
       });
     `,
       "AsyncSideEffect.tsx",
     );
 
-    expect(result.code.match(/__solix_async_value/g)).toHaveLength(2);
-    expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(1);
+    expect(result.code.match(/__solix_async_value/g)).toHaveLength(3);
+    expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(2);
     expect(result.code).toContain('await Promise.resolve("side effect")');
+    expect(result.code).toContain(
+      'await __solix_async_value(__solix_frame, "await:AsyncSideEffect.tsx:0"',
+    );
+    expect(result.code).toContain("const nested = __solix_signal(await load())");
+  });
+
+  test("namespaces async sites by compiled module", () => {
+    const source = `const App = $component(async function App() { const value = await Promise.resolve("value"); return <p>{value}</p>; });`;
+    const first = compile(source, "FirstModule.tsx");
+    const second = compile(source, "SecondModule.tsx");
+
+    expect(first.code).toContain('"await:FirstModule.tsx:0"');
+    expect(second.code).toContain('"await:SecondModule.tsx:0"');
+    expect(second.code).not.toContain('"await:FirstModule.tsx:0"');
   });
 
   test("validates async boundary and context provider JSX contracts", () => {

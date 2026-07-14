@@ -197,18 +197,7 @@ export class HydrationSession {
     ) {
       throw new TypeError("Invalid Solix hydration boundary payload");
     }
-    if (
-      !payload.async.every(
-        (entry) =>
-          entry !== null &&
-          typeof entry === "object" &&
-          typeof entry.site === "string" &&
-          (entry.status === "pending" ||
-            entry.status === "fulfilled" ||
-            entry.status === "rejected") &&
-          (entry.status === "pending" || Object.prototype.hasOwnProperty.call(entry, "value")),
-      )
-    ) {
+    if (!payload.async.every((entry) => validAsyncEntry(entry))) {
       throw new TypeError("Invalid Solix hydration async payload");
     }
     for (const signature of payload.templates) {
@@ -310,6 +299,16 @@ export class HydrationSession {
     if (this.pending === 0) this.completion = deferred();
     this.pending += 1;
   }
+}
+
+function validAsyncEntry(entry: unknown): entry is AsyncEntry {
+  if (entry === null || typeof entry !== "object") return false;
+  const value = entry as Partial<AsyncEntry>;
+  if (typeof value.site !== "string") return false;
+  const keys = Object.keys(entry).toSorted().join(",");
+  if (value.status === "pending") return keys === "site,status";
+  if (value.status !== "fulfilled" && value.status !== "rejected") return false;
+  return keys === "site,status,value";
 }
 
 export function asyncValue<T>(

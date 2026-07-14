@@ -11,7 +11,12 @@ import {
   validateReservedIdentifier,
   type ReactiveKind,
 } from "./codegen.ts";
-import type { CompiledFunction, CompilerContext, Scope } from "./context.ts";
+import {
+  nextAsyncSite,
+  type CompiledFunction,
+  type CompilerContext,
+  type Scope,
+} from "./context.ts";
 import { codeFrame, mappedCode } from "./diagnostics.ts";
 import { compileBlockBody } from "./jsx.ts";
 
@@ -424,15 +429,100 @@ function instrumentAwaitExpressions(
   declaration: t.FunctionExpression,
 ): void {
   const file = t.file(t.program([t.expressionStatement(declaration)]));
+  type LocalFunction = t.FunctionDeclaration | t.FunctionExpression | t.ArrowFunctionExpression;
+  const localFunctions = new Map<string, LocalFunction>();
+  traverse(file, {
+    FunctionDeclaration(path: NodePath<t.FunctionDeclaration>) {
+      if (path.node.id) localFunctions.set(path.node.id.name, path.node);
+    },
+    VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
+      if (
+        t.isIdentifier(path.node.id) &&
+        (t.isFunctionExpression(path.node.init) || t.isArrowFunctionExpression(path.node.init))
+      ) {
+        localFunctions.set(path.node.id.name, path.node.init);
+      }
+    },
+  });
+
+  const calledHelpers = (node: t.Node): Set<LocalFunction> => {
+    const called = new Set<LocalFunction>();
+    const cloned = t.cloneNode(node, true);
+    const statements = t.isFunctionDeclaration(cloned)
+      ? [cloned]
+      : t.isExpression(cloned)
+        ? [t.expressionStatement(cloned)]
+        : [];
+    traverse(t.file(t.program(statements)), {
+      CallExpression(path: NodePath<t.CallExpression>) {
+        if (!t.isIdentifier(path.node.callee)) return;
+        const helper = localFunctions.get(path.node.callee.name);
+        if (helper) called.add(helper);
+      },
+    });
+    return called;
+  };
+
+  const reachable = new Set<LocalFunction>();
   traverse(file, {
     AwaitExpression(path: NodePath<t.AwaitExpression>) {
       if (path.getFunctionParent()?.node !== declaration) return;
+      for (const helper of calledHelpers(path.node.argument)) reachable.add(helper);
+    },
+  });
+  const queue = [...reachable];
+  for (let index = 0; index < queue.length; index += 1) {
+    for (const helper of calledHelpers(queue[index]!)) {
+      if (reachable.has(helper)) continue;
+      reachable.add(helper);
+      queue.push(helper);
+    }
+  }
+
+  const ownAwait = new Set<LocalFunction>();
+  traverse(file, {
+    AwaitExpression(path: NodePath<t.AwaitExpression>) {
+      const owner = path.getFunctionParent()?.node;
+      if (owner && owner !== declaration && reachable.has(owner as LocalFunction)) {
+        ownAwait.add(owner as LocalFunction);
+      }
+    },
+  });
+  const hasCapturedAwait = (helper: LocalFunction, seen = new Set<LocalFunction>()): boolean => {
+    if (ownAwait.has(helper)) return true;
+    if (seen.has(helper)) return false;
+    seen.add(helper);
+    return [...calledHelpers(helper)].some(
+      (called) => reachable.has(called) && hasCapturedAwait(called, seen),
+    );
+  };
+
+  const directlyAwaitedHelper = (argument: t.Expression): LocalFunction | undefined => {
+    let expression = argument;
+    while (
+      t.isTSAsExpression(expression) ||
+      t.isTSTypeAssertion(expression) ||
+      t.isTSNonNullExpression(expression)
+    ) {
+      expression = expression.expression;
+    }
+    if (!t.isCallExpression(expression) || !t.isIdentifier(expression.callee)) return undefined;
+    return localFunctions.get(expression.callee.name);
+  };
+
+  traverse(file, {
+    AwaitExpression(path: NodePath<t.AwaitExpression>) {
+      const owner = path.getFunctionParent()?.node;
+      if (owner !== declaration && !reachable.has(owner as LocalFunction)) return;
       const argument = path.node.argument;
+      const helper = directlyAwaitedHelper(argument);
+      if (helper && reachable.has(helper) && hasCapturedAwait(helper)) return;
       path.node.argument = t.callExpression(t.identifier("__solix_async_value"), [
         t.identifier("__solix_frame"),
-        t.stringLiteral(`await:${compiler.nextAsyncId++}`),
+        t.stringLiteral(nextAsyncSite(compiler)),
         t.arrowFunctionExpression([], argument),
       ]);
+      path.skip();
     },
   });
 }

@@ -59,8 +59,9 @@ server-only `timeoutMs` override; a timeout renders its fallback, while root asy
 
 `hydrate(component, target, props?)` returns a promise for an idempotent disposer. It requires the
 exact server output in `target`, replays settled compiler-owned awaits without invoking their thunks,
-validates payload template order against the signed DOM markers before activating operations, and
-preserves the existing DOM on signature, marker, property, payload, or async-order mismatches.
+validates the exact payload and async-entry shapes plus template order against the signed DOM markers
+before activating operations, and preserves the existing DOM on signature, marker, property, payload,
+or module-qualified async-order mismatches.
 Timed-out entries execute in the browser after the fallback is claimed.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,

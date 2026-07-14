@@ -1361,6 +1361,28 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), "async payload");
+  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+    version: 1,
+    templates: [],
+    async: [{ site: "await:test:0", status: "pending", value: "unexpected" }],
+    boundaries: [],
+  })}</script>`;
+  await expectRejection(hydrate(App, target), "async payload");
+  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+    version: 1,
+    templates: [],
+    async: [{ site: "await:test:0", status: "fulfilled", value: "ok", extra: true }],
+    boundaries: [],
+  })}</script>`;
+  await expectRejection(hydrate(App, target), "async payload");
+  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+    version: 1,
+    templates: [],
+    async: [],
+    boundaries: [],
+    extra: true,
+  })}</script>`;
+  await expectRejection(hydrate(App, target), "payload fields");
 });
 
 test("reports the await site when replay data cannot be serialized", async () => {
@@ -1370,7 +1392,10 @@ test("reports the await site when replay data cannot be serialized", async () =>
       return <main>Rendered</main>;
     });
   `);
-  await expectRejection(renderToStringAsync(module.App as Component), "async site await:0");
+  await expectRejection(
+    renderToStringAsync(module.App as Component),
+    "async site await:Integration.tsx:0",
+  );
 });
 
 test("preserves undefined root rejections", async () => {
@@ -1446,7 +1471,10 @@ test("replays repeated same-site component awaits resolved out of order", async 
   const payload = deserializeGraph(
     target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
   ) as { async: { site: string }[] };
-  expect(payload.async.map((entry) => entry.site)).toEqual(["await:0", "await:0"]);
+  expect(payload.async.map((entry) => entry.site)).toEqual([
+    "await:Integration.tsx:0",
+    "await:Integration.tsx:0",
+  ]);
   const dispose = await hydrate(App, target);
   expect(globalThis.integrationLoads).toBe(2);
   expect(target.querySelector('[data-id="first"]')).toBe(first);
@@ -1480,6 +1508,10 @@ test("replays nested helper Promise.all data driving branches and lists", async 
   const target = document.createElement("div");
   target.innerHTML = await renderToStringAsync(App);
   expect(globalThis.integrationLoads).toBe(2);
+  const payload = deserializeGraph(
+    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+  ) as { async: { site: string }[] };
+  expect(payload.async.map((entry) => entry.site)).toEqual(["await:Integration.tsx:0"]);
   const branch = target.querySelector("#async-branch");
   const rows = [...target.querySelectorAll("li")];
   const dispose = await hydrate(App, target);

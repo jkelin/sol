@@ -61,7 +61,8 @@ server-only `timeoutMs` override; a timeout renders its fallback, while root asy
 exact server output in `target`, replays settled compiler-owned awaits without invoking their thunks,
 validates the exact payload and async-entry shapes plus template order against the signed DOM markers
 before activating operations, and preserves the existing DOM on signature, marker, property, payload,
-or module-qualified async-order mismatches.
+or module-qualified async-order mismatches. Claim mismatches bypass application `Await`, `Suspense`,
+and `ErrorBoundary` renderers so hydration always rejects instead of converting them into UI errors.
 Timed-out entries execute in the browser after the fallback is claimed.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,

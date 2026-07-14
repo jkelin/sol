@@ -3,7 +3,7 @@ import { rootHydrationClaim } from "./hydration-rendering.ts";
 import { isObject, isPromiseLike, reactive } from "./reactivity.ts";
 import { getFactory, readonlyProps, type Block, type RenderFrame } from "./rendering.ts";
 import { deserializeGraph } from "./serialization.ts";
-import { HydrationSession, type HydrationPayload } from "./ssr-session.ts";
+import { HydrationMismatchError, HydrationSession, type HydrationPayload } from "./ssr-session.ts";
 
 function hydrationPayload(value: unknown): HydrationPayload {
   if (!isObject(value) || Array.isArray(value)) {
@@ -78,7 +78,7 @@ export async function hydrate<Props extends object>(
     rendered.mount(target);
     await session.wait();
     if (claim.cursor !== script) {
-      throw new Error("Solix hydration mismatch: unexpected root nodes");
+      throw new HydrationMismatchError("unexpected root nodes");
     }
     session.commit();
     for (const element of target.querySelectorAll("[data-solix-e]")) {

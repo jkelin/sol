@@ -290,7 +290,8 @@ const dispose = await hydrate(App, document.querySelector("#app")!, { initialCou
 
 The server and browser must use the same compiled component and equivalent props. Hydration claims
 the existing elements, attaches effects and events, removes the embedded data payload, and rejects
-without replacing the DOM when the markup, compiler signatures, or async call sequence differ.
+without replacing the DOM when element or region markers, compiler signatures, dynamic values, or
+the async call sequence differ. Hydration mismatches bypass application async and error boundaries.
 
 The render option supplies a five-second default timeout. `Suspense` can override it for one server
 boundary with `timeoutMs`. A timed-out boundary emits its fallback; hydration claims that fallback,

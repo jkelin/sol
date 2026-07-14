@@ -1,5 +1,5 @@
 import { isPromiseLike, runtimeEffect } from "./reactivity.ts";
-import { asyncValue } from "./ssr-session.ts";
+import { asyncValue, HydrationMismatchError } from "./ssr-session.ts";
 import { isServerRegion, mountServerBlock } from "./server-rendering.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
 import {
@@ -13,6 +13,12 @@ import {
   type RenderFrame,
   type SuspenseController,
 } from "./rendering.ts";
+
+function rejectHydrationMismatch(frame: RenderFrame, error: unknown): boolean {
+  if (!(error instanceof HydrationMismatchError)) return false;
+  frame.hydration?.fail(error);
+  return true;
+}
 
 export function suspense(
   region: Region,
@@ -59,6 +65,7 @@ export function suspense(
         if (failed) return;
         failed = true;
         content?.dispose();
+        if (rejectHydrationMismatch(frame, error)) return;
         if (renderError) {
           const errorFrame = state === "error" ? claimFrame : resumeFrame;
           try {
@@ -106,7 +113,14 @@ export function suspense(
     let visible: Block | undefined;
     const boundary = frame.ssr?.beginBoundary(serverTimeout, () => {
       timedOut = true;
-      if (!failed) show(renderFallback(frame));
+      if (failed) return;
+      try {
+        show(renderFallback(frame));
+      } catch (error) {
+        failed = true;
+        if (frame.handleError) frame.handleError(error);
+        else frame.ssr?.fail(error);
+      }
     });
     const show = (next: Block): void => {
       if (visible && visible !== next) visible.dispose();
@@ -292,6 +306,7 @@ export function awaitBlock<T>(
   let currentFinish: (() => void) | undefined;
   let disposed = false;
   const showError = (error: unknown): void => {
+    if (rejectHydrationMismatch(frame, error)) return;
     if (!renderError) return reportError(frame, error);
     try {
       const claim = regionHydrationClaim(region);
@@ -361,6 +376,7 @@ export function errorBoundary(
     const fail = (error: unknown): void => {
       if (failed) return;
       failed = true;
+      if (rejectHydrationMismatch(frame, error)) return;
       current?.dispose();
       try {
         current = renderFallback(error, state === "error" ? claimFrame : resumeFrame);

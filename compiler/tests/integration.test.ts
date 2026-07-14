@@ -978,10 +978,15 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
 
 test("server renders a timed-out Suspense fallback and rejects root timeouts", async () => {
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { ErrorBoundary, Suspense } from "solix";
     const Pending = $component(async function Pending() {
       await new Promise(() => {});
       return <p>never</p>;
+    });
+    const BrokenFallback = $component(function BrokenFallback() {
+      globalThis.integrationLoads += 1;
+      if (globalThis.integrationLoads > 1) throw new Error("broken timeout fallback");
+      return <p>Initial fallback</p>;
     });
     export const Bounded = $component(function Bounded() {
       return <Suspense fallback={<p id="loading">Loading</p>} timeoutMs={0}><Pending /></Suspense>;
@@ -992,6 +997,14 @@ test("server renders a timed-out Suspense fallback and rejects root timeouts", a
     export const Unbounded = $component(async function Unbounded() {
       await new Promise(() => {});
       return <p>never</p>;
+    });
+    export const BrokenBounded = $component(function BrokenBounded() {
+      return <Suspense fallback={<BrokenFallback />} timeoutMs={0}><Pending /></Suspense>;
+    });
+    export const CaughtBrokenBounded = $component(function CaughtBrokenBounded() {
+      return <ErrorBoundary fallback={error => <p id="caught-fallback">{String(error)}</p>}>
+        <Suspense fallback={<BrokenFallback />} timeoutMs={0}><Pending /></Suspense>
+      </ErrorBoundary>;
     });
   `);
   const html = await renderToStringAsync(module.Bounded as Component, undefined, { timeoutMs: 20 });
@@ -1005,6 +1018,17 @@ test("server renders a timed-out Suspense fallback and rejects root timeouts", a
     renderToStringAsync(module.Unbounded as Component, undefined, { timeoutMs: 1 }),
     "timed out",
   );
+  globalThis.integrationLoads = 0;
+  await expectRejection(
+    renderToStringAsync(module.BrokenBounded as Component, undefined, { timeoutMs: 20 }),
+    "broken timeout fallback",
+  );
+  globalThis.integrationLoads = 0;
+  const caught = await renderToStringAsync(module.CaughtBrokenBounded as Component, undefined, {
+    timeoutMs: 20,
+  });
+  expect(caught).toContain('id="caught-fallback"');
+  expect(caught).toContain("broken timeout fallback");
 });
 
 test("hydrates server DOM in place and replays async component data", async () => {
@@ -1131,6 +1155,55 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
   signedStart.data = "solix:block:start:tstale";
   await expectRejection(hydrate(App, target), "template payload order mismatch");
   expect((target.firstChild as Comment).data).toBe("solix:block:start:tstale");
+
+  const dynamicModule = await loadCompiled(`
+    export const App = $component(function App(props: { label: string }) {
+      return <main data-label={props.label}>{props.label}</main>;
+    });
+  `);
+  const dynamicApp = dynamicModule.App as Component<{ label: string }>;
+  const dynamicHtml = await renderToStringAsync(dynamicApp, { label: "server" });
+  target.innerHTML = dynamicHtml;
+  target.querySelector("main")!.removeAttribute("data-solix-e");
+  const missingElementMarker = target.innerHTML;
+  await expectRejection(
+    hydrate(dynamicApp, target, { label: "server" }),
+    "expected element marker 0",
+  );
+  expect(target.innerHTML).toBe(missingElementMarker);
+
+  target.innerHTML = dynamicHtml;
+  target.querySelector("main")!.setAttribute("data-solix-e", "1");
+  const wrongElementMarker = target.innerHTML;
+  await expectRejection(
+    hydrate(dynamicApp, target, { label: "server" }),
+    "expected element marker 0",
+  );
+  expect(target.innerHTML).toBe(wrongElementMarker);
+});
+
+test("does not let ErrorBoundary swallow hydration mismatches", async () => {
+  const module = await loadCompiled(`
+    import { ErrorBoundary, Suspense } from "solix";
+    export const App = $component(function App(props: { label: string }) {
+      return <ErrorBoundary fallback={error => <p id="boundary-fallback">{String(error)}</p>}>
+        <Suspense fallback={<p>Loading</p>} error={error => <p id="suspense-error">{String(error)}</p>}>
+          <main data-label={props.label}>{props.label}</main>
+        </Suspense>
+      </ErrorBoundary>;
+    });
+  `);
+  const App = module.App as Component<{ label: string }>;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { label: "server" });
+  const serverMain = target.querySelector("main");
+  const serverHtml = target.innerHTML;
+
+  await expectRejection(hydrate(App, target, { label: "client" }), "hydration mismatch");
+  expect(target.innerHTML).toBe(serverHtml);
+  expect(target.querySelector("main")).toBe(serverMain);
+  expect(target.querySelector("#boundary-fallback")).toBeNull();
+  expect(target.querySelector("#suspense-error")).toBeNull();
 });
 
 test("rejects dynamic hydration prop mismatches without mutating server DOM", async () => {

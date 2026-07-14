@@ -1,5 +1,12 @@
 export const HYDRATION_VERSION = 1;
 
+export class HydrationMismatchError extends Error {
+  constructor(message: string) {
+    super(`Solix hydration mismatch: ${message}`);
+    this.name = "HydrationMismatchError";
+  }
+}
+
 export type AsyncEntry =
   | { readonly site: string; status: "pending" }
   | { readonly site: string; status: "fulfilled"; value: unknown }
@@ -96,8 +103,13 @@ export class SsrSession {
       settled = true;
       this.boundaries[index] = "timeout";
       this.boundaryPending -= 1;
-      onTimeout();
-      this.checkComplete();
+      try {
+        onTimeout();
+      } catch (error) {
+        this.fail(error);
+      } finally {
+        this.checkComplete();
+      }
     }, timeoutMs);
     return {
       index,
@@ -207,7 +219,7 @@ export class HydrationSession {
 
   claimTemplate(signature: string): void {
     const remaining = this.templates.get(signature) ?? 0;
-    if (remaining === 0) throw new Error(`Solix hydration template mismatch for ${signature}`);
+    if (remaining === 0) throw new HydrationMismatchError(`template mismatch for ${signature}`);
     if (remaining === 1) this.templates.delete(signature);
     else this.templates.set(signature, remaining - 1);
   }
@@ -217,13 +229,13 @@ export class HydrationSession {
       signatures.length !== this.payload.templates.length ||
       signatures.some((signature, index) => signature !== this.payload.templates[index])
     ) {
-      throw new Error("Solix hydration template payload order mismatch");
+      throw new HydrationMismatchError("template payload order mismatch");
     }
   }
 
   claimBoundary(): "resolved" | "timeout" | "error" {
     const state = this.payload.boundaries[this.boundaryIndex++];
-    if (!state) throw new Error("Solix hydration boundary payload is missing");
+    if (!state) throw new HydrationMismatchError("boundary payload is missing");
     return state;
   }
 
@@ -233,9 +245,9 @@ export class HydrationSession {
     requirePromiseLike = false,
   ): Promise<T> {
     const entry = this.payload.async[this.asyncIndex++];
-    if (!entry) throw new Error(`Solix hydration async payload is missing for ${site}`);
+    if (!entry) throw new HydrationMismatchError(`async payload is missing for ${site}`);
     if (entry.site !== site) {
-      throw new Error(`Solix hydration async mismatch: expected ${entry.site}, received ${site}`);
+      throw new HydrationMismatchError(`async mismatch: expected ${entry.site}, received ${site}`);
     }
     if (entry.status === "pending") {
       const result = thunk();
@@ -276,13 +288,13 @@ export class HydrationSession {
     if (this.pending > 0) await this.completion.promise;
     if (this.failed) throw this.failure;
     if (this.templates.size > 0) {
-      throw new Error("Solix hydration did not consume every template entry");
+      throw new HydrationMismatchError("did not consume every template entry");
     }
     if (this.asyncIndex !== this.payload.async.length) {
-      throw new Error("Solix hydration did not consume every async entry");
+      throw new HydrationMismatchError("did not consume every async entry");
     }
     if (this.boundaryIndex !== this.payload.boundaries.length) {
-      throw new Error("Solix hydration did not consume every boundary entry");
+      throw new HydrationMismatchError("did not consume every boundary entry");
     }
   }
 

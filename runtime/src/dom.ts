@@ -22,6 +22,7 @@ import {
   type ServerElement,
 } from "./server-rendering.ts";
 import { claimHydratedText, regionHydrationClaim } from "./hydration-rendering.ts";
+import { HydrationMismatchError } from "./ssr-session.ts";
 
 type ContextRecord = Context<object> & { readonly [CONTEXT]: symbol };
 type RenderFactory = (frame: RenderFrame) => Block;
@@ -80,7 +81,7 @@ export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[
       if (hydrating) {
         hydrating = false;
         if (textNode.data !== value) {
-          throw new Error("Solix hydration mismatch: dynamic text differs");
+          throw new HydrationMismatchError("dynamic text differs");
         }
         return;
       }
@@ -175,7 +176,7 @@ export function attribute(
       if (hydrating) {
         hydrating = false;
         if (element.getAttribute(property) !== serializedAttribute(property, value)) {
-          throw new Error(`Solix hydration mismatch: dynamic attribute ${property} differs`);
+          throw new HydrationMismatchError(`dynamic attribute ${property} differs`);
         }
         return;
       }
@@ -235,7 +236,7 @@ export function link<Path extends string, Values extends RouteValues>(
       if (hydrating) {
         hydrating = false;
         if (element.getAttribute("href") !== value) {
-          throw new Error("Solix hydration mismatch: Link href differs");
+          throw new HydrationMismatchError("Link href differs");
         }
         return;
       }
@@ -288,7 +289,7 @@ export function bindValue(
     if (hydrating) {
       hydrating = false;
       if (actual !== expected) {
-        throw new Error(`Solix hydration mismatch: bound ${property} differs`);
+        throw new HydrationMismatchError(`bound ${property} differs`);
       }
       return;
     }

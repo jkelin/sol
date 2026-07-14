@@ -1,5 +1,5 @@
 import type { Block, Region, RenderView, TemplateDefinition } from "./rendering.ts";
-import type { HydrationSession } from "./ssr-session.ts";
+import { HydrationMismatchError, type HydrationSession } from "./ssr-session.ts";
 import { runtimeEffect } from "./reactivity.ts";
 
 export interface HydrationClaim {
@@ -35,7 +35,7 @@ export function isHydratedFragment(value: unknown): value is HydratedFragment {
 }
 
 function mismatch(message: string): never {
-  throw new Error(`Solix hydration mismatch: ${message}`);
+  throw new HydrationMismatchError(message);
 }
 
 function isComment(node: Node | null, data: string): node is Comment {
@@ -164,7 +164,12 @@ function matchChildren(
       if (elementIndex !== null) {
         const parsed = Number(elementIndex);
         if (!Number.isInteger(parsed)) mismatch("invalid element marker");
+        if (actualElement.getAttribute("data-solix-e") !== elementIndex) {
+          mismatch(`expected element marker ${elementIndex}`);
+        }
         elements[parsed] = actualElement;
+      } else if (actualElement.hasAttribute("data-solix-e")) {
+        mismatch("unexpected element marker");
       }
       if (
         !(

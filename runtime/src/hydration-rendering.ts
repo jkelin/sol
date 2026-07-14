@@ -1,6 +1,7 @@
 import type { Block, BlockLifecycle, Region, RenderView, TemplateDefinition } from "./rendering.ts";
 import { HydrationMismatchError, type HydrationSession } from "./ssr-session.ts";
 import { runtimeEffect } from "./reactivity.ts";
+import { cancelTransitions, runTransitions } from "./transitions.ts";
 
 export interface HydrationClaim {
   readonly start?: Comment;
@@ -291,6 +292,7 @@ export function hydratedBlock(
   let lifecycleQueued = false;
   let mounted = true;
   let claimedPlacement = true;
+  let cleaned = false;
   const nodes = (): Node[] => {
     const result: Node[] = [];
     for (let node: Node | null = fragment.start; node; node = node.nextSibling) {
@@ -300,7 +302,20 @@ export function hydratedBlock(
     return result;
   };
   const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
     for (const registered of cleanups.toReversed()) registered();
+  };
+  const remove = (): void => {
+    for (const node of nodes()) node.parentNode?.removeChild(node);
+  };
+  const leave = (): Promise<void> | undefined => {
+    if (!fragment.session.committed) return undefined;
+    const transitions = [
+      runTransitions(nodes(), "leave"),
+      ...(lifecycle?.remoteBlocks.map((remote) => remote.leave()) ?? []),
+    ].filter((candidate): candidate is Promise<void> => candidate !== undefined);
+    return transitions.length > 0 ? Promise.all(transitions).then(() => undefined) : undefined;
   };
   const move = (parent: Node, before: Node | null = null): void => {
     if (claimedPlacement) {
@@ -338,20 +353,36 @@ export function hydratedBlock(
       if (!(parent instanceof Node)) mismatch("cannot move a hydrated block on the server");
       move(parent, before);
     },
-    enter() {},
-    leave: () => undefined,
+    enter() {
+      if (!fragment.session.committed || disposed) return;
+      void runTransitions(nodes(), "enter");
+      for (const remote of lifecycle?.remoteBlocks ?? []) remote.enter();
+    },
+    leave,
     retire() {
-      this.dispose();
-      return undefined;
+      if (disposed) return undefined;
+      cleanup();
+      const leaving = leave();
+      if (!leaving) {
+        disposed = true;
+        for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
+        remove();
+        return undefined;
+      }
+      return leaving.then(() => {
+        if (disposed) return;
+        disposed = true;
+        for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
+        remove();
+      });
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      cancelTransitions(nodes());
       cleanup();
       for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
-      if (fragment.session.committed) {
-        for (const node of nodes()) node.parentNode?.removeChild(node);
-      }
+      if (fragment.session.committed) remove();
     },
   };
 }

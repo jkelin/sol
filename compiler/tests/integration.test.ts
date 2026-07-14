@@ -857,6 +857,41 @@ test("query and mutation controllers update compiled DOM and opt into Suspense p
   expect(target.childNodes).toHaveLength(0);
 });
 
+test("hydrates a fulfilled non-suspending initial query from its server loading branch", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      const query = globalThis.integrationQuery({
+        queryKey: ["non-suspending-hydration", ${JSON.stringify(crypto.randomUUID())}],
+        query: () => {
+          globalThis.integrationLoads += 1;
+          return Promise.resolve("replayed data");
+        },
+        cacheTime: 0,
+        suspense: { initial: false },
+      });
+      return <main>
+        {query.isFetching
+          ? <p id="query-loading">Loading</p>
+          : <p id="query-ready">{query.data}</p>}
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, undefined, {
+    url: `https://example.test/${crypto.randomUUID()}`,
+  });
+
+  expect(target.querySelector("#query-loading")).not.toBeNull();
+  expect(globalThis.integrationLoads).toBe(1);
+  const dispose = await hydrate(App, target);
+
+  expect(globalThis.integrationLoads).toBe(1);
+  expect(target.querySelector("#query-loading")).toBeNull();
+  expect(target.querySelector("#query-ready")?.textContent).toBe("replayed data");
+  dispose();
+});
+
 test("disposing a suspended query finishes its parent boundary before settlement", async () => {
   const module = await loadCompiled(`
     import { $component, Suspense } from "solix";

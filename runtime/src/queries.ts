@@ -9,6 +9,7 @@ import {
   devtoolsQueryUpdated,
   type SourceMetadata,
 } from "./devtools-hook.ts";
+import { asyncValue } from "./ssr-session.ts";
 
 export type QueryKey =
   | null
@@ -83,6 +84,7 @@ interface QueryObserver {
 
 interface QueryCacheEntry {
   readonly key: string;
+  readonly cache: Map<string, QueryCacheEntry>;
   readonly state: ReturnType<typeof $signal<QueryState<unknown>>>;
   readonly observers: Set<QueryObserver>;
   inFlight?: Promise<unknown>;
@@ -110,6 +112,7 @@ export function requestSource<Config extends object>(
   if (config && typeof config === "object") requestSources.set(config, source);
   return config;
 }
+const serverQueryCaches = new WeakMap<URL, Map<string, QueryCacheEntry>>();
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!isObject(value) || Array.isArray(value)) return false;
@@ -222,7 +225,7 @@ function trackSuspense<Data>(
 ): void {
   const suspense = enabled ? frame.suspense : undefined;
   if (!suspense) return;
-  const finish = suspense.begin();
+  const finish = suspense.begin(true);
   let active = true;
   const cleanup = (): void => {
     if (!active) return;
@@ -259,11 +262,17 @@ function invokeAsync<Data, Args extends unknown[]>(
   }
 }
 
-function queryEntry(key: string): QueryCacheEntry {
-  let entry = queryCache.get(key);
+function queryEntry(key: string, frame: RenderFrame): QueryCacheEntry {
+  let cache = queryCache;
+  if (frame.url) {
+    cache = serverQueryCaches.get(frame.url) ?? new Map<string, QueryCacheEntry>();
+    serverQueryCaches.set(frame.url, cache);
+  }
+  let entry = cache.get(key);
   if (entry) return entry;
   entry = {
     key,
+    cache,
     state: $signal<QueryState<unknown>>({
       data: undefined,
       lastData: undefined,
@@ -277,7 +286,7 @@ function queryEntry(key: string): QueryCacheEntry {
     observers: new Set(),
     cycleCacheTime: 0,
   };
-  queryCache.set(key, entry);
+  cache.set(key, entry);
   return entry;
 }
 
@@ -299,13 +308,13 @@ function subscribe(entry: QueryCacheEntry, cacheTime: number, owner: Cleanup[]):
     entry.cycleCacheTime = 0;
     if (retention === Infinity) return;
     if (retention === 0) {
-      if (queryCache.get(entry.key) === entry) queryCache.delete(entry.key);
+      if (entry.cache.get(entry.key) === entry) entry.cache.delete(entry.key);
       return;
     }
     entry.evictionTimer = setTimeout(() => {
       entry.evictionTimer = undefined;
-      if (entry.observers.size === 0 && queryCache.get(entry.key) === entry) {
-        queryCache.delete(entry.key);
+      if (entry.observers.size === 0 && entry.cache.get(entry.key) === entry) {
+        entry.cache.delete(entry.key);
       }
     }, retention);
     (entry.evictionTimer as { unref?: () => void }).unref?.();
@@ -341,24 +350,43 @@ function requestQuery<Data, Args extends unknown[]>(
     state.isFailed = false;
   });
   devtoolsQueryUpdated(devtoolsId, { ...state, args });
-  const promise = invokeAsync("$query()", operation, args);
+  const site = `solix:query:${entry.key}`;
+  const invoke = () => invokeAsync("$query()", operation, args);
+  const replay =
+    frame.hydration && !frame.hydration.committed
+      ? frame.hydration.captureReplay(site, invoke, true)
+      : undefined;
+  const promise = replay?.promise ?? asyncValue(frame, site, invoke, true);
+  if (replay?.status === "fulfilled" && suspend) {
+    state.data = replay.value;
+    state.hasData = true;
+    state.updatedAt = Date.now();
+    state.isFetching = false;
+  }
+  devtoolsQueryUpdated(devtoolsId, { ...state, args });
   entry.inFlight = promise;
-  trackSuspense(promise, suspend, owner, frame);
   void promise.then(
     (data) => {
-      if (entry.inFlight !== promise) return;
-      batch(() => {
-        if (state.hasData) state.lastData = state.data;
-        state.data = data;
-        state.hasData = true;
-        state.updatedAt = Date.now();
-        state.isFetching = false;
-        state.isRefetching = false;
-        state.error = undefined;
-        state.isFailed = false;
-      });
-      entry.inFlight = undefined;
-      devtoolsQueryUpdated(devtoolsId, { ...state, args });
+      const apply = (): void => {
+        if (entry.inFlight !== promise) return;
+        batch(() => {
+          if (replay?.status !== "fulfilled" || !suspend) {
+            if (state.hasData) state.lastData = state.data;
+            state.data = data;
+            state.hasData = true;
+            state.updatedAt = Date.now();
+          }
+          state.isFetching = false;
+          state.isRefetching = false;
+          state.error = undefined;
+          state.isFailed = false;
+        });
+        entry.inFlight = undefined;
+        devtoolsQueryUpdated(devtoolsId, { ...state, args });
+      };
+      if (replay?.status === "fulfilled" && !suspend && frame.hydration) {
+        frame.hydration.afterCommit(apply);
+      } else apply();
     },
     (error) => {
       if (entry.inFlight !== promise) return;
@@ -372,6 +400,7 @@ function requestQuery<Data, Args extends unknown[]>(
       devtoolsQueryUpdated(devtoolsId, { ...state, args });
     },
   );
+  trackSuspense(promise, suspend, owner, frame);
   return promise;
 }
 
@@ -401,7 +430,7 @@ export function $query<Data, Args extends unknown[]>(
   const { owner, frame } = activeComponent("$query()");
   const enabled = config.enabled ?? true;
   const key = serializeQueryKey(config.queryKey);
-  const entry = queryEntry(key);
+  const entry = queryEntry(key, frame);
   subscribe(entry, cacheTime, owner);
   let disposed = false;
   let currentArgs = [...initialArgs] as Args;
@@ -444,14 +473,18 @@ export function $query<Data, Args extends unknown[]>(
     },
   };
 
-  if (enabled && (!state.hasData || Date.now() - state.updatedAt >= staleTime)) {
+  if (
+    enabled &&
+    !(frame.ssrRerender && state.hasData) &&
+    (!state.hasData || Date.now() - state.updatedAt >= staleTime)
+  ) {
     const automatic = execute(
       state.hasData ? (config.suspense?.refetch ?? false) : (config.suspense?.initial ?? true),
     );
     void automatic.catch(() => {});
   }
 
-  if (enabled && pollingInterval !== undefined) {
+  if (enabled && pollingInterval !== undefined && typeof document !== "undefined") {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = (): void => {
       if (disposed || document.visibilityState === "hidden") return;

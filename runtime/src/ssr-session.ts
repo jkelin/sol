@@ -282,6 +282,7 @@ export class HydrationSession {
   private boundaryIndex = 0;
   private pending = 0;
   private completion = deferred();
+  private readonly commitCallbacks: Array<() => void> = [];
   private failed = false;
   private failure: unknown;
 
@@ -334,6 +335,14 @@ export class HydrationSession {
     thunk: () => T | PromiseLike<T>,
     requirePromiseLike = false,
   ): Promise<T> {
+    return this.captureReplay(site, thunk, requirePromiseLike).promise;
+  }
+
+  captureReplay<T>(
+    site: string,
+    thunk: () => T | PromiseLike<T>,
+    requirePromiseLike = false,
+  ): { readonly promise: Promise<T>; readonly status: AsyncEntry["status"]; readonly value?: T } {
     const entry = this.payload.async[this.asyncIndex++];
     if (!entry) throw new HydrationMismatchError(`async payload is missing for ${site}`);
     if (entry.site !== site) {
@@ -344,7 +353,7 @@ export class HydrationSession {
       if (requirePromiseLike && !isPromiseLike(result)) {
         throw new TypeError("Await $promise must be promise-like");
       }
-      return Promise.resolve(result);
+      return { promise: Promise.resolve(result), status: "pending" };
     }
     const replay =
       entry.status === "fulfilled"
@@ -355,7 +364,11 @@ export class HydrationSession {
       () => this.finishReplay(),
       () => this.finishReplay(),
     );
-    return replay;
+    return {
+      promise: replay,
+      status: entry.status,
+      ...(entry.status === "fulfilled" ? { value: entry.value as T } : {}),
+    };
   }
 
   track<T>(promise: PromiseLike<T>): Promise<T> {
@@ -378,7 +391,9 @@ export class HydrationSession {
     if (this.pending > 0) await this.completion.promise;
     if (this.failed) throw this.failure;
     if (this.templates.size > 0) {
-      throw new HydrationMismatchError("did not consume every template entry");
+      throw new HydrationMismatchError(
+        `did not consume every template entry: ${[...this.templates.keys()].join(", ")}`,
+      );
     }
     if (this.asyncIndex !== this.payload.async.length) {
       throw new HydrationMismatchError("did not consume every async entry");
@@ -390,6 +405,12 @@ export class HydrationSession {
 
   commit(): void {
     this.committed = true;
+    for (const callback of this.commitCallbacks.splice(0)) callback();
+  }
+
+  afterCommit(callback: () => void): void {
+    if (this.committed) callback();
+    else this.commitCallbacks.push(callback);
   }
 
   private finishReplay(): void {

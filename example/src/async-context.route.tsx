@@ -1,4 +1,14 @@
-import { $component, $context, $route, Await, ErrorBoundary, Suspense } from "solix";
+import {
+  $component,
+  $context,
+  $route,
+  Await,
+  createRef,
+  ErrorBoundary,
+  GlobalPortal,
+  Portal,
+  Suspense,
+} from "solix";
 
 interface ShowcaseContextData {
   accent: string;
@@ -50,8 +60,34 @@ const AsyncNote = $component(async function AsyncNote() {
   );
 });
 
+function loadTimedNote(): Promise<string> {
+  return new Promise<string>((resolve) => {
+    if (typeof document === "undefined") return;
+    const runtime = globalThis as typeof globalThis & {
+      solkitResolveTimedNote?: (value: string) => void;
+    };
+    runtime.solkitResolveTimedNote = resolve;
+  });
+}
+
+const TimedNote = $component(async function TimedNote() {
+  const value = await loadTimedNote();
+  return <p data-testid="timed-ready">{value}</p>;
+});
+
+function expectedFailure(): never {
+  throw new Error("Expected boundary failure");
+}
+
+const BrokenNote = $component(function BrokenNote() {
+  expectedFailure();
+  return <p>Unreachable</p>;
+});
+
 const AsyncContextPage = $component(function AsyncContextPage() {
   const shared = { accent: "Provider-backed", visits: 0 };
+  const portalTarget = createRef<HTMLDivElement>();
+  let portalClicks = 0;
   const awaitedNote = delayed(
     { title: "Await render function", body: "The resolved value is passed into JSX children." },
     650,
@@ -128,6 +164,26 @@ const AsyncContextPage = $component(function AsyncContextPage() {
           </Suspense>
         </ErrorBoundary>
       </showcaseContext.Provider>
+
+      <div class="mt-6" data-testid="portal-target" ref={portalTarget} />
+      <Portal target={portalTarget.current!}>
+        <button data-testid="portal-content" onClick={() => (portalClicks += 1)}>
+          Portal clicks {portalClicks}
+        </button>
+      </Portal>
+      <GlobalPortal>
+        <p data-testid="global-portal-content">Global portal mounted</p>
+      </GlobalPortal>
+
+      <Suspense
+        fallback={<p data-testid="timed-fallback">Timed work is still pending.</p>}
+        timeoutMs={0}
+      >
+        <TimedNote />
+      </Suspense>
+      <ErrorBoundary fallback={(error) => <p data-testid="expected-error">{String(error)}</p>}>
+        <BrokenNote />
+      </ErrorBoundary>
     </section>
   );
 });

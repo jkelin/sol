@@ -4,15 +4,19 @@
 import routes from "virtual:solix/routes";
 import type { Component } from "./components.ts";
 import { devtoolsRouterUpdated } from "./devtools-hook.ts";
-import { $signal, runtimeEffect } from "./reactivity.ts";
+import { regionHydrationClaim } from "./hydration-rendering.ts";
+import { $signal, isPromiseLike, runtimeEffect, runtimeState } from "./reactivity.ts";
 import {
   block,
   component,
+  configureServerRenderPreparation,
   configureRouteRuntime,
   instantiate,
   renderComponent,
   template,
   type Block,
+  type Region,
+  type RenderFrame,
 } from "./rendering.ts";
 import {
   resolveRoute,
@@ -22,6 +26,7 @@ import {
   type RouteDefinition,
   type RouteValues,
 } from "./routes.ts";
+import { isServerRegion } from "./server-rendering.ts";
 
 export interface Router {
   readonly pathname: string;
@@ -51,8 +56,8 @@ interface RouteMatch {
   params: RawRouteParams;
 }
 
-function readLocation(): RouterState {
-  const location = typeof window === "undefined" ? null : window.location;
+function readLocation(frame?: RenderFrame): RouterState {
+  const location = frame?.url ?? (typeof window === "undefined" ? null : window.location);
   const search = location?.search ?? "";
   return {
     pathname: location?.pathname ?? "/",
@@ -68,6 +73,7 @@ function readLocation(): RouterState {
 }
 
 const state = $signal<RouterState>(readLocation());
+const serverStates = new WeakMap<URL, RouterState>();
 
 function setRouterState(next: RouterState): void {
   state.value = next;
@@ -152,6 +158,35 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
   return null;
 }
 
+function resolveLocation(location: RouterState): RouterState | PromiseLike<RouterState> {
+  const match = matchRoute(location.pathname, location.searchParams);
+  if (!match) return unmatchedState(location);
+  const result = resolveRoute(match.definition, match.params);
+  if (result && typeof result === "object" && "then" in result) {
+    return Promise.resolve(result).then((resolution) =>
+      resolution.matched
+        ? resolvedState(location, match, resolution.values)
+        : unmatchedState(location),
+    );
+  }
+  return result.matched ? resolvedState(location, match, result.values) : unmatchedState(location);
+}
+
+function currentState(): RouterState {
+  const url = runtimeState.activeFrame?.url;
+  if (!url) return state.value;
+  const existing = serverStates.get(url);
+  if (existing) return existing;
+  const location = readLocation(runtimeState.activeFrame);
+  const resolved = resolveLocation(location);
+  const initial =
+    resolved && typeof resolved === "object" && "then" in resolved
+      ? { ...unmatchedState(location), status: "pending" as const }
+      : resolved;
+  serverStates.set(url, initial);
+  return initial;
+}
+
 function unmatchedState(location: RouterState): RouterState {
   return {
     ...location,
@@ -176,7 +211,7 @@ function resolvedState(location: RouterState, match: RouteMatch, values: RouteVa
 
 let resolutionId = 0;
 
-function synchronizeLocation(): void {
+function synchronizeLocation(): void | Promise<void> {
   const currentResolution = ++resolutionId;
   const location = readLocation();
   const match = matchRoute(location.pathname, location.searchParams);
@@ -201,7 +236,7 @@ function synchronizeLocation(): void {
   }
 
   setRouterState({ ...unmatchedState(location), status: "pending" });
-  void Promise.resolve(result).then(
+  return Promise.resolve(result).then(
     (resolution) => {
       if (currentResolution !== resolutionId) return;
       setRouterState(
@@ -217,7 +252,8 @@ function synchronizeLocation(): void {
   );
 }
 
-synchronizeLocation();
+/** Resolves once the browser's initial route parameters are ready for hydration. */
+export const routerReady: Promise<void> = Promise.resolve(synchronizeLocation());
 
 function navigate(path: string, options: NavigateOptions = {}): void {
   if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) {
@@ -239,53 +275,68 @@ function navigate(path: string, options: NavigateOptions = {}): void {
     "",
     `${destination.pathname}${destination.search}${destination.hash}`,
   );
-  synchronizeLocation();
+  void synchronizeLocation();
 }
 
 export const router: Router = Object.freeze({
   get pathname() {
-    return state.value.pathname;
+    return currentState().pathname;
   },
   get search() {
-    return state.value.search;
+    return currentState().search;
   },
   get hash() {
-    return state.value.hash;
+    return currentState().hash;
   },
   get searchParams() {
-    return state.value.searchParams;
+    return currentState().searchParams;
   },
   get params() {
-    return state.value.values ?? Object.freeze({});
+    return currentState().values ?? Object.freeze({});
   },
   get query() {
-    return state.value.values ?? Object.freeze({});
+    return currentState().values ?? Object.freeze({});
   },
   get route() {
-    return state.value.route;
+    return currentState().route;
   },
   navigate,
 });
 
 configureRouteRuntime({
   getParams(definition) {
-    const current = state.value;
+    const current = currentState();
     if (current.pattern !== definition.compiled.pattern || !current.values) {
       throw new Error("Cannot read values from an inactive route");
     }
     return current.values;
   },
   getPathname() {
-    return state.value.pathname;
+    return currentState().pathname;
   },
   isActive(definition) {
-    return state.value.pattern === definition.compiled.pattern;
+    return currentState().pattern === definition.compiled.pattern;
   },
   navigate,
 });
 
+configureServerRenderPreparation((frame) => {
+  const url = frame.url;
+  if (!url) return undefined;
+  const resolution = resolveLocation(readLocation(frame));
+  if (isPromiseLike(resolution)) {
+    return Promise.resolve(resolution).then((resolved) => {
+      serverStates.set(url, resolved);
+    });
+  }
+  serverStates.set(url, resolution);
+  return undefined;
+});
+
 function listenForNavigation(): () => void {
-  const handlePopState = (): void => synchronizeLocation();
+  const handlePopState = (): void => {
+    void synchronizeLocation();
+  };
   const handleClick = (event: MouseEvent): void => {
     if (
       event.defaultPrevented ||
@@ -317,10 +368,19 @@ function listenForNavigation(): () => void {
   };
 }
 
-const routeTemplate = template("<!--solix:s:0--><!--solix:e:0-->");
+const routeTemplate = template("<!--solix:s:0--><!--solix:e:0-->", "tsolixroute", {
+  elements: [],
+  regions: [0],
+  operations: [],
+});
 
-export const Route = component(function Route(props: Readonly<{ pending?: Component }>) {
-  const view = instantiate(routeTemplate);
+function renderRouteComponent(candidate: Component, frame: RenderFrame, region: Region): Block {
+  const claim = regionHydrationClaim(region);
+  return renderComponent(candidate, undefined, claim ? { ...frame, claim } : frame);
+}
+
+export const Route = component((props: Readonly<{ pending?: Component }>, frame) => {
+  const view = instantiate(routeTemplate, frame);
   const cleanups: Array<() => void> = [];
   let active: Block | undefined;
   let outgoing: Block | undefined;
@@ -328,6 +388,25 @@ export const Route = component(function Route(props: Readonly<{ pending?: Compon
   let initialized = false;
   let activeLocation: string | undefined;
   let activeStatus: RouterState["status"] | undefined;
+
+  if (frame.mode === "server") {
+    const location = readLocation(frame);
+    const resolution = (frame.url && serverStates.get(frame.url)) ?? resolveLocation(location);
+    const render = (resolved: RouterState): Block => {
+      if (frame.url) serverStates.set(frame.url, resolved);
+      const match = resolved.pattern ? matchRoute(resolved.pathname, resolved.searchParams) : null;
+      const region = view.regions[0]!;
+      const renderedRoute = match
+        ? renderRouteComponent(match.definition.component, frame, region)
+        : undefined;
+      if (!isServerRegion(region)) throw new Error("Expected a server route region");
+      renderedRoute?.mount(region);
+      return block(view.fragment, renderedRoute ? [() => renderedRoute.dispose()] : []);
+    };
+    return resolution && typeof resolution === "object" && "then" in resolution
+      ? Promise.resolve(resolution).then(render)
+      : render(resolution);
+  }
 
   cleanups.push(listenForNavigation());
   cleanups.push(
@@ -360,12 +439,14 @@ export const Route = component(function Route(props: Readonly<{ pending?: Compon
       active =
         location.status === "pending"
           ? props.pending
-            ? renderComponent(props.pending)
+            ? renderRouteComponent(props.pending, frame, view.regions[0]!)
             : undefined
           : match
-            ? renderComponent(match.definition.component)
+            ? renderRouteComponent(match.definition.component, frame, view.regions[0]!)
             : undefined;
-      active?.mount(view.regions[0]!.end.parentNode!, view.regions[0]!.end);
+      const region = view.regions[0]!;
+      if (isServerRegion(region)) throw new Error("Expected a browser route region");
+      active?.mount(region.end.parentNode!, region.end);
       if (initialized) active?.enter();
       initialized = true;
     }),

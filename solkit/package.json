@@ -1,0 +1,28 @@
+{
+  "name": "solkit",
+  "version": "0.0.0",
+  "bin": {
+    "solkit": "./src/cli.ts"
+  },
+  "type": "module",
+  "module": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./vite": "./src/vite.ts",
+    "./adapters/bun": "./src/adapters/bun.ts",
+    "./adapters/node": "./src/adapters/node.ts"
+  },
+  "scripts": {
+    "test": "bun test tests",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "solix": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^8.0.10"
+  },
+  "peerDependencies": {
+    "vite": "^8.0.10"
+  }
+}

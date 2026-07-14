@@ -115,6 +115,7 @@ export function suspense(
     let timedOut = false;
     let content: Block | undefined;
     let visible: Block | undefined;
+    let rerenderOnResolve = false;
     const boundary = frame.ssr?.beginBoundary(
       serverTimeout,
       (renderTimeoutFallback) => {
@@ -136,7 +137,8 @@ export function suspense(
       mountServerBlock(next, region, true);
     };
     const controller: SuspenseController = {
-      begin() {
+      begin(rerenderOnServer = false) {
+        rerenderOnResolve ||= rerenderOnServer;
         pending += 1;
         let finished = false;
         return () => {
@@ -144,6 +146,10 @@ export function suspense(
           finished = true;
           pending -= 1;
           if (pending === 0 && !failed && !timedOut && content) {
+            if (rerenderOnResolve) {
+              content.dispose();
+              content = render({ ...contentFrame, ssrRerender: true });
+            }
             show(content);
             boundary?.finish();
           }

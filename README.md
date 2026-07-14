@@ -6,6 +6,7 @@ An experimental JSX framework that compiles components into static HTML template
 
 ```bash
 bun add solix
+bun add solkit
 bun add --dev @solix/compiler vite
 ```
 
@@ -20,7 +21,10 @@ bun run dev
 
 The Tailwind-powered notebook example demonstrates compiler-managed state, keyed lists, bindings, cached queries, mutations, compile-time routes, path parameters, browser history, and shared blog entries.
 
-`bun run build` (or `bun run build:example`) creates an unminified production example in `example/dist/`. Use `bun run build:example:inspect` to create a separate readable build in `example/out/inspect/`.
+`bun run build` (or `bun run build:example`) creates an unminified full-stack production example in
+`example/dist/`: browser assets live in `client/`, and the bundled SSR handler plus Bun launcher live
+in `server/`. Use `bun run build:example:inspect` for a client-only readable build in
+`example/out/inspect/`.
 
 ## Run the website
 
@@ -277,6 +281,12 @@ metadata; router diagnostics include every compiled route definition. Use
 `subscribe(listener)` for integrations. These interfaces validate their inputs and are intended
 only for trusted development environments.
 
+For full-document SSR, add the `solkit` Vite plugin after the compiler, export the application root
+from an entry module, and select `bunAdapter()` or `nodeAdapter()`. Development HTML requests render
+through Vite middleware with imported stylesheets available for the initial render; `solkit build`
+creates client and server bundles plus the selected launcher.
+See `solkit/README.md` for the document outlets and complete configuration.
+
 ## Context and async rendering
 
 Create a shared object context with `$context<T>()`. A provider accepts the object through its
@@ -338,6 +348,7 @@ const html = await renderToStringAsync(
   { initialCount: 2 },
   {
     timeoutMs: 5_000,
+    url: "https://example.com/blog/42",
     onHead: (value) => {
       head = value;
     },
@@ -348,7 +359,9 @@ const html = await renderToStringAsync(
 const dispose = await hydrate(App, document.querySelector("#app")!, { initialCount: 2 });
 ```
 
-The server and browser must use the same compiled component and equivalent props. Hydration claims
+The server and browser must use the same compiled component and equivalent props. An absolute
+HTTP(S) `url` resolves the active route before the root renders, so route handles and `router` expose
+the same pathname and parsed parameters in server shell, Head, and route content. Hydration claims
 the existing elements, attaches effects and events, removes the embedded data payload, and rejects
 without replacing the DOM when element or region markers, compiler signatures, dynamic values, or
 the async call sequence differ. Hydration mismatches bypass application async and error boundaries.
@@ -362,9 +375,10 @@ Captured async data supports primitives, sparse and cyclic graphs, shared refere
 special numbers, Date, RegExp, URL, Map, Set, Error, and plain or null-prototype objects. Functions,
 symbols, DOM nodes, accessors, typed buffers, and custom-prototype instances are rejected. Awaited
 expressions in compiled components, awaited local helper chains, and lazy `<Await $promise={...}>`
-expressions are captured at module-qualified sites. Promise initializers that are later awaited are
-made lazy for replay; unrelated unawaited work and eager promises never consumed by a compiled await
-are not replayable.
+expressions are captured at module-qualified sites. Initial `$query()` promises participate in the
+same request-isolated capture and replay, preventing a duplicate browser fetch after server data has
+rendered. Promise initializers that are later awaited are made lazy for replay; unrelated unawaited
+work and eager promises never consumed by a compiled await are not replayable.
 
 ## Routing
 
@@ -439,6 +453,10 @@ const App = $component(function App() {
 ```
 
 The optional `pending` component renders while an asynchronous schema resolves. Without it, the outlet remains empty during validation. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` (with `query` as an alias), the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are still handled through browser history.
+
+`routerReady` resolves after the browser's initial asynchronous route schema has settled. Solkit
+awaits it automatically before hydration; custom hydration entries should do the same before calling
+`hydrate()` when their routes use asynchronous schemas.
 
 The example uses Tailwind CSS v4 through `@tailwindcss/vite`; its CSS entry imports `tailwindcss` and defines the paper-ledger design tokens with `@theme`.
 

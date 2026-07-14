@@ -26,6 +26,8 @@
     "runtime/**/*.tsx",
     "compiler/**/*.ts",
     "compiler/**/*.tsx",
+    "solkit/**/*.ts",
+    "solkit/**/*.tsx",
     "example/**/*.ts",
     "example/**/*.tsx",
     "web/**/*.ts",

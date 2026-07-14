@@ -24,11 +24,15 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
 - `reactivity.ts` implements signals, computed values, effects, batching, proxies, and render ownership state.
 - `forms.ts` implements form controllers, validation normalization, and submission state.
-- `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, Suspense participation, and compiler-authored diagnostic source attachment.
+- `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
+  polling, eviction, Suspense participation, request-isolated server caches, hydration replay, and
+  compiler-authored diagnostic source attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
-- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, head-scoped executable script instantiation, and error propagation.
+- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, server
+  render preparation, render adapters, head-scoped executable script instantiation, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
-- `hydration-rendering.ts` validates and claims server block, element, and region markers.
+- `hydration-rendering.ts` validates and claims server block, element, and region markers, then
+  returns claimed blocks to the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
@@ -39,7 +43,8 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
-- `router.ts` connects compiled route definitions to browser history and renders the active route.
+- `router.ts` connects compiled route definitions to browser history, request URLs, SSR route rendering,
+  initial asynchronous route readiness, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Solix JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.
@@ -47,7 +52,7 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 
 ## How it works
 
-The compiler turns JSX into signed static templates, element and region metadata, dynamic-operation identities, and calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Solix markers, and creates owned blocks. Block mount phases attach refs before resolving portals, and remote portal blocks delegate enter, leave, and disposal to their source owner. Server rendering uses template metadata directly; tag-aware binding serialization emits browser-correct initial state for inputs, textareas, and selects, refs are validated without attaching, and browser-owned portal children are omitted. Hydration attaches refs to claimed elements before mounting portal children as fresh browser DOM. `reactivity.ts` tracks the effects that read signals, so writes schedule only dependent DOM operations. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, queries, and route changes dispose the correct work. `queries.ts` keeps shared cache entries behind serialized JSON keys while each mounted observer owns its polling and Suspense lifecycle. `router.ts` supplies route state through an internal adapter while keeping route handles independent of browser globals.
+The compiler turns JSX into signed static templates, element and region metadata, dynamic-operation identities, and calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Solix markers, and creates owned blocks. Block mount phases attach refs before resolving portals, and remote portal blocks delegate enter, leave, and disposal to their source owner. Server rendering uses template metadata directly; tag-aware binding serialization emits browser-correct initial state for inputs, textareas, and selects, refs are validated without attaching, and browser-owned portal children are omitted. Hydration attaches refs to claimed elements before mounting portal children as fresh browser DOM; after the claim commits, those blocks use the same enter/leave transitions and retirement path as freshly mounted blocks. `reactivity.ts` tracks the effects that read signals, so writes schedule only dependent DOM operations. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, queries, and route changes dispose the correct work. `queries.ts` keeps shared cache entries behind serialized JSON keys while each mounted observer owns its polling and Suspense lifecycle. `router.ts` supplies route state through an internal adapter while keeping route handles independent of browser globals.
 
 The `solix/devtools` entry installs `globalThis.__solix` and a Shadow DOM panel. Compiler-emitted
 component source metadata is joined into an ownership tree with runtime-owned nodes, async component
@@ -62,12 +67,18 @@ Public interfaces validate inputs before mutating runtime state. Keep that valid
 
 ## SSR and hydration
 
-`renderToStringAsync(component, props?, { timeoutMs?, onHead? })` returns component markup plus one escaped
+`renderToStringAsync(component, props?, { timeoutMs?, onHead?, url? })` returns component markup plus one escaped
 `application/json` hydration payload. The default timeout is 5,000ms. Each `Suspense` may provide a
 server-only `timeoutMs` override; a timeout renders its fallback, while root async timeouts reject.
 When a render contains `Head`, `onHead` is required and receives the separately serialized managed
 head markup after async work settles. Insert it into the response document's `<head>` before the body
 markup. Its private ownership markers let hydration claim the head and body trees together.
+An absolute HTTP(S) `url` resolves the request route before root rendering, making compiled routes
+and route handles request-aware without a browser global, including in shell and Head content.
+Query caches are isolated by that request URL, and initial query promises use the same async
+payload as compiled awaits so the browser claims resolved server data without refetching. An initial
+query with Suspense disabled claims its server loading branch first, then applies replayed data after
+hydration commits.
 
 `hydrate(component, target, props?)` returns a promise for an idempotent disposer. It requires the
 exact server output in `target`, replays settled compiler-owned awaits without invoking their thunks,
@@ -82,6 +93,10 @@ SSR associates replay entries with their nearest Suspense boundary; once that bo
 its pending entries remain uncaptured even if the server-side promises settle before another boundary
 allows the final HTML response to complete. A timed-out owner also retires its pending descendant
 boundary timers, marking those descendants uncaptured without rendering hidden fallbacks.
+
+`routerReady` resolves after the browser's initial asynchronous route schema settles. Solkit awaits
+it automatically; custom hydration entries should await it before `hydrate()` when asynchronous
+route schemas can affect shell, Head, or route output.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or

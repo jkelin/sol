@@ -1,6 +1,6 @@
 # Solix example
 
-This private workspace package is a notebook-style Solix application. It demonstrates reactive component state and document-head content, forms with Valibot validation, bindings, keyed lists, transitions, contexts, Suspense and Await, cached queries, polling, mutations, compile-time routes, typed parameters, and browser navigation. The `/queries` route shows an initial Suspense fetch, two observers sharing a JSON-keyed cache, argument-changing refetches, and a mutation followed by an explicit refresh.
+This private workspace package is a notebook-style Solix application. It demonstrates reactive component state and document-head content, forms with Valibot validation, bindings, keyed lists, transitions, contexts, portals, resolved and timed-out Suspense, Await, error boundaries, cached queries, polling, mutations, compile-time routes, typed parameters, and browser navigation. The `/queries` route shows an initial Suspense fetch, two observers sharing a JSON-keyed cache, argument-changing refetches, and a mutation followed by an explicit refresh.
 
 From the repository root:
 
@@ -16,4 +16,10 @@ query/mutation locations, routing, and form validation, or access the
 same data through `globalThis.__solix` and supported browsers' WebMCP tooling. The production build
 does not include devtools.
 
-The production build is written to `example/dist`. The build-output test checks that readable compiler output contains Solix templates, routes, reactivity, and transitions. Playwright exercises the complete application through the Vite preview server and uses a small fixture under `tests/fixtures` to server-render and hydrate an async component tree in a real browser.
+Development runs through Solkit's Vite SSR middleware. The production build writes browser assets to
+`example/dist/client` and a bundled SSR handler plus Bun launcher to `example/dist/server`. The
+build-output test checks that readable compiler output contains Solix templates, routes, reactivity,
+and transitions. Playwright exercises server-rendered routes, managed head content, async/query data
+replay, browser hydration, and navigation against both the Bun and Node.js deployment adapters, as
+well as Vite development middleware. A focused fixture under `tests/fixtures` also covers timed-out
+Suspense continuation in a real browser.

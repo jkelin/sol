@@ -1,23 +1,48 @@
 import { expect, test } from "@playwright/test";
-import { preview, type PreviewServer } from "vite";
+import { spawn, type ChildProcess } from "node:child_process";
 
-let previewServer: PreviewServer;
+let server: ChildProcess | undefined;
+let serverDocument = "";
+
+async function waitForHydration(page: import("@playwright/test").Page): Promise<void> {
+  await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
+}
 
 test.beforeAll(async () => {
-  previewServer = await preview({
-    configFile: "vite.config.ts",
-    preview: { host: "127.0.0.1", port: 4173, strictPort: true },
+  server = spawn("bun", ["dist/server/index.mjs"], {
+    env: { ...process.env, HOST: "127.0.0.1", PORT: "4173" },
+    stdio: "inherit",
   });
+  await expect
+    .poll(async () =>
+      fetch("http://127.0.0.1:4173/").then(
+        (response) => response.status,
+        () => 0,
+      ),
+    )
+    .toBe(200);
+  serverDocument = await fetch("http://127.0.0.1:4173/").then((response) => response.text());
 });
 
 test.afterAll(async () => {
-  await new Promise<void>((resolve, reject) => {
-    previewServer.httpServer.close((error) => (error ? reject(error) : resolve()));
-  });
+  if (!server) return;
+  if (server.exitCode === null) server.kill("SIGKILL");
+  if (server.exitCode === null) {
+    await new Promise<void>((resolve) => server?.once("exit", () => resolve()));
+  }
 });
 
 test("runs the to-do workflow with validation and fine-grained updates", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/");
+  await waitForHydration(page);
+
+  expect(serverDocument).toContain("Things worth finishing");
+  expect(serverDocument).toContain("data-solix-hydration");
+  expect(serverDocument).toContain('<title data-solix-e="0">Margin — 2 tasks left</title>');
+  expect(serverDocument).toContain("2 unfinished notes in the Solix compiler example.");
+  expect(pageErrors).toEqual([]);
 
   await expect(page).toHaveTitle("Margin — 2 tasks left");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
@@ -161,6 +186,7 @@ test("runs the to-do workflow with validation and fine-grained updates", async (
 test("stays usable and overflow-free at desktop and mobile sizes", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
+  await waitForHydration(page);
   await page.getByLabel("New note", { exact: true }).focus();
   await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
   await expect
@@ -212,11 +238,19 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/");
+  await waitForHydration(page);
   expect(pageErrors).toEqual([]);
   await expect(page.getByTestId("global-header")).toBeVisible();
+  const header = await page.getByTestId("global-header").elementHandle();
 
   await page.getByRole("link", { name: "New entry", exact: true }).click();
   await expect(page).toHaveURL(/\/blog\/new$/);
+  expect(
+    await page.evaluate(
+      (before) => before === document.querySelector('[data-testid="global-header"]'),
+      header,
+    ),
+  ).toBe(true);
   await expect(page.getByRole("heading", { name: "Put the thought on paper." })).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => Number(sessionStorage.getItem("transition-animation-count"))))
@@ -238,6 +272,7 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   });
   await expect(page).toHaveURL(/\/$/);
   await page.waitForTimeout(50);
+  expect(pageErrors).toEqual([]);
   await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
   await page.getByRole("link", { name: "New entry", exact: true }).click();
   await expect(page).toHaveURL(/\/blog\/new$/);
@@ -275,7 +310,9 @@ test("navigates compiled blog routes and creates a shared entry", async ({ page 
   await expect(page.getByRole("heading", { name: "Things worth finishing" })).toBeVisible();
 
   await page.goto("/blog/1?from=first&from=last");
+  await waitForHydration(page);
   await expect(page.getByTestId("route-query-source")).toHaveText("Opened from last");
+  expect(pageErrors).toEqual([]);
   await page.goto("/blog/not-a-number");
   await expect(page.getByTestId("global-header")).toBeVisible();
   await expect(page.getByRole("heading", { name: "This entry is missing." })).toHaveCount(0);
@@ -286,16 +323,34 @@ test("renders context-backed async components and Await behind Suspense", async 
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto("/async-context");
+  await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "Context and async rendering" })).toBeVisible();
   await expect(page.getByTestId("optional-context")).toContainText("undefined");
   await expect(page.getByTestId("context-consumer")).toContainText("visits 0");
-  await expect(page.getByTestId("async-loading")).toBeVisible();
-  await expect(page.getByTestId("async-results")).toBeHidden();
+  await expect(page.getByTestId("async-loading")).toBeHidden();
+  await expect(page.getByTestId("async-results")).toBeVisible();
 
   await expect(page.getByTestId("async-loading")).toBeHidden();
   await expect(page.getByTestId("async-component")).toContainText("Async component");
   await expect(page.getByTestId("async-component")).toContainText("Provider-backed");
   await expect(page.getByTestId("await-result")).toContainText("Await render function");
+  await page.waitForFunction(
+    () =>
+      typeof (globalThis as typeof globalThis & { solkitResolveTimedNote?: unknown })
+        .solkitResolveTimedNote === "function",
+  );
+  await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      solkitResolveTimedNote(value: string): void;
+    };
+    runtime.solkitResolveTimedNote("Timed work resumed in the browser.");
+  });
+  await expect(page.getByTestId("timed-fallback")).toBeHidden();
+  await expect(page.getByTestId("timed-ready")).toBeVisible();
+  await expect(page.getByTestId("expected-error")).toContainText("Expected boundary failure");
+  await expect(page.getByTestId("global-portal-content")).toBeVisible();
+  await page.getByTestId("portal-content").click();
+  await expect(page.getByTestId("portal-content")).toHaveText("Portal clicks1");
 
   await page.getByTestId("context-consumer").click();
   await expect(page.getByTestId("context-consumer")).toContainText("visits 1");
@@ -309,7 +364,10 @@ test("shares query data, refetches with new arguments, and refreshes after a mut
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   await page.goto("/queries");
-  await expect(page.getByTestId("query-loading")).toBeVisible();
+  await page.waitForTimeout(100);
+  expect(pageErrors).toEqual([]);
+  await waitForHydration(page);
+  await expect(page.getByTestId("query-loading")).toBeHidden();
   await expect(page.getByTestId("query-panel")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
   await expect(page.getByTestId("query-notes").getByRole("listitem")).toHaveCount(2);

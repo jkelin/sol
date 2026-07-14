@@ -52,6 +52,7 @@
       "version": "0.0.0",
       "dependencies": {
         "solix": "workspace:*",
+        "solkit": "workspace:*",
         "valibot": "^1.4.2",
       },
       "devDependencies": {
@@ -70,6 +71,22 @@
       },
       "peerDependencies": {
         "typescript": "^5",
+      },
+    },
+    "solkit": {
+      "name": "solkit",
+      "version": "0.0.0",
+      "bin": {
+        "solkit": "./src/cli.ts",
+      },
+      "dependencies": {
+        "solix": "workspace:*",
+      },
+      "devDependencies": {
+        "vite": "^8.0.10",
+      },
+      "peerDependencies": {
+        "vite": "^8.0.10",
       },
     },
     "web": {
@@ -591,6 +608,8 @@
     "slice-ansi": ["slice-ansi@8.0.0", "", { "dependencies": { "ansi-styles": "^6.2.3", "is-fullwidth-code-point": "^5.1.0" } }, "sha512-stxByr12oeeOyY2BlviTNQlYV5xOj47GirPr4yA1hE9JCtxfQN0+tVbkxwCtYDQWhEKWFHsEK48ORg5jrouCAg=="],
 
     "solix": ["solix@workspace:runtime"],
+
+    "solkit": ["solkit@workspace:solkit"],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 

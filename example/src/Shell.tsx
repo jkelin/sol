@@ -1,4 +1,5 @@
 import { $component, Route } from "solix";
+import "./Shell.css";
 import { blogDetailRoute } from "./blog-detail.route.tsx";
 import { asyncContextRoute } from "./async-context.route.tsx";
 import { todoRoute } from "./todo.route.tsx";
@@ -6,7 +7,10 @@ import { queriesRoute } from "./queries.route.tsx";
 
 const Header = $component(function Header() {
   return (
-    <header class="border-b border-rule-strong bg-parchment/95" data-testid="global-header">
+    <header
+      class="solkit-child-style-probe border-b border-rule-strong bg-parchment/95"
+      data-testid="global-header"
+    >
       <div class="mx-auto flex w-full max-w-6xl items-end justify-between gap-6 px-6 py-5 max-sm:items-start max-sm:flex-col sm:px-8">
         <a class="group" href="/" aria-label="Margin home">
           <span class="block font-mono text-[0.625rem] tracking-[0.18em] text-correction uppercase">

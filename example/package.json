@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --minify=false && bun test tests/build-output.test.ts",
+    "build": "solkit build && bun test tests/build-output.test.ts",
     "build:inspect": "vite build --minify=false --outDir out/inspect",
     "test": "bun test tests/build-output.test.ts",
     "test:e2e": "playwright test",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "solix": "workspace:*",
+    "solkit": "workspace:*",
     "valibot": "^1.4.2"
   },
   "devDependencies": {

@@ -112,7 +112,7 @@ export type RenderFactory = (frame: RenderFrame) => Block;
 export type ErrorRenderFactory = (error: unknown, frame: RenderFrame) => Block;
 
 export interface SuspenseController {
-  begin(): () => void;
+  begin(rerenderOnServer?: boolean): () => void;
   reject(error: unknown): void;
 }
 
@@ -132,6 +132,8 @@ export interface RenderFrame {
   readonly waitForResume?: boolean;
   readonly timeoutMs?: number;
   readonly devtoolsComponentId?: number;
+  readonly url?: URL;
+  readonly ssrRerender?: boolean;
 }
 
 export type ComponentFactory<Props extends object> = (
@@ -143,9 +145,20 @@ export type CompiledComponent<Props extends object> = Component<Props> & {
 };
 
 export let routeRuntime: RouteRuntimeAdapter | undefined;
+let serverRenderPreparation: ((frame: RenderFrame) => void | PromiseLike<void>) | undefined;
 
 export function configureRouteRuntime(adapter: RouteRuntimeAdapter): void {
   routeRuntime = adapter;
+}
+
+export function configureServerRenderPreparation(
+  prepare: (frame: RenderFrame) => void | PromiseLike<void>,
+): void {
+  serverRenderPreparation = prepare;
+}
+
+export function prepareServerRender(frame: RenderFrame): void | PromiseLike<void> {
+  return serverRenderPreparation?.(frame);
 }
 
 export function template(
@@ -534,13 +547,15 @@ export function getFactory<Props extends object>(
 export function renderComponent<Props extends object>(
   candidate: Component<Props>,
   props?: Props,
+  parentFrame?: RenderFrame,
 ): Block {
   if (props != null && !isObject(props)) {
     throw new TypeError("renderComponent() props must be an object");
   }
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
-  const frame = rootFrame();
-  return activatedBlock(resolvedBlock(getFactory(candidate)(initialProps, frame), frame), frame);
+  const frame = parentFrame ?? rootFrame();
+  const rendered = resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
+  return parentFrame ? rendered : activatedBlock(rendered, frame);
 }
 
 function activatedBlock(rendered: Block, frame: RenderFrame): Block {

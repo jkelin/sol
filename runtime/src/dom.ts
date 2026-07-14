@@ -138,8 +138,9 @@ export function head(render: RenderFactory, cleanups: Cleanup[], frame: RenderFr
   if (typeof document === "undefined" || !document.head) {
     throw new Error("Head requires a browser document with a head element");
   }
-  const headClaim = frame.mode === "hydrate" ? frame.headClaims?.shift() : undefined;
-  if (frame.mode === "hydrate" && !headClaim) {
+  const hydrating = frame.mode === "hydrate" && frame.hydration && !frame.hydration.committed;
+  const headClaim = hydrating ? frame.headClaims?.shift() : undefined;
+  if (hydrating && !headClaim) {
     throw new HydrationMismatchError("server Head block is missing");
   }
   const rendered = render({ ...frame, head: true, claim: headClaim?.claim ?? frame.claim });

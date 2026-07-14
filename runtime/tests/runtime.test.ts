@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import * as v from "valibot";
 import { z } from "zod";
-import { $component, $context } from "../src/components.ts";
+import { $component, $context, contextUse, type Context } from "../src/components.ts";
 import { normalizeClass } from "../src/dom.ts";
 import { $form } from "../src/forms.ts";
 import { $computed, $signal, type Signal } from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
-import { mount } from "../src/rendering.ts";
+import { mount, rootFrame } from "../src/rendering.ts";
 import { transition } from "../src/transitions.ts";
 import {
   attribute,
@@ -506,6 +506,22 @@ describe("reactivity", () => {
     const context = $context<{ value: string }>();
     expect(context.useOptional()).toBeUndefined();
     expect(() => context.use()).toThrow("Context is not available outside its Provider");
+    const ordinary = { kind: "ordinary" };
+    const optional = { kind: "optional" };
+    const service = new Proxy(
+      {
+        Provider: (() => undefined) as never,
+        use: () => ordinary,
+        useOptional: () => optional,
+      },
+      {
+        has: () => {
+          throw new Error("ordinary services must not be brand-probed");
+        },
+      },
+    );
+    expect(contextUse(service as Context<{ kind: string }>, rootFrame(), false)).toBe(ordinary);
+    expect(contextUse(service as Context<{ kind: string }>, rootFrame(), true)).toBe(optional);
   });
 
   test("validates the public compiler boundary and class values", () => {

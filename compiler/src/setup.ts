@@ -424,6 +424,21 @@ export function compileFunction(
   };
 }
 
+function ancestorWithinFunction<T extends t.Node>(
+  path: NodePath,
+  matches: (candidate: NodePath) => candidate is NodePath<T>,
+): NodePath<T> | undefined {
+  const owner = path.getFunctionParent();
+  for (
+    let candidate = path.parentPath;
+    candidate && candidate !== owner;
+    candidate = candidate.parentPath
+  ) {
+    if (matches(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function instrumentAwaitExpressions(
   compiler: CompilerContext,
   declaration: t.FunctionExpression,
@@ -468,8 +483,11 @@ function instrumentAwaitExpressions(
         calls.add(target);
         callsByOwner.set(owner as LocalFunction | t.FunctionExpression, calls);
       }
-      const awaited = path.findParent((parent) => parent.isAwaitExpression());
-      if (awaited?.isAwaitExpression() && awaited.getFunctionParent()?.node === declaration) {
+      const awaited = ancestorWithinFunction(
+        path,
+        (candidate): candidate is NodePath<t.AwaitExpression> => candidate.isAwaitExpression(),
+      );
+      if (owner === declaration && awaited) {
         reachable.add(target);
       }
     },
@@ -628,12 +646,20 @@ function instrumentAwaitExpressions(
       const helper = callTargets.get(path.node);
       if (!helper || !reachable.has(helper) || !hasCapturedAwait(helper)) return;
       const owner = path.getFunctionParent()?.node;
-      const awaited = path.findParent((parent) => parent.isAwaitExpression());
-      const awaitedOwner = awaited?.isAwaitExpression()
-        ? awaited.getFunctionParent()?.node
-        : undefined;
-      const initializer = path.findParent((parent) => parent.isVariableDeclarator());
-      const returned = path.findParent((parent) => parent.isReturnStatement());
+      const awaited = ancestorWithinFunction(
+        path,
+        (candidate): candidate is NodePath<t.AwaitExpression> => candidate.isAwaitExpression(),
+      );
+      const awaitedOwner = awaited ? owner : undefined;
+      const initializer = ancestorWithinFunction(
+        path,
+        (candidate): candidate is NodePath<t.VariableDeclarator> =>
+          candidate.isVariableDeclarator(),
+      );
+      const returned = ancestorWithinFunction(
+        path,
+        (candidate): candidate is NodePath<t.ReturnStatement> => candidate.isReturnStatement(),
+      );
       const capture = Boolean(
         awaitedOwner === declaration ||
         (awaitedOwner !== undefined && reachable.has(awaitedOwner as LocalFunction)) ||
@@ -662,12 +688,22 @@ function instrumentAwaitExpressions(
         path.node.arguments.length !== 0 ||
         !t.isMemberExpression(path.node.callee) ||
         path.node.callee.computed ||
+        !t.isIdentifier(path.node.callee.object) ||
         !t.isIdentifier(path.node.callee.property) ||
         (path.node.callee.property.name !== "use" &&
           path.node.callee.property.name !== "useOptional")
       ) {
         return;
       }
+      const receiver = path.node.callee.object;
+      const binding = path.scope.getBinding(receiver.name);
+      const localContext =
+        binding?.path.isVariableDeclarator() &&
+        t.isCallExpression(binding.path.node.init) &&
+        t.isIdentifier(binding.path.node.init.callee, { name: "$context" });
+      const moduleContext = compiler.contextNames.has(receiver.name) && !binding;
+      const importedCandidate = compiler.importNames.has(receiver.name) && !binding;
+      if (!localContext && !moduleContext && !importedCandidate) return;
       path.replaceWith(
         t.callExpression(t.identifier("__solix_context_use"), [
           path.node.callee.object as t.Expression,

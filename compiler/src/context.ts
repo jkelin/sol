@@ -35,6 +35,8 @@ export interface CompilerContext {
   source: string;
   templates: CompiledTemplate[];
   componentNames: Set<string>;
+  contextNames: Set<string>;
+  importNames: Set<string>;
   builtinNames: Map<string, "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal">;
   linkNames: Set<string>;
   refCreatorNames: Set<string>;

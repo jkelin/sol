@@ -38,6 +38,8 @@ export interface ErrorBoundaryProps {
   readonly children?: JSX.Element | readonly JSX.Element[];
 }
 
+const contexts = new WeakSet<object>();
+
 export function $component<Props extends object>(
   _setup: (props: Readonly<Props>) => JSX.Element | Promise<JSX.Element>,
 ): Component<Props> {
@@ -60,12 +62,14 @@ export function $context<TShape extends object>(): Context<TShape> {
     return contextProxy(source) as TShape;
   };
 
-  return Object.freeze({
+  const context = {
     [CONTEXT]: key,
     Provider,
     use: (frame?: RenderFrame) => read(false, frame)!,
     useOptional: (frame?: RenderFrame) => read(true, frame),
-  }) as Context<TShape>;
+  } as Context<TShape>;
+  contexts.add(context);
+  return Object.freeze(context);
 }
 
 export function contextUse<TShape extends object>(
@@ -73,7 +77,7 @@ export function contextUse<TShape extends object>(
   frame: RenderFrame,
   optional: boolean,
 ) {
-  if (CONTEXT in candidate) {
+  if (contexts.has(candidate)) {
     const internal = candidate as Context<TShape> & {
       use(frame: RenderFrame): TShape;
       useOptional(frame: RenderFrame): TShape | undefined;

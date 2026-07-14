@@ -16,6 +16,12 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
 
   for (const statement of ast.program.body) {
     if (t.isImportDeclaration(statement)) {
+      if (statement.importKind !== "type") {
+        for (const specifier of statement.specifiers) {
+          if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;
+          compiler.importNames.add(specifier.local.name);
+        }
+      }
       if (statement.source.value === "solix") {
         for (const specifier of statement.specifiers) {
           if (
@@ -72,6 +78,13 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         t.isIdentifier(variable.init.callee, { name: "$component" })
       ) {
         compiler.componentNames.add(variable.id.name);
+      }
+      if (
+        t.isIdentifier(variable.id) &&
+        t.isCallExpression(variable.init) &&
+        t.isIdentifier(variable.init.callee, { name: "$context" })
+      ) {
+        compiler.contextNames.add(variable.id.name);
       }
     }
   }

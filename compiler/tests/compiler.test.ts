@@ -447,8 +447,14 @@ describe("compiler", () => {
       const messageContext = $context<{ message: string }>();
       const AsyncChild = $component(async function AsyncChild() {
         const context = messageContext.use();
+        const service = { use() { return "ordinary"; } };
+        const ordinary = service.use();
         const data = await Promise.resolve({ text: "ready" });
-        return <p data-state={data.text}>{context.message}: {data.text}</p>;
+        return <p data-state={data.text}>{context.message}: {data.text}: {ordinary}</p>;
+      });
+      const Ordinary = $component(function Ordinary() {
+        const messageContext = { use() { return "shadowed"; } };
+        return <p>{messageContext.use()}</p>;
       });
       const App = $component(function App() {
         const shared = { message: "hello" };
@@ -470,6 +476,11 @@ describe("compiler", () => {
 
     expect(result.code).toContain("__solix_component(async (");
     expect(result.code).toContain("__solix_context_provider");
+    expect(result.code).toContain("__solix_context_use(messageContext, __solix_frame, false)");
+    expect(result.code).toContain("service.value.use()");
+    expect(result.code).toContain("messageContext.value.use()");
+    expect(result.code.match(/__solix_context_use\(messageContext/g)).toHaveLength(1);
+    expect(result.code).not.toContain("__solix_context_use(service");
     expect(result.code).toContain("__solix_error_boundary");
     expect(result.code).toContain("__solix_suspense");
     expect(result.code).toContain("__solix_await");
@@ -482,6 +493,21 @@ describe("compiler", () => {
     expect(result.code).toMatch(
       /"kind":"attribute","target":"element","index":0,"name":"data-state"/,
     );
+  });
+
+  test("passes the render frame to imported context candidates", () => {
+    const result = compile(
+      `
+      import { sharedContext } from "./shared-context.ts";
+      const App = $component(function App() {
+        const value = sharedContext.use();
+        return <p>{value.label}</p>;
+      });
+    `,
+      "ImportedContext.tsx",
+    );
+
+    expect(result.code).toContain("__solix_context_use(sharedContext, __solix_frame, false)");
   });
 
   test("captures component awaits without instrumenting fire-and-forget helper work", () => {
@@ -508,6 +534,27 @@ describe("compiler", () => {
     expect(result.code).toContain(
       "const nested = __solix_signal(await __solix_async_capture_call(() => load(), true))",
     );
+  });
+
+  test("does not capture helper calls nested in an awaited callback", () => {
+    const result = compile(
+      `
+      const App = $component(async function App() {
+        async function sideEffect() { await Promise.resolve("side effect"); }
+        const value = await new Promise(resolve => {
+          void sideEffect();
+          resolve("ready");
+        });
+        return <p>{value}</p>;
+      });
+    `,
+      "AwaitedCallback.tsx",
+    );
+
+    expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(1);
+    expect(result.code).toContain('await Promise.resolve("side effect")');
+    expect(result.code).toContain("void sideEffect()");
+    expect(result.code).not.toContain("__solix_async_capture_call(() => sideEffect()");
   });
 
   test("namespaces async sites by compiled module", () => {

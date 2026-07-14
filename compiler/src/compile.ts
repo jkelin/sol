@@ -14,6 +14,8 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     source,
     templates: [],
     componentNames: new Set(),
+    contextNames: new Set(),
+    importNames: new Set(),
     builtinNames: new Map(),
     linkNames: new Set(),
     refCreatorNames: new Set(),

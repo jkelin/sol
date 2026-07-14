@@ -943,16 +943,24 @@ export function compileBlockBody(
       regionCount: context.nextRegion,
       operations: context.operations,
     }) - 1;
+  if (context.operations.length === 0) {
+    return `
+      const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);
+      return __sol_block(__sol_view.fragment);
+    `;
+  }
+  const hasLifecycle = context.operations.some((operation) =>
+    operation.includes("__sol_lifecycle"),
+  );
   return `
     const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);
     const __sol_cleanups: Array<() => void> = [];
-    const __sol_lifecycle = __sol_block_lifecycle(__sol_frame);
+    ${hasLifecycle ? "const __sol_lifecycle = __sol_block_lifecycle(__sol_frame);" : ""}
     try {
       ${context.operations.join("\n")}
-      return __sol_block(__sol_view.fragment, __sol_cleanups, __sol_lifecycle);
+      return __sol_block(__sol_view.fragment, __sol_cleanups${hasLifecycle ? ", __sol_lifecycle" : ""});
     } catch (__sol_render_error) {
-      __sol_cleanup(__sol_cleanups);
-      throw __sol_render_error;
+      __sol_rethrow(__sol_render_error, __sol_cleanups);
     }
   `;
 }

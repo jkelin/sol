@@ -4,11 +4,13 @@ import {
   $mutation,
   $query,
   clearServerQueryCache,
+  mutationInFrame,
   queryInFrame,
   type QueryKey,
 } from "../src/queries.ts";
 import { disposeOwner } from "../src/reactivity.ts";
 import { block, component, renderComponent, rootFrame, type Block } from "../src/rendering.ts";
+import { SsrSession } from "../src/ssr-session.ts";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -56,6 +58,43 @@ function inComponent<T>(setup: () => T): { readonly value: T; dispose(): void } 
 }
 
 describe("queries", () => {
+  test("isolates URL-less server query caches by render session", async () => {
+    const firstSession = new SsrSession();
+    const firstOwner: Array<() => void> = [];
+    const first = queryInFrame(
+      { queryKey: "viewer", query: async () => "user-a", enabled: false, staleTime: Infinity },
+      { ...rootFrame(), mode: "server", owner: firstOwner, ssr: firstSession },
+    );
+    await first.refetch();
+
+    const secondSession = new SsrSession();
+    const secondOwner: Array<() => void> = [];
+    const second = queryInFrame(
+      { queryKey: "viewer", query: async () => "user-b", enabled: false, staleTime: Infinity },
+      { ...rootFrame(), mode: "server", owner: secondOwner, ssr: secondSession },
+    );
+
+    expect(second.data).toBeUndefined();
+    expect(await second.refetch()).toBe("user-b");
+    clearServerQueryCache(firstSession);
+    clearServerQueryCache(secondSession);
+    disposeOwner(firstOwner);
+    disposeOwner(secondOwner);
+  });
+
+  test("rejects frame-bound request helpers after their owner was disposed", () => {
+    const owner: Array<() => void> = [];
+    const frame = { ...rootFrame(), owner };
+    disposeOwner(owner);
+
+    expect(() =>
+      queryInFrame({ queryKey: "late", query: async () => 1, enabled: false }, frame),
+    ).toThrow("owner has been disposed");
+    expect(() => mutationInFrame({ mutation: async () => 1 }, frame)).toThrow(
+      "owner has been disposed",
+    );
+  });
+
   test("retains query data through a request and clears it at the render boundary", async () => {
     const url = new URL("https://example.test/request");
     const firstOwner: Array<() => void> = [];

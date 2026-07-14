@@ -56,6 +56,9 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
           }
           if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
           if (specifier.importKind === "type") continue;
+          if (specifier.imported.name === "$component") {
+            compiler.componentImports.add(specifier.local);
+          }
           if (declarationHelpers.has(specifier.imported.name)) {
             compiler.declarationHelperNames.set(
               specifier.local.name,
@@ -91,21 +94,29 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         }
       }
     }
-    const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
-    if (!t.isVariableDeclaration(declaration)) continue;
-    for (const variable of declaration.declarations) {
-      if (
-        t.isIdentifier(variable.id) &&
-        t.isCallExpression(variable.init) &&
-        t.isIdentifier(variable.init.callee, { name: "$component" })
-      ) {
-        compiler.componentNames.add(variable.id.name);
-        compiler.componentBindings.add(variable.id);
-      }
-    }
   }
 
   traverse(ast, {
+    CallExpression(path) {
+      if (!t.isIdentifier(path.node.callee)) return;
+      const binding = path.scope.getBinding(path.node.callee.name);
+      if (
+        binding
+          ? compiler.componentImports.has(binding.identifier)
+          : path.node.callee.name === "$component"
+      ) {
+        compiler.componentCalls.add(path.node);
+        const variable = path.parentPath?.node;
+        if (
+          t.isVariableDeclarator(variable) &&
+          variable.init === path.node &&
+          t.isIdentifier(variable.id)
+        ) {
+          compiler.componentNames.add(variable.id.name);
+          compiler.componentBindings.add(variable.id);
+        }
+      }
+    },
     JSXElement(path) {
       const name = path.node.openingElement.name;
       if (!t.isJSXIdentifier(name)) return;

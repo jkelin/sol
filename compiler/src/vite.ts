@@ -7,6 +7,7 @@ import { normalizePath } from "vite";
 import { traverse } from "./ast.ts";
 import { compile } from "./compile.ts";
 import { canonicalHttpRoutePath } from "./http-path.ts";
+import { canonicalizeStaticRouteSegment } from "./route-path.ts";
 
 const virtualRoutes = "virtual:sol/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
@@ -259,7 +260,7 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
       const matcher = path
         .split("?", 1)[0]!
         .split("/")
-        .map((segment) => (segment.startsWith(":") ? ":" : segment))
+        .map((segment) => (segment.startsWith(":") ? ":" : canonicalizeStaticRouteSegment(segment)))
         .join("/");
       const existing = matchers.get(matcher);
       if (existing) {

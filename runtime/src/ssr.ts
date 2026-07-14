@@ -151,6 +151,6 @@ export async function renderToStringAsync<Props extends object>(
     const payload = serializeGraph(session.payload());
     return `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
   } finally {
-    runDisposals([() => rendered?.dispose(), () => clearServerQueryCache(url)]);
+    runDisposals([() => rendered?.dispose(), () => clearServerQueryCache(session)]);
   }
 }

@@ -17,6 +17,9 @@ export function compile(
 ): CompileResult {
   if (typeof source !== "string") throw new TypeError("compile() expects source code as a string");
   if (!filename) throw new TypeError("compile() expects a filename");
+  let mappingMarkerPrefix = "__sol_source_";
+  while (source.includes(`/*${mappingMarkerPrefix}`))
+    mappingMarkerPrefix = `_${mappingMarkerPrefix}`;
   const compiler: CompilerContext = {
     filename,
     source,
@@ -24,6 +27,8 @@ export function compile(
     componentNames: new Set(),
     componentBindings: new Set(),
     componentElements: new WeakSet(),
+    componentImports: new Set(),
+    componentCalls: new WeakSet(),
     builtinImports: new Map(),
     builtinElements: new WeakMap(),
     linkImports: new Set(),
@@ -32,6 +37,7 @@ export function compile(
     declarationHelperNames: new Map(),
     declarationHelperNamespaces: new Set(),
     requestHelpers: new Map(),
+    mappingMarkerPrefix,
     mappingOrigins: [],
     nextListId: 0,
     nextAsyncId: 0,

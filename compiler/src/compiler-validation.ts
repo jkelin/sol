@@ -18,7 +18,7 @@ export function validateCompiledModule(state: CompilationState): boolean {
   } = state;
   traverse(ast, {
     CallExpression(path: NodePath<t.CallExpression>) {
-      if (t.isIdentifier(path.node.callee, { name: "$component" })) {
+      if (compiler.componentCalls.has(path.node)) {
         if (componentCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(
           compiler,

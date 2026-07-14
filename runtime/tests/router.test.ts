@@ -91,6 +91,13 @@ const First = page("First", true, true);
 const Second = page("Second", true);
 const Plain = page("Plain", false);
 const Async = page("Async", false);
+const unicodeRoute = route({ path: "/café" }, Plain, {
+  pattern: "^/caf%C3%A9$",
+  parameterNames: [],
+  pathnameParameterNames: [],
+  queryParameters: [],
+  specificity: [1],
+});
 const routes = [
   route({ path: "/" }, First, {
     pattern: "^/$",
@@ -108,6 +115,14 @@ const routes = [
   }),
   route({ path: "/plain" }, Plain, {
     pattern: "^/plain$",
+    parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
+    specificity: [1],
+  }),
+  unicodeRoute,
+  route({ path: "/a!" }, Plain, {
+    pattern: "^/a!$",
     parameterNames: [],
     pathnameParameterNames: [],
     queryParameters: [],
@@ -140,12 +155,14 @@ afterAll(() => window.close());
 test("route transitions overlap, freeze outgoing state, and clean rapid navigation", () => {
   expect((devtools.router.routes as Array<{ path: string }>).map((entry) => entry.path)).toEqual([
     "/async/:id",
+    "/a!",
+    "/café",
     "/plain",
     "/second",
     "/",
   ]);
   const target = document.createElement("main");
-  mount(Route, target);
+  const dispose = mount(Route, target);
   expect(animations).toHaveLength(0);
 
   router.navigate("/second");
@@ -172,6 +189,7 @@ test("route transitions overlap, freeze outgoing state, and clean rapid navigati
   expect(target.querySelector('[data-page="plain"]')).toBeNull();
   expect(target.querySelector('[data-page="second"]')).not.toBeNull();
   expect(animations).toHaveLength(before + 1);
+  dispose();
 });
 
 test("renders the matched route from an isolated server request URL", async () => {
@@ -203,14 +221,22 @@ test("resolves asynchronous route state before rendering the server root", async
 });
 
 test("tracks native hash-only navigation", () => {
-  const target = document.createElement("main");
-  const dispose = mount(Route, target);
-
   window.location.hash = "#details";
   window.dispatchEvent(new window.Event("hashchange"));
 
   expect(router.hash).toBe("#details");
-  dispose();
+});
+
+test("matches canonical-equivalent path encodings and Unicode prefixes", () => {
+  router.navigate("/caf%c3%a9");
+  expect(router.route?.path).toBe("/café");
+  expect(unicodeRoute.isActivePrefix).toBe(true);
+
+  router.navigate("/caf%C3%A9/child");
+  expect(unicodeRoute.isActivePrefix).toBe(true);
+
+  router.navigate("/a%21");
+  expect(router.route?.path).toBe("/a!");
 });
 
 test("validates navigation options", () => {
@@ -218,4 +244,8 @@ test("validates navigation options", () => {
     "replace must be a boolean",
   );
   expect(() => router.navigate("/", { extra: true } as never)).toThrow("unknown property extra");
+  expect(() => router.navigate("/", new Date() as never)).toThrow("plain object");
+  expect(() => router.navigate("/", { [Symbol("extra")]: true } as never)).toThrow(
+    "unknown property",
+  );
 });

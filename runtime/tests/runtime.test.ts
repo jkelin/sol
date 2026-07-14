@@ -5,7 +5,7 @@ import { z } from "zod";
 import { $component, $context, contextUse, Head, type Context } from "../src/components.ts";
 import { normalizeClass } from "../src/dom.ts";
 import { $form } from "../src/forms.ts";
-import { $computed, $signal, type Signal } from "../src/reactivity.ts";
+import { $computed, $signal, rethrowWithCleanups, type Signal } from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
 import { mount, rootFrame } from "../src/rendering.ts";
 import { transition } from "../src/transitions.ts";
@@ -668,11 +668,21 @@ describe("reactivity", () => {
   test("invalidates removed array indexes when length shrinks", () => {
     const state = $signal({ values: ["first", "second", "third"] });
     const observations: Array<string | undefined> = [];
+    const keys: string[][] = [];
+    let runs = 0;
     runtimeEffect(() => observations.push(state.value.values[2]));
+    runtimeEffect(() => {
+      runs += 1;
+      keys.push(Object.keys(state.value.values));
+    });
 
     state.value.values.length = 1;
 
-    expect(observations).toEqual(["third", undefined]);
+    expect(observations).toHaveLength(2);
+    expect(observations[0]).toBe("third");
+    expect(observations[1]).toBeUndefined();
+    expect(runs).toBe(2);
+    expect(keys).toEqual([["0", "1", "2"], ["0"]]);
   });
 
   test("preserves built-in and class instances instead of proxying them", () => {
@@ -1111,6 +1121,38 @@ describe("compiled DOM runtime", () => {
     expect(() => rendered.dispose()).toThrow("cleanup failed");
     expect(calls).toEqual(["last", "throwing", "first"]);
     expect(target.childNodes).toHaveLength(0);
+  });
+
+  test("finishes block retirement when cleanup callbacks throw", () => {
+    const target = document.createElement("main");
+    const fragment = document.createDocumentFragment();
+    fragment.append(document.createElement("p"));
+    const rendered = block(fragment, [
+      () => {
+        throw new Error("retirement cleanup failed");
+      },
+    ]);
+    rendered.mount(target);
+
+    expect(() => rendered.retire()).toThrow("retirement cleanup failed");
+    expect(target.childNodes).toHaveLength(0);
+  });
+
+  test("preserves a render failure when its cleanup also fails", () => {
+    try {
+      rethrowWithCleanups(new Error("render failed"), [
+        () => {
+          throw new Error("cleanup failed");
+        },
+      ]);
+      throw new Error("expected failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors.map(String)).toEqual([
+        "Error: render failed",
+        "Error: cleanup failed",
+      ]);
+    }
   });
 
   test("validates mount boundaries", () => {

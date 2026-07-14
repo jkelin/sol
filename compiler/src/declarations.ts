@@ -56,9 +56,7 @@ export function compileComponentDeclarations(state: CompilationState): void {
     const declaration = exported ? statement.declaration : statement;
     if (!t.isVariableDeclaration(declaration)) continue;
     const componentVariables = declaration.declarations.filter(
-      (variable) =>
-        t.isCallExpression(variable.init) &&
-        t.isIdentifier(variable.init.callee, { name: "$component" }),
+      (variable) => t.isCallExpression(variable.init) && compiler.componentCalls.has(variable.init),
     );
     if (componentVariables.length === 0) continue;
     if (declaration.kind !== "const" || declaration.declarations.length !== 1) {

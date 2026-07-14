@@ -1416,6 +1416,23 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
   expect(html).toContain("data-sol-hydration");
 });
 
+test("server rendering keeps hostile raw-text closing tags inside their elements", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      const script = "</script><img id=script-injection>";
+      const style = "</style><img id=style-injection>";
+      return <><script>{script}</script><style>{style}</style></>;
+    });
+  `);
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(module.App as Component);
+
+  expect(target.querySelector("#script-injection")).toBeNull();
+  expect(target.querySelector("#style-injection")).toBeNull();
+  expect(target.querySelector("script")?.textContent).toContain("<\\/script>");
+  expect(target.querySelector("style")?.textContent).toContain("<\\/style>");
+});
+
 test("server rendering keeps parent region slots distinct from nested region markers", async () => {
   const module = await loadCompiled(`
     const First = $component(function First() {

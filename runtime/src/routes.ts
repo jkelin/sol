@@ -10,6 +10,13 @@ export interface NavigateOptions {
   readonly replace?: boolean;
 }
 
+export function canonicalizePathname(pathname: string): string {
+  return pathname
+    .split("/")
+    .map((segment) => encodeURIComponent(decodeURIComponent(segment)))
+    .join("/");
+}
+
 export type RouteValue = string | number;
 export type RawRouteParams = Readonly<Record<string, string | undefined>>;
 export type RouteValues = Readonly<Record<string, RouteValue | undefined>>;
@@ -314,7 +321,7 @@ export function route<
     throw new TypeError("Compiled route metadata is invalid");
   }
   let definition: CompiledRouteDefinition<Path, Values>;
-  const staticPrefix = config.path.split("?", 1)[0]!.split("/:", 1)[0] || "/";
+  const staticPrefix = canonicalizePathname(config.path.split("?", 1)[0]!.split("/:", 1)[0] || "/");
   definition = Object.freeze({
     [ROUTE]: true,
     config: Object.freeze({ ...config }),
@@ -339,7 +346,8 @@ export function route<
       return routeRuntime?.isActive(definition) ?? false;
     },
     get isActivePrefix() {
-      const pathname = routeRuntime?.getPathname();
+      const rawPathname = routeRuntime?.getPathname();
+      const pathname = rawPathname ? canonicalizePathname(rawPathname) : undefined;
       if (!pathname) return false;
       return staticPrefix === "/"
         ? compiled.pathnameParameterNames.length > 0 || pathname === "/"

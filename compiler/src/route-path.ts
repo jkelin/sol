@@ -11,6 +11,10 @@ export interface ParsedRoutePath {
   specificity: number[];
 }
 
+export function canonicalizeStaticRouteSegment(segment: string): string {
+  return encodeURIComponent(decodeURIComponent(segment));
+}
+
 export function parseRoutePath(context: CompilerContext, node: t.StringLiteral): ParsedRoutePath {
   const path = node.value;
   if (!path.startsWith("/") || path.startsWith("//")) {
@@ -40,7 +44,7 @@ export function parseRoutePath(context: CompilerContext, node: t.StringLiteral):
               specificity.push(1);
               let canonical: string;
               try {
-                canonical = encodeURIComponent(decodeURIComponent(segment));
+                canonical = canonicalizeStaticRouteSegment(segment);
               } catch {
                 codeFrame(context, node, `Invalid percent encoding in route segment ${segment}`);
               }

@@ -1,5 +1,13 @@
 import type { Component, Context } from "./components.ts";
-import { $signal, batch, isObject, reactive, runtimeEffect, type Signal } from "./reactivity.ts";
+import {
+  $signal,
+  batch,
+  isObject,
+  reactive,
+  runDisposals,
+  runtimeEffect,
+  type Signal,
+} from "./reactivity.ts";
 import {
   getFactory,
   readonlyProps,
@@ -164,6 +172,30 @@ export function head(render: RenderFactory, cleanups: Cleanup[], frame: RenderFr
   rendered.mount(document.head, document.head.firstChild);
 }
 
+const writableProperties = new WeakMap<Element, Map<string, boolean>>();
+
+function isWritableProperty(element: Element, property: string): boolean {
+  let properties = writableProperties.get(element);
+  if (!properties) {
+    properties = new Map();
+    writableProperties.set(element, properties);
+  }
+  const cached = properties.get(property);
+  if (cached !== undefined) return cached;
+  let owner: object | null = element;
+  let descriptor: PropertyDescriptor | undefined;
+  while (owner && !descriptor) {
+    descriptor = Object.getOwnPropertyDescriptor(owner, property);
+    owner = Object.getPrototypeOf(owner) as object | null;
+  }
+  const writable = Boolean(
+    descriptor &&
+    ("writable" in descriptor ? descriptor.writable : typeof descriptor.set === "function"),
+  );
+  properties.set(property, writable);
+  return writable;
+}
+
 function setDomValue(element: Element, name: string, value: unknown): void {
   const property = name === "className" ? "className" : name === "htmlFor" ? "htmlFor" : name;
   if (name.startsWith("aria-") || name.startsWith("data-")) {
@@ -171,18 +203,7 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     else element.setAttribute(name, String(value));
     return;
   }
-  let owner: object | null = element;
-  let descriptor: PropertyDescriptor | undefined;
-  while (owner && !descriptor) {
-    descriptor = Object.getOwnPropertyDescriptor(owner, property);
-    owner = Object.getPrototypeOf(owner) as object | null;
-  }
-  const writable = descriptor
-    ? "writable" in descriptor
-      ? descriptor.writable
-      : typeof descriptor.set === "function"
-    : false;
-  if (property in element && writable) {
+  if (property in element && isWritableProperty(element, property)) {
     (element as unknown as Record<string, unknown>)[property] = value == null ? "" : value;
   } else if (value == null || value === false) {
     element.removeAttribute(name);
@@ -451,8 +472,10 @@ export function when(
     initialized = true;
   });
   cleanups.push(stop, () => {
-    current?.dispose();
-    for (const leavingBlock of leaving.values()) leavingBlock.dispose();
+    runDisposals([
+      ...[...leaving.values()].map((leavingBlock) => () => leavingBlock.dispose()),
+      () => current?.dispose(),
+    ]);
     leaving.clear();
   });
 }
@@ -527,12 +550,13 @@ export function list<T>(
         nextRows.set(entry.key, row);
       }
     });
+    const removedKeys = new Set<unknown>();
     for (const [key, row] of rows) {
       if (nextRows.has(key)) continue;
       const finished = row.block.leave();
       if (!finished) {
         row.block.dispose();
-        order = order.filter((candidate) => !sameKey(candidate, key));
+        removedKeys.add(key);
         continue;
       }
       leavingRows.set(key, row);
@@ -542,6 +566,9 @@ export function list<T>(
         order = order.filter((candidate) => !sameKey(candidate, key));
         row.block.dispose();
       });
+    }
+    if (removedKeys.size > 0) {
+      order = order.filter((candidate) => !removedKeys.has(candidate));
     }
 
     const activeKeys = [...nextRows.keys()];
@@ -569,8 +596,10 @@ export function list<T>(
     initialized = true;
   });
   cleanups.push(stop, () => {
-    for (const row of rows.values()) row.block.dispose();
-    for (const row of leavingRows.values()) row.block.dispose();
+    runDisposals([
+      ...[...rows.values()].map((row) => () => row.block.dispose()),
+      ...[...leavingRows.values()].map((row) => () => row.block.dispose()),
+    ]);
     rows.clear();
     leavingRows.clear();
     order = [];

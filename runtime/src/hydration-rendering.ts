@@ -349,7 +349,23 @@ export function hydratedBlock(
     leave,
     retire() {
       if (disposed) return undefined;
-      cleanup();
+      try {
+        cleanup();
+      } catch (error) {
+        disposed = true;
+        try {
+          runDisposals([
+            ...(lifecycle?.remoteBlocks ?? []).map((remote) => () => remote.dispose()),
+            remove,
+          ]);
+        } catch (disposalError) {
+          // oxlint-disable-next-line preserve-caught-error -- AggregateError retains both failures and sets the primary cause.
+          throw new AggregateError([error, disposalError], "Hydrated block retirement failed", {
+            cause: error,
+          });
+        }
+        throw error;
+      }
       const leaving = leave();
       if (!leaving) {
         disposed = true;

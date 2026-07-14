@@ -1,5 +1,5 @@
 import { devtoolsLoaderCreated, devtoolsLoaderUpdated } from "./devtools-hook.ts";
-import { isPromiseLike, runtimeEffect } from "./reactivity.ts";
+import { isPromiseLike, runDisposals, runtimeEffect } from "./reactivity.ts";
 import { asyncValue, HydrationMismatchError } from "./ssr-session.ts";
 import { isServerRegion, mountServerBlock } from "./server-rendering.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
@@ -100,8 +100,12 @@ export function suspense(
       controller.reject(error);
     }
     cleanups.push(() => {
-      visible?.dispose();
-      if (content && content !== visible) content.dispose();
+      runDisposals([
+        () => visible?.dispose(),
+        () => {
+          if (content && content !== visible) content.dispose();
+        },
+      ]);
     });
     return;
   }
@@ -188,9 +192,13 @@ export function suspense(
       controller.reject(error);
     }
     cleanups.push(() => {
-      visible?.dispose();
-      if (content && content !== visible) content.dispose();
-      boundary?.finish();
+      runDisposals([
+        () => visible?.dispose(),
+        () => {
+          if (content && content !== visible) content.dispose();
+        },
+        () => boundary?.finish(),
+      ]);
     });
     return;
   }
@@ -254,8 +262,12 @@ export function suspense(
     controller.reject(error);
   }
   cleanups.push(() => {
-    visible?.dispose();
-    if (content && content !== visible) content.dispose();
+    runDisposals([
+      () => visible?.dispose(),
+      () => {
+        if (content && content !== visible) content.dispose();
+      },
+    ]);
   });
 }
 

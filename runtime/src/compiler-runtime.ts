@@ -14,7 +14,14 @@ export {
 } from "./dom.ts";
 export { awaitBlock, errorBoundary, suspense } from "./async.ts";
 export { asyncCaptureActive, asyncCaptureCall, asyncValue } from "./ssr-session.ts";
-export { $signal, batch, computedInFrame, runCleanups, runtimeEffect } from "./reactivity.ts";
+export {
+  $signal,
+  batch,
+  computedInFrame,
+  rethrowWithCleanups,
+  runCleanups,
+  runtimeEffect,
+} from "./reactivity.ts";
 export { globalPortal, portal } from "./portals.ts";
 export { ref } from "./refs.ts";
 export {

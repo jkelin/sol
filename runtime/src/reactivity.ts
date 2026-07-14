@@ -63,10 +63,26 @@ export function runCleanups(cleanups: readonly Cleanup[]): void {
   runDisposals(cleanups.toReversed());
 }
 
+export function rethrowWithCleanups(error: unknown, cleanups: readonly Cleanup[]): never {
+  try {
+    runCleanups(cleanups);
+  } catch (cleanupError) {
+    // oxlint-disable-next-line preserve-caught-error -- AggregateError retains both failures and sets the primary cause.
+    throw new AggregateError([error, cleanupError], "Render and cleanup both failed", {
+      cause: error,
+    });
+  }
+  throw error;
+}
+
 export function disposeOwner(owner: Cleanup[]): void {
   if (disposedOwners.has(owner)) return;
   disposedOwners.add(owner);
   runCleanups(owner);
+}
+
+export function assertOwnerActive(owner: Cleanup[], label: string): void {
+  if (disposedOwners.has(owner)) throw new Error(`${label} owner has been disposed`);
 }
 
 function cleanupEffect(effect: ReactiveEffect): void {
@@ -120,17 +136,23 @@ function flushEffects(): void {
   if (failed) throw failure;
 }
 
-function trigger(target: object, key: PropertyKey): void {
+function triggerMany(target: object, keys: Iterable<PropertyKey>): void {
   const targetDependencies = dependencies.get(target);
   if (!targetDependencies) return;
   const effects = new Set<ReactiveEffect>();
-  for (const effect of targetDependencies.get(key)?.effects ?? []) effects.add(effect);
+  for (const key of keys) {
+    for (const effect of targetDependencies.get(key)?.effects ?? []) effects.add(effect);
+  }
   for (const effect of effects) {
     if (effect.active && !effect.running) {
       (effect.computed ? pendingComputedEffects : pendingEffects).add(effect);
     }
   }
   if (batchDepth === 0 && !flushingEffects) flushEffects();
+}
+
+function trigger(target: object, key: PropertyKey): void {
+  triggerMany(target, [key]);
 }
 
 export function batch<T>(callback: () => T): T {
@@ -274,7 +296,20 @@ export function reactive<T extends object>(target: T): T {
       const oldLength = Array.isArray(object) ? object.length : 0;
       const changed = Reflect.set(object, key, nextValue, receiver);
       if (changed && !Object.is(oldValue, nextValue)) {
-        trigger(object, key);
+        if (Array.isArray(object) && key === "length" && typeof nextValue === "number") {
+          const removed = dependencies.get(object)
+            ? [...dependencies.get(object)!.keys()].filter(
+                (dependency) =>
+                  dependency === ITERATE ||
+                  (typeof dependency === "string" &&
+                    /^(0|[1-9]\d*)$/.test(dependency) &&
+                    Number(dependency) >= nextValue),
+              )
+            : [];
+          triggerMany(object, ["length", ...removed]);
+        } else {
+          trigger(object, key);
+        }
         if (!wasPresent) trigger(object, ITERATE);
         if (Array.isArray(object) && key !== "length" && object.length !== oldLength) {
           trigger(object, "length");

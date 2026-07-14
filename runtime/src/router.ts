@@ -5,7 +5,7 @@ import routes from "virtual:sol/routes";
 import type { Component } from "./components.ts";
 import { devtoolsRouterUpdated } from "./devtools-hook.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
-import { $signal, isPromiseLike, runtimeEffect, runtimeState } from "./reactivity.ts";
+import { $signal, isPromiseLike, runDisposals, runtimeEffect, runtimeState } from "./reactivity.ts";
 import {
   block,
   component,
@@ -19,6 +19,7 @@ import {
   type RenderFrame,
 } from "./rendering.ts";
 import {
+  canonicalizePathname,
   resolveRoute,
   type NavigateOptions,
   type RawRouteParams,
@@ -130,6 +131,11 @@ function decodeParameter(value: string): string {
 }
 
 function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatch | null {
+  try {
+    pathname = canonicalizePathname(pathname);
+  } catch {
+    return null;
+  }
   for (const definition of preparedRoutes) {
     const match = new RegExp(definition.compiled.pattern).exec(pathname);
     if (!match) continue;
@@ -262,12 +268,16 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   if (typeof window === "undefined") {
     throw new Error("router.navigate() requires a browser window");
   }
-  if (!options || typeof options !== "object" || Array.isArray(options)) {
-    throw new TypeError("router.navigate() options must be an object");
+  if (
+    !options ||
+    typeof options !== "object" ||
+    Object.getPrototypeOf(options) !== Object.prototype
+  ) {
+    throw new TypeError("router.navigate() options must be a plain object");
   }
-  const unexpected = Object.keys(options).find((name) => name !== "replace");
+  const unexpected = Reflect.ownKeys(options).find((name) => name !== "replace");
   if (unexpected)
-    throw new TypeError(`router.navigate() options contain unknown property ${unexpected}`);
+    throw new TypeError(`router.navigate() options contain unknown property ${String(unexpected)}`);
   if (options.replace !== undefined && typeof options.replace !== "boolean") {
     throw new TypeError("router.navigate() options replace must be a boolean");
   }
@@ -376,6 +386,8 @@ function listenForNavigation(): () => void {
   };
 }
 
+if (typeof window !== "undefined") listenForNavigation();
+
 const routeTemplate = template("<!--sol:s:0--><!--sol:e:0-->", "tsolroute", {
   elements: [],
   regionCount: 1,
@@ -416,7 +428,6 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
       : render(resolution);
   }
 
-  cleanups.push(listenForNavigation());
   cleanups.push(
     runtimeEffect(() => {
       const location = state.value;
@@ -459,8 +470,7 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
       initialized = true;
     }),
     () => {
-      active?.dispose();
-      outgoing?.dispose();
+      runDisposals([() => active?.dispose(), () => outgoing?.dispose()]);
     },
   );
   return block(view.fragment, cleanups);

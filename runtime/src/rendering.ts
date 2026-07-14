@@ -233,10 +233,17 @@ function flushMounts(coordinator: MountCoordinator): void {
   if (!coordinator.active || coordinator.flushing) return;
   coordinator.flushing = true;
   try {
-    while (coordinator.refMounts.length > 0 || coordinator.portalMounts.length > 0) {
-      while (coordinator.refMounts.length > 0) coordinator.refMounts.shift()!();
-      coordinator.portalMounts.shift()?.();
+    let refIndex = 0;
+    let portalIndex = 0;
+    while (
+      refIndex < coordinator.refMounts.length ||
+      portalIndex < coordinator.portalMounts.length
+    ) {
+      while (refIndex < coordinator.refMounts.length) coordinator.refMounts[refIndex++]!();
+      coordinator.portalMounts[portalIndex++]?.();
     }
+    coordinator.refMounts.length = 0;
+    coordinator.portalMounts.length = 0;
   } finally {
     coordinator.flushing = false;
   }
@@ -350,7 +357,20 @@ export function block(
     retire() {
       if (disposed) return undefined;
       const leaving = combinedTransition(runTransitions(nodes(), "leave"), lifecycle.remoteBlocks);
-      cleanup();
+      try {
+        cleanup();
+      } catch (error) {
+        disposed = true;
+        try {
+          runDisposals([...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove]);
+        } catch (disposalError) {
+          // oxlint-disable-next-line preserve-caught-error -- AggregateError retains both failures and sets the primary cause.
+          throw new AggregateError([error, disposalError], "Block retirement failed", {
+            cause: error,
+          });
+        }
+        throw error;
+      }
       if (!leaving) {
         disposed = true;
         runDisposals([...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove]);
@@ -510,7 +530,20 @@ function ownedBlock(rendered: Block, owner: Cleanup[], devtoolsId = 0): Block {
     retire() {
       if (disposed || retired) return retirement;
       retired = true;
-      disposeOwner(owner);
+      try {
+        disposeOwner(owner);
+      } catch (error) {
+        disposed = true;
+        try {
+          runDisposals([() => rendered.dispose(), () => devtoolsComponentDisposed(devtoolsId)]);
+        } catch (disposalError) {
+          // oxlint-disable-next-line preserve-caught-error -- AggregateError retains both failures and sets the primary cause.
+          throw new AggregateError([error, disposalError], "Component retirement failed", {
+            cause: error,
+          });
+        }
+        throw error;
+      }
       const leaving = rendered.retire();
       if (!leaving) {
         disposed = true;

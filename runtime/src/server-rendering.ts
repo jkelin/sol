@@ -1,3 +1,4 @@
+// oxlint-disable no-control-regex -- Internal template slots intentionally use NUL delimiters.
 import type { Block, TemplateDefinition } from "./rendering.ts";
 import { runCleanups, runDisposals } from "./reactivity.ts";
 import type { SsrSession } from "./ssr-session.ts";
@@ -72,10 +73,6 @@ export function instantiateServer(
 
 function elementSlot(index: number): string {
   return `\0sol:element:${index}\0`;
-}
-
-function regionSlot(index: number): string {
-  return `\0sol:region:${index}\0`;
 }
 
 function prepareElementSlots(html: string, elements: ServerElement[]): string {
@@ -163,7 +160,7 @@ function optionValue(attributes: string, content: string): string {
   return text.replaceAll(/[\t\n\f\r ]+/g, " ").trim();
 }
 
-function renderAttributes(html: string, element: ServerElement): string {
+function renderedAttributeSlot(element: ServerElement): string {
   const marker = `data-sol-e="${element.index}"`;
   const dynamic = [...element.attributes]
     .filter(
@@ -173,63 +170,32 @@ function renderAttributes(html: string, element: ServerElement): string {
       value === undefined ? [] : [value === true ? name : `${name}="${escapeAttribute(value)}"`],
     )
     .join(" ");
-  return html.replace(elementSlot(element.index), `${dynamic ? `${dynamic} ` : ""}${marker}`);
+  return `${dynamic ? `${dynamic} ` : ""}${marker}`;
 }
 
-function renderTextareaValue(html: string, element: ServerElement): string {
-  const value = element.attributes.get("value");
-  if (element.tag !== "textarea" || typeof value !== "string") return html;
-  const marker = elementSlot(element.index);
-  const markerIndex = html.indexOf(marker);
-  const contentStart = html.indexOf(">", markerIndex) + 1;
-  const contentEnd = html.indexOf("</textarea>", contentStart);
-  if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
-    throw new Error(`Invalid server textarea metadata ${element.index}`);
+function renderSpecialElementContent(element: ServerElement, content: string): string {
+  if (element.tag === "textarea") {
+    const value = element.attributes.get("value");
+    if (typeof value === "string") return escapeText(value);
   }
-  return `${html.slice(0, contentStart)}${escapeText(value)}${html.slice(contentEnd)}`;
-}
-
-function renderRawTextValue(html: string, element: ServerElement): string {
-  if (element.textContent === undefined) return html;
-  const marker = elementSlot(element.index);
-  const markerIndex = html.indexOf(marker);
-  const contentStart = html.indexOf(">", markerIndex) + 1;
-  const closingTag = `</${element.tag}>`;
-  const contentEnd = html.indexOf(closingTag, contentStart);
-  if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
-    throw new Error(`Invalid server raw-text metadata ${element.index}`);
-  }
-  const value =
-    element.tag === "script" || element.tag === "style"
-      ? element.textContent
+  if (element.textContent !== undefined) {
+    return element.tag === "script" || element.tag === "style"
+      ? element.textContent.replaceAll(new RegExp(`</${element.tag}`, "gi"), `<\\/${element.tag}`)
       : escapeText(element.textContent);
-  return `${html.slice(0, contentStart)}${value}${html.slice(contentEnd)}`;
-}
-
-function renderSelectValue(html: string, element: ServerElement): string {
-  const value = element.attributes.get("value");
-  if (element.tag !== "select" || typeof value !== "string") return html;
-  const marker = elementSlot(element.index);
-  const markerIndex = html.indexOf(marker);
-  const contentStart = html.indexOf(">", markerIndex) + 1;
-  const contentEnd = html.indexOf("</select>", contentStart);
-  if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
-    throw new Error(`Invalid server select metadata ${element.index}`);
   }
-  const content = html
-    .slice(contentStart, contentEnd)
-    .replaceAll(
-      /<option\b([^>]*)>([\s\S]*?)<\/option\s*>/gi,
-      (option, attributes: string, optionContent: string) => {
-        const withoutSelected = attributes.replace(
-          /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
-          "",
-        );
-        const selected = optionValue(withoutSelected, optionContent) === value ? " selected" : "";
-        return `<option${withoutSelected}${selected}>${optionContent}</option>`;
-      },
-    );
-  return `${html.slice(0, contentStart)}${content}${html.slice(contentEnd)}`;
+  const value = element.attributes.get("value");
+  if (element.tag !== "select" || typeof value !== "string") return content;
+  return content.replaceAll(
+    /<option\b([^>]*)>([\s\S]*?)<\/option\s*>/gi,
+    (option, attributes: string, optionContent: string) => {
+      const withoutSelected = attributes.replace(
+        /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
+        "",
+      );
+      const selected = optionValue(withoutSelected, optionContent) === value ? " selected" : "";
+      return `<option${withoutSelected}${selected}>${optionContent}</option>`;
+    },
+  );
 }
 
 export function setServerAttribute(
@@ -252,44 +218,51 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
   const render = (): string => {
     fragment.session?.recordTemplate(fragment.definition.signature);
     let html = fragment.templateHtml;
+    const renderedRegions = new Set<number>();
+    html = html.replaceAll(
+      /<!--sol:s:(\d+)--><!--sol:e:\1-->/g,
+      (_marker, serializedIndex: string) => {
+        const index = Number(serializedIndex);
+        const region = fragment.regions[index];
+        if (!region || renderedRegions.has(index)) {
+          throw new Error(`Invalid server region metadata ${index}`);
+        }
+        renderedRegions.add(index);
+        const content = region.blocks
+          .map((block) => {
+            if (!isServerBlock(block)) throw new Error("Invalid server-rendered block");
+            return block.serverHtml();
+          })
+          .join("");
+        return `<!--sol:s:${index}-->${content}<!--sol:e:${index}-->`;
+      },
+    );
     for (const region of fragment.regions) {
-      if (!region) continue;
-      const marker = `<!--sol:s:${region.index}--><!--sol:e:${region.index}-->`;
-      if (!html.includes(marker)) throw new Error(`Missing server region metadata ${region.index}`);
-      html = html.replace(marker, regionSlot(region.index));
-    }
-    for (const region of fragment.regions) {
-      if (!region) continue;
-      const content = region.blocks
-        .map((block) => {
-          if (!isServerBlock(block)) throw new Error("Invalid server-rendered block");
-          return block.serverHtml();
-        })
-        .join("");
-      html = html.replace(
-        regionSlot(region.index),
-        `<!--sol:s:${region.index}-->${content}<!--sol:e:${region.index}-->`,
-      );
-    }
-    for (const element of fragment.elements) {
-      if (!element || element.textContent === undefined) continue;
-      html = renderRawTextValue(html, element);
-    }
-    for (const element of fragment.elements) {
-      if (element && element.tag !== "select" && element.tag !== "textarea") {
-        html = renderAttributes(html, element);
+      if (region && !renderedRegions.has(region.index)) {
+        throw new Error(`Missing server region metadata ${region.index}`);
       }
     }
-    for (const element of fragment.elements) {
-      if (!element || element.tag !== "textarea") continue;
-      html = renderTextareaValue(html, element);
-      html = renderAttributes(html, element);
-    }
-    for (const element of fragment.elements) {
-      if (!element || element.tag !== "select") continue;
-      html = renderSelectValue(html, element);
-      html = renderAttributes(html, element);
-    }
+    html = html.replaceAll(
+      new RegExp(
+        `<(script|style|textarea|title|select)\\b([^>]*\\x00sol:element:(\\d+)\\x00[^>]*)>([\\s\\S]*?)<\\/\\1>`,
+        "gi",
+      ),
+      (whole, tag: string, attributes: string, serializedIndex: string, content: string) => {
+        const element = fragment.elements[Number(serializedIndex)];
+        if (!element || element.tag !== tag.toLowerCase()) {
+          throw new Error(`Invalid server element metadata ${serializedIndex}`);
+        }
+        return `<${tag}${attributes}>${renderSpecialElementContent(element, content)}</${tag}>`;
+      },
+    );
+    html = html.replaceAll(
+      new RegExp("\\x00sol:element:(\\d+)\\x00", "g"),
+      (_slot, serializedIndex: string) => {
+        const element = fragment.elements[Number(serializedIndex)];
+        if (!element) throw new Error(`Invalid server element metadata ${serializedIndex}`);
+        return renderedAttributeSlot(element);
+      },
+    );
     return `<!--sol:block:start:${fragment.definition.signature}-->${html}<!--sol:block:end-->`;
   };
   const cleanup = (): void => {

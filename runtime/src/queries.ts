@@ -1,4 +1,11 @@
-import { $signal, batch, isObject, isPromiseLike, runtimeState } from "./reactivity.ts";
+import {
+  $signal,
+  assertOwnerActive,
+  batch,
+  isObject,
+  isPromiseLike,
+  runtimeState,
+} from "./reactivity.ts";
 import type { Cleanup, RenderFrame } from "./rendering.ts";
 import {
   devtoolsMutationCreated,
@@ -114,13 +121,13 @@ export function requestSource<Config extends object>(
   if (config && typeof config === "object") requestSources.set(config, source);
   return config;
 }
-const serverQueryCaches = new WeakMap<URL, Map<string, QueryCacheEntry>>();
+const serverQueryCaches = new WeakMap<object, Map<string, QueryCacheEntry>>();
 
-export function clearServerQueryCache(url: URL | undefined): void {
-  if (!url) return;
-  const cache = serverQueryCaches.get(url);
+export function clearServerQueryCache(scope: object | undefined): void {
+  if (!scope) return;
+  const cache = serverQueryCaches.get(scope);
   if (!cache) return;
-  serverQueryCaches.delete(url);
+  serverQueryCaches.delete(scope);
   for (const entry of cache.values()) {
     if (entry.evictionTimer !== undefined) clearTimeout(entry.evictionTimer);
   }
@@ -277,16 +284,17 @@ function invokeAsync<Data, Args extends unknown[]>(
 
 function queryEntry(key: string, frame: RenderFrame): QueryCacheEntry {
   let cache = queryCache;
-  if (frame.url) {
-    cache = serverQueryCaches.get(frame.url) ?? new Map<string, QueryCacheEntry>();
-    serverQueryCaches.set(frame.url, cache);
+  const serverScope = frame.ssr ?? frame.url;
+  if (serverScope) {
+    cache = serverQueryCaches.get(serverScope) ?? new Map<string, QueryCacheEntry>();
+    serverQueryCaches.set(serverScope, cache);
   }
   let entry = cache.get(key);
   if (entry) return entry;
   entry = {
     key,
     cache,
-    requestScoped: Boolean(frame.url),
+    requestScoped: Boolean(serverScope),
     state: $signal<QueryState<unknown>>({
       data: undefined,
       lastData: undefined,
@@ -464,6 +472,7 @@ function createQuery<Data, Args extends unknown[]>(
       ? { owner: explicitOwner, frame: explicitFrame }
       : activeComponent("$query()");
   const { owner, frame } = active;
+  assertOwnerActive(owner, "$query()");
   const enabled = config.enabled ?? true;
   const key = serializeQueryKey(config.queryKey);
   const entry = queryEntry(key, frame);
@@ -583,6 +592,7 @@ function createMutation<Data, Args extends unknown[]>(
       ? { owner: explicitOwner, frame: explicitFrame }
       : activeComponent("$mutation()");
   const { owner, frame } = active;
+  assertOwnerActive(owner, "$mutation()");
   const state = $signal<MutationState<Data>>({
     data: undefined,
     lastData: undefined,

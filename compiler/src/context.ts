@@ -44,6 +44,8 @@ export interface CompilerContext {
   componentNames: Set<string>;
   componentBindings: Set<t.Identifier>;
   componentElements: WeakSet<t.JSXElement>;
+  componentImports: Set<t.Identifier>;
+  componentCalls: WeakSet<t.CallExpression>;
   builtinImports: Map<t.Identifier, BuiltinKind>;
   builtinElements: WeakMap<t.JSXElement, BuiltinKind>;
   linkImports: Set<t.Identifier>;
@@ -53,6 +55,7 @@ export interface CompilerContext {
   declarationHelperNamespaces: Set<string>;
   requestHelpers: Map<string, "$query" | "$mutation">;
   propsName?: string;
+  mappingMarkerPrefix: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;
   nextAsyncId: number;

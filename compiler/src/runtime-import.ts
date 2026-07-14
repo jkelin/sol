@@ -1,3 +1,8 @@
+import { parse } from "@babel/parser";
+import type { NodePath } from "@babel/traverse";
+import * as t from "@babel/types";
+import { traverse } from "./ast.ts";
+
 const RUNTIME_HELPERS = [
   ["asyncCaptureActive", "__sol_async_capture_active"],
   ["asyncCaptureCall", "__sol_async_capture_call"],
@@ -12,6 +17,7 @@ const RUNTIME_HELPERS = [
   ["child", "__sol_child"],
   ["component", "__sol_component"],
   ["runCleanups", "__sol_cleanup"],
+  ["rethrowWithCleanups", "__sol_rethrow"],
   ["contextProvider", "__sol_context_provider"],
   ["contextUse", "__sol_context_use"],
   ["emptyBlock", "__sol_empty_block"],
@@ -38,7 +44,14 @@ const RUNTIME_HELPERS = [
 ] as const;
 
 export function runtimeImport(generatedCode: string): string {
-  const used = RUNTIME_HELPERS.filter(([, local]) => generatedCode.includes(local));
+  const referenced = new Set<string>();
+  const ast = parse(generatedCode, { sourceType: "module", plugins: ["typescript"] });
+  traverse(ast, {
+    ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
+      if (t.isIdentifier(path.node)) referenced.add(path.node.name);
+    },
+  });
+  const used = RUNTIME_HELPERS.filter(([, local]) => referenced.has(local));
   if (used.length === 0) return "";
   const specifiers = used.map(([exported, local]) => `  ${exported} as ${local}`).join(",\n");
   return `import {\n${specifiers}\n} from "sol/compiler-runtime";`;

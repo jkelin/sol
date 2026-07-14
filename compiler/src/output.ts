@@ -31,7 +31,11 @@ export function emitCompilation(state: CompilationState): CompileResult {
   const imports = [runtimeImport(generatedBody), serverRuntimeImport].filter(Boolean).join("\n");
   transformedSource.prepend(`${imports}\n${templates}\n`);
   const marked = transformedSource.toString();
-  const transformed = marked.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
+  const markerPattern = new RegExp(
+    `/\\*${compiler.mappingMarkerPrefix.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\d+__\\*/`,
+    "g",
+  );
+  const transformed = marked.replaceAll(markerPattern, "");
 
   parse(transformed, {
     sourceType: "module",

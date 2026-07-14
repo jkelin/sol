@@ -78,6 +78,45 @@ describe("compiler", () => {
     expect(result.code).toContain('"pattern":"^/cafe%20au%20lait/Cr%C3%A8me$"');
   });
 
+  test("preserves authored mapping-sentinel text", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       const token = "/*__sol_source_0__*/";
+       export const App = $component(function App() { return <p>{token}</p>; });`,
+      "sentinel.tsx",
+    );
+
+    expect(result.code).toContain('"/*__sol_source_0__*/"');
+  });
+
+  test("does not treat a shadowed $component as the compiler intrinsic", () => {
+    const source = `function $component<T>(value: T): T { return value; }
+      export const value = $component(1);`;
+    expect(compile(source, "ordinary.ts").code).toBe(source);
+  });
+
+  test("does not import runtime helpers mentioned only in authored text", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       const diagnostic = "__sol_portal";
+       export const App = $component(function App() { return <p>{diagnostic}</p>; });`,
+      "text.tsx",
+    );
+    expect(result.code).not.toContain("portal as __sol_portal");
+  });
+
+  test("omits cleanup and lifecycle scaffolding from static templates", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       export const App = $component(function App() { return <p>Static</p>; });`,
+      "static.tsx",
+    );
+
+    expect(result.code).not.toContain("blockLifecycle as __sol_block_lifecycle");
+    expect(result.code).not.toContain("rethrowWithCleanups as __sol_rethrow");
+    expect(result.code).not.toContain("const __sol_cleanups");
+  });
+
   test("preserves route schemas and compiles Link into its anchor child", () => {
     const result = compile(
       `
@@ -1636,6 +1675,33 @@ test("the Vite plugin invalidates both manifests when an existing sol module cha
   listeners.get("change")!("/project/api.sol.ts");
   expect(invalidated).toEqual(["\0virtual:sol/routes", "\0virtual:sol/server-endpoints"]);
   expect(messages).toEqual([{ type: "full-reload" }]);
+});
+
+test("the Vite plugin rejects canonically equivalent route declarations", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-route-collision-"));
+  try {
+    await writeFile(
+      join(root, "first.sol.ts"),
+      'import { $route } from "sol"; import { Page } from "./Page"; export const first = $route({ path: "/café" }, Page);',
+    );
+    await writeFile(
+      join(root, "second.sol.ts"),
+      'import { $route } from "sol"; import { Page } from "./Page"; export const second = $route({ path: "/caf%C3%A9" }, Page);',
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+
+    const failure = await (plugin.load as (id: string) => Promise<unknown>)(
+      "\0virtual:sol/routes",
+    ).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("Duplicate route matcher");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("the endpoint manifest respects helper bindings and canonical HTTP paths", async () => {

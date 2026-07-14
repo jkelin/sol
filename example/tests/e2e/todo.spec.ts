@@ -39,17 +39,17 @@ test("runs the to-do workflow with validation and fine-grained updates", async (
   await waitForHydration(page);
 
   expect(serverDocument).toContain("Things worth finishing");
-  expect(serverDocument).toContain("data-solix-hydration");
-  expect(serverDocument).toContain('<title data-solix-e="0">Margin — 2 tasks left</title>');
-  expect(serverDocument).toContain("2 unfinished notes in the Solix compiler example.");
+  expect(serverDocument).toContain("data-sol-hydration");
+  expect(serverDocument).toContain('<title data-sol-e="0">Margin — 2 tasks left</title>');
+  expect(serverDocument).toContain("2 unfinished notes in the Sol compiler example.");
   expect(pageErrors).toEqual([]);
 
   await expect(page).toHaveTitle("Margin — 2 tasks left");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    "2 unfinished notes in the Solix compiler example.",
+    "2 unfinished notes in the Sol compiler example.",
   );
-  await expect(page.locator("style[data-solix-head-example]")).toHaveJSProperty(
+  await expect(page.locator("style[data-sol-head-example]")).toHaveJSProperty(
     "textContent",
     ":root { --remaining-notes: 2; }",
   );
@@ -143,7 +143,7 @@ test("runs the to-do workflow with validation and fine-grained updates", async (
   await expect(page).toHaveTitle("Margin — 3 tasks left");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    "3 unfinished notes in the Solix compiler example.",
+    "3 unfinished notes in the Sol compiler example.",
   );
   await expect(draft).toHaveValue("");
   await page
@@ -154,7 +154,7 @@ test("runs the to-do workflow with validation and fine-grained updates", async (
     .check({ force: true });
 
   await expect(page).toHaveTitle("Margin — 2 tasks left");
-  await expect(page.locator("style[data-solix-head-example]")).toHaveJSProperty(
+  await expect(page.locator("style[data-sol-head-example]")).toHaveJSProperty(
     "textContent",
     ":root { --remaining-notes: 2; }",
   );

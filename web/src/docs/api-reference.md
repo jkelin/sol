@@ -22,7 +22,7 @@ order: 10
 - `$computed(read)` creates an explicit derived value.
 - `$bind={state}` connects supported form controls in both directions.
 
-`batch()` is an internal compiler-runtime operation, not an author-facing export from `solix`.
+`batch()` is an internal compiler-runtime operation, not an author-facing export from `sol`.
 
 ## Forms
 
@@ -37,7 +37,7 @@ order: 10
 - Query controllers expose `data`, `lastData`, `error`, `isFetching`, `isRefetching`, `isFailed`, and `refetch(options, ...args)`.
 - `$mutation({ mutation, suspense? })` creates an imperative mutation controller without starting work.
 - Mutation controllers expose `data`, `lastData`, `error`, `isMutating`, `isFailed`, and `mutate(options, ...args)`.
-- `QueryKey`, config, controller, Suspense, and per-call option types are exported from `solix`.
+- `QueryKey`, config, controller, Suspense, and per-call option types are exported from `sol`.
 
 ## Server declarations
 
@@ -70,10 +70,10 @@ order: 10
 
 ## Compiler and Vite
 
-- `compile(source, filename, { target? })` from `@solix/compiler` validates and transforms one Solix module for a client or server target. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
+- `compile(source, filename, { target? })` from `@sol/compiler` validates and transforms one Sol module for a client or server target. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
 - `CompileOptions` and `CompileResult` describe that boundary.
-- `solix()` from `@solix/compiler/vite` compiles TSX, discovers `.sol` UI and server declarations, rejects colliding route and endpoint matchers, and maintains both virtual manifests during development.
-- Place `solix()` before other JSX transforms in the Vite plugin list. The website additionally places its Markdown compiler before `solix()` so generated examples use the same compiler path.
+- `sol()` from `@sol/compiler/vite` compiles TSX, discovers `.sol` UI and server declarations, rejects colliding route and endpoint matchers, and maintains both virtual manifests during development.
+- Place `sol()` before other JSX transforms in the Vite plugin list. The website additionally places its Markdown compiler before `sol()` so generated examples use the same compiler path.
 
 ## Validation behavior
 

@@ -31,5 +31,5 @@ export function canonicalHttpRoutePath(path: string): string {
       }
       return segment.normalize("NFC");
     });
-  return new URL(`http://solix/${segments.join("/")}`).pathname;
+  return new URL(`http://sol/${segments.join("/")}`).pathname;
 }

@@ -10,11 +10,11 @@ import {
   type ViteDevServer,
 } from "vite";
 import { compile } from "../src/index.ts";
-import { solix } from "../src/vite.ts";
+import { sol } from "../src/vite.ts";
 
 function linkSource(link: string): string {
   return `
-    import { $component, Link } from "solix";
+    import { $component, Link } from "sol";
     import { detail } from "./detail.route";
     const App = $component(function App() { return ${link}; });
   `;
@@ -22,14 +22,14 @@ function linkSource(link: string): string {
 
 function componentSource(jsx: string, imports = ""): string {
   return `
-    import { $component${imports} } from "solix";
+    import { $component${imports} } from "sol";
     const Child = $component(function Child() { return <p>Child</p>; });
     const App = $component(function App() { return ${jsx}; });
   `;
 }
 
 function injectedDevtools(command: "serve" | "build", enabled?: boolean): IndexHtmlTransformResult {
-  const plugin = enabled === undefined ? solix() : solix({ devtools: enabled });
+  const plugin = enabled === undefined ? sol() : sol({ devtools: enabled });
   const resolve = plugin.configResolved as unknown as (config: ResolvedConfig) => void;
   const transform = plugin.transformIndexHtml as unknown as {
     handler(): IndexHtmlTransformResult;
@@ -42,14 +42,14 @@ describe("compiler", () => {
   test("compiles exported route declarations and path parameters", () => {
     const result = compile(
       `
-      import { $component, $route } from "solix";
+      import { $component, $route } from "sol";
       const Blog = $component(function Blog() { return <main>Blog</main>; });
       export const blog = $route({ path: "/blog/:id?copy=:id&filter=:filter" }, Blog);
     `,
       "blog.sol.tsx",
     );
 
-    expect(result.code).toContain("export const blog = __solix_route");
+    expect(result.code).toContain("export const blog = __sol_route");
     expect(result.code).toContain('"pattern":"^/blog/([^/]+)$"');
     expect(result.code).toContain('"parameterNames":["id","filter"]');
     expect(result.code).toContain('"pathnameParameterNames":["id"]');
@@ -64,14 +64,14 @@ describe("compiler", () => {
          export const page = $route({ path: "/page" }, Page);`,
         `page.sol.${extension}`,
       );
-      expect(routeModule.code).toContain("export const page = __solix_route");
+      expect(routeModule.code).toContain("export const page = __sol_route");
     }
   });
 
   test("preserves route schemas and compiles Link into its anchor child", () => {
     const result = compile(
       `
-      import { $component, $route, Link as RouteLink } from "solix";
+      import { $component, $route, Link as RouteLink } from "sol";
       const schema = { parse: value => value };
       const Blog = $component(function Blog() { return <main>Blog</main>; });
       export const blog = $route({ path: "/blog/:id", schema }, Blog);
@@ -83,15 +83,15 @@ describe("compiler", () => {
       "blog.sol.tsx",
     );
 
-    expect(result.code).toContain('__solix_route({\n  path: "/blog/:id",\n  schema\n}');
-    expect(result.code).toContain("__solix_link(__solix_view.elements[0]");
+    expect(result.code).toContain('__sol_route({\n  path: "/blog/:id",\n  schema\n}');
+    expect(result.code).toContain("__sol_link(__sol_view.elements[0]");
     expect(result.code).toContain('class="entry"');
     expect(result.code).not.toContain("<RouteLink");
   });
 
   test("compiles server declarations for server and browser targets", () => {
     const source = `
-      import { $httpRoute, $rpcMutation, $rpcQuery } from "solix";
+      import { $httpRoute, $rpcMutation, $rpcQuery } from "sol";
       const schema = value => value;
       export const load = $rpcQuery("load", { schema }, async (id) => ({ id }));
       export const save = $rpcMutation("save", { schema }, async (value) => value);
@@ -101,30 +101,30 @@ describe("compiler", () => {
       );
     `;
     const server = compile(source, "api.sol.ts", { target: "server" });
-    expect(server.code).toContain('__solix_rpc_query_server("load"');
-    expect(server.code).toContain('__solix_rpc_mutation_server("save"');
-    expect(server.code).toContain("__solix_http_route_server({");
+    expect(server.code).toContain('__sol_rpc_query_server("load"');
+    expect(server.code).toContain('__sol_rpc_mutation_server("save"');
+    expect(server.code).toContain("__sol_http_route_server({");
     expect(server.code).toContain('new Response("ok")');
 
     const client = compile(source, "api.sol.ts", { target: "client" });
-    expect(client.code).toContain('__solix_rpc_query_client("load")');
-    expect(client.code).toContain('__solix_rpc_mutation_client("save")');
+    expect(client.code).toContain('__sol_rpc_query_client("load")');
+    expect(client.code).toContain('__sol_rpc_mutation_client("save")');
     expect(client.code).toContain(
-      '__solix_http_route_client({ method: "GET", path: "/api/health/:scope" })',
+      '__sol_http_route_client({ method: "GET", path: "/api/health/:scope" })',
     );
     expect(client.code).not.toContain('new Response("ok")');
     expect(client.code).not.toContain("async (id)");
   });
 
-  test("resolves server declaration helpers by Solix binding identity", () => {
+  test("resolves server declaration helpers by Sol binding identity", () => {
     const alias = compile(
-      `import { $rpcQuery as declareQuery } from "solix";
+      `import { $rpcQuery as declareQuery } from "sol";
        import { backend } from "./backend-secret";
        export const load = declareQuery("load", { schema: value => value }, backend);`,
       "alias.sol.ts",
       { target: "client" },
     );
-    expect(alias.code).toContain('__solix_rpc_query_client("load")');
+    expect(alias.code).toContain('__sol_rpc_query_client("load")');
     expect(alias.code).not.toContain("backend-secret");
     const shadowed = `function $rpcQuery() { return "local"; }
       export const value = $rpcQuery("local", { schema: true }, 42);`;
@@ -133,15 +133,15 @@ describe("compiler", () => {
       map: null,
     });
     const namespace = compile(
-      `import * as solix from "solix";
-       const load = solix.$rpcQuery("load", { schema: x => x }, async () => 1);
-       const save = solix["$rpcMutation"]("save", { schema: x => x }, async () => 1);
+      `import * as sol from "sol";
+       const load = sol.$rpcQuery("load", { schema: x => x }, async () => 1);
+       const save = sol["$rpcMutation"]("save", { schema: x => x }, async () => 1);
        export { load as query, save };`,
       "namespace.sol.ts",
       { target: "client" },
     );
-    expect(namespace.code).toContain('const load = __solix_rpc_query_client("load")');
-    expect(namespace.code).toContain('const save = __solix_rpc_mutation_client("save")');
+    expect(namespace.code).toContain('const load = __sol_rpc_query_client("load")');
+    expect(namespace.code).toContain('const save = __sol_rpc_mutation_client("save")');
     expect(namespace.code).toContain("export { load as query, save }");
   });
 
@@ -149,7 +149,7 @@ describe("compiler", () => {
     const result = compile(
       `
         import { readFile } from "node:fs/promises";
-        import { $rpcQuery } from "solix";
+        import { $rpcQuery } from "sol";
         const serverRoot = "/private";
         async function readSecret(path) {
           return readFile(serverRoot + path, "utf8");
@@ -168,12 +168,12 @@ describe("compiler", () => {
     expect(result.code).not.toContain("readSecret");
     expect(result.code).not.toContain("serverRoot");
     expect(result.code).not.toContain("$rpcQuery");
-    expect(result.code).toContain('__solix_rpc_query_client("secret")');
+    expect(result.code).toContain('__sol_rpc_query_client("secret")');
   });
 
   test("keeps backend handlers, validators, dependencies, and secrets out of client modules", () => {
     const source = `
-      import { $httpRoute, $rpcMutation, $rpcQuery } from "solix";
+      import { $httpRoute, $rpcMutation, $rpcQuery } from "sol";
       import type { PublicResult } from "./public-types";
       import { backendDatabase } from "./backend-database-secret";
       import { backendValidator } from "./backend-validator-secret";
@@ -209,11 +209,9 @@ describe("compiler", () => {
     const clientResult = compile(source, "private.sol.ts", { target: "client" });
     const client = clientResult.code;
     expect(client).toContain('import type { PublicResult } from "./public-types"');
-    expect(client).toContain('__solix_rpc_query_client("load")');
-    expect(client).toContain('__solix_rpc_mutation_client("save")');
-    expect(client).toContain(
-      '__solix_http_route_client({ method: "POST", path: "/api/download" })',
-    );
+    expect(client).toContain('__sol_rpc_query_client("load")');
+    expect(client).toContain('__sol_rpc_mutation_client("save")');
+    expect(client).toContain('__sol_http_route_client({ method: "POST", path: "/api/download" })');
     expect(client).not.toContain("backend-database-secret");
     expect(client).not.toContain("backend-validator-secret");
     expect(client).not.toContain("BACKEND_SCHEMA_IMPLEMENTATION_SECRET");
@@ -245,7 +243,7 @@ describe("compiler", () => {
       "assigned.sol.ts",
       { target: "client" },
     );
-    expect(assigned.code).toContain('__solix_rpc_query_client("load")');
+    expect(assigned.code).toContain('__sol_rpc_query_client("load")');
     expect(assigned.code).not.toContain("backend-assignment-secret");
     expect(assigned.code).not.toContain("BACKEND_ASSIGNMENT_COMMENT_SECRET");
     expect(assigned.code).not.toContain("BACKEND_ASSIGNMENT_VALUE_SECRET");
@@ -301,7 +299,7 @@ describe("compiler", () => {
   test("removes comments attached to stripped server dependencies", () => {
     const result = compile(
       `
-        import { $rpcQuery } from "solix";
+        import { $rpcQuery } from "sol";
         // BACKEND_HANDLER_COMMENT_SECRET
         function backendHandler() { return Promise.resolve("secret"); }
         export const load = $rpcQuery("load", { schema: value => value }, backendHandler);
@@ -466,7 +464,7 @@ describe("compiler", () => {
 
   test("compiles $component setup into inferred signals, computeds, and DOM effects", () => {
     const source = `
-      import { $component } from "solix";
+      import { $component } from "sol";
       export const Counter = $component(function Counter(props: { label: string }) {
         let count = 0;
         const doubled = count * 2;
@@ -478,16 +476,16 @@ describe("compiler", () => {
     `;
     const result = compile(source, "Counter.tsx");
 
-    expect(result.code).toContain("const Counter = __solix_component");
+    expect(result.code).toContain("const Counter = __sol_component");
     expect(result.code).toContain('{ name: "Counter", file: "Counter.tsx", line: 3 }');
-    expect(result.code).toContain("const count = __solix_signal(0)");
+    expect(result.code).toContain("const count = __sol_signal(0)");
     expect(result.code).toContain(
-      "const doubled = __solix_computed(() => (count.value * 2), __solix_frame)",
+      "const doubled = __sol_computed(() => (count.value * 2), __sol_frame)",
     );
     expect(result.code).toContain("count.value++");
-    expect(result.code).toContain("__solix_event");
-    expect(result.code).toContain("__solix_attribute");
-    expect(result.code).toContain("__solix_text");
+    expect(result.code).toContain("__sol_event");
+    expect(result.code).toContain("__sol_attribute");
+    expect(result.code).toContain("__sol_text");
     expect(result.code).not.toContain("$component(function");
     expect(result.map?.sources).toContain("Counter.tsx");
     expect(result.map?.sourcesContent).toEqual([source]);
@@ -495,7 +493,7 @@ describe("compiler", () => {
 
   test("maps generated setup and DOM effects to their authored locations", () => {
     const source = [
-      'import { $component } from "solix";',
+      'import { $component } from "sol";',
       "const Counter = $component(function Counter() {",
       "  let count = 0;",
       "  function increment() { count++; }",
@@ -515,16 +513,16 @@ describe("compiler", () => {
       });
     };
 
-    expect(originalFor("const count = __solix_signal").line).toBe(3);
+    expect(originalFor("const count = __sol_signal").line).toBe(3);
     expect(originalFor("function increment").line).toBe(4);
-    expect(originalFor("__solix_event(__solix_view").line).toBe(5);
-    expect(originalFor("__solix_text(__solix_view").line).toBe(5);
+    expect(originalFor("__sol_event(__sol_view").line).toBe(5);
+    expect(originalFor("__sol_text(__sol_view").line).toBe(5);
   });
 
   test("compiles inferred bindings, conditionals, components, and keyed maps", () => {
     const result = compile(
       `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const Row = $component(function Row(props: { todo: { id: number; done: boolean } }) {
         return <li><input type="checkbox" $bind={props.todo.done} /></li>;
       });
@@ -540,11 +538,11 @@ describe("compiler", () => {
       "App.tsx",
     );
 
-    expect(result.code).toContain('__solix_bind(__solix_view.elements[0], "checked"');
-    expect(result.code).toContain('__solix_bind(__solix_view.elements[0], "value"');
-    expect(result.code).toContain("__solix_when");
-    expect(result.code).toContain("__solix_list");
-    expect(result.code).toContain("__solix_child");
+    expect(result.code).toContain('__sol_bind(__sol_view.elements[0], "checked"');
+    expect(result.code).toContain('__sol_bind(__sol_view.elements[0], "value"');
+    expect(result.code).toContain("__sol_when");
+    expect(result.code).toContain("__sol_list");
+    expect(result.code).toContain("__sol_child");
   });
 
   test("compiles intrinsic transition directives and rejects invalid placements", () => {
@@ -556,7 +554,7 @@ describe("compiler", () => {
       "Transitions.tsx",
     );
 
-    expect(result.code).toContain("__solix_transition(__solix_view.elements[0], () => (fade))");
+    expect(result.code).toContain("__sol_transition(__sol_view.elements[0], () => (fade))");
     expect(result.code).not.toContain('$transition="');
     expect(() =>
       compile(
@@ -576,7 +574,7 @@ describe("compiler", () => {
   test("compiles intrinsic refs and portal builtins", () => {
     const result = compile(
       `
-      import { $component, createRef as makeRef, GlobalPortal as BodyPortal, Portal as TargetPortal } from "solix";
+      import { $component, createRef as makeRef, GlobalPortal as BodyPortal, Portal as TargetPortal } from "sol";
       const App = $component(function App() {
         const target = makeRef<HTMLDivElement>();
         const callback = (element: HTMLButtonElement | null) => void element;
@@ -590,20 +588,20 @@ describe("compiler", () => {
       "Portals.tsx",
     );
 
-    expect(result.code).toContain("__solix_block_lifecycle(__solix_frame)");
+    expect(result.code).toContain("__sol_block_lifecycle(__sol_frame)");
     expect(result.code).toContain("const target = makeRef<HTMLDivElement>();");
-    expect(result.code).not.toContain("__solix_signal(makeRef())");
-    expect(result.code).toContain("__solix_ref(__solix_view.elements[0]");
-    expect(result.code).toContain("__solix_portal(() => (target.current!)");
-    expect(result.code).toContain("__solix_global_portal(");
-    expect(result.code).toContain('<button data-solix-e="0">Targeted</button><span>Sibling</span>');
+    expect(result.code).not.toContain("__sol_signal(makeRef())");
+    expect(result.code).toContain("__sol_ref(__sol_view.elements[0]");
+    expect(result.code).toContain("__sol_portal(() => (target.current!)");
+    expect(result.code).toContain("__sol_global_portal(");
+    expect(result.code).toContain('<button data-sol-e="0">Targeted</button><span>Sibling</span>');
     expect(result.code).not.toContain("<TargetPortal");
     expect(result.code).not.toContain("<BodyPortal");
   });
 
   test("maps ref and portal operations to their authored JSX", () => {
     const source = [
-      'import { $component, createRef, GlobalPortal, Portal } from "solix";',
+      'import { $component, createRef, GlobalPortal, Portal } from "sol";',
       "const App = $component(function App() {",
       "  const target = createRef<HTMLDivElement>();",
       "  const callback = (element: HTMLDivElement | null) => void element;",
@@ -626,9 +624,9 @@ describe("compiler", () => {
       }).line;
     };
 
-    expect(originalLine("__solix_ref(__solix_view")).toBe(6);
-    expect(originalLine("__solix_portal(() =>")).toBe(7);
-    expect(originalLine("__solix_global_portal(")).toBe(8);
+    expect(originalLine("__sol_ref(__sol_view")).toBe(6);
+    expect(originalLine("__sol_portal(() =>")).toBe(7);
+    expect(originalLine("__sol_global_portal(")).toBe(8);
   });
 
   test("validates ref and portal compiler boundaries", () => {
@@ -676,16 +674,16 @@ describe("compiler", () => {
       "NestedLists.tsx",
     );
 
-    expect(result.code).toContain("__solix_item_0.value.name");
-    expect(result.code).toContain("__solix_item_1.value.label");
-    expect(result.code).toContain("(__solix_item_0, __solix_index_0, __solix_frame)");
-    expect(result.code).toContain("(__solix_item_1, __solix_index_1, __solix_frame)");
+    expect(result.code).toContain("__sol_item_0.value.name");
+    expect(result.code).toContain("__sol_item_1.value.label");
+    expect(result.code).toContain("(__sol_item_0, __sol_index_0, __sol_frame)");
+    expect(result.code).toContain("(__sol_item_1, __sol_index_1, __sol_frame)");
   });
 
   test("supports explicit reactive overrides and every class alias", () => {
     const result = compile(
       `
-      import { $component, $computed, $signal } from "solix";
+      import { $component, $computed, $signal } from "sol";
       const App = $component(function App() {
         const count = $signal(1);
         const doubled = $computed(() => count * 2);
@@ -699,16 +697,16 @@ describe("compiler", () => {
       "Aliases.tsx",
     );
 
-    expect(result.code).toContain("__solix_signal(1)");
-    expect(result.code).toContain("__solix_computed(() => count.value * 2, __solix_frame)");
+    expect(result.code).toContain("__sol_signal(1)");
+    expect(result.code).toContain("__sol_computed(() => count.value * 2, __sol_frame)");
     expect(result.code).toContain('<p class="static">');
-    expect(result.code.match(/__solix_attribute\(/g)?.length).toBe(2);
+    expect(result.code.match(/__sol_attribute\(/g)?.length).toBe(2);
   });
 
   test("infers value and checked bindings for every supported form control", () => {
     const result = compile(
       `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const Form = $component(function Form() {
         let text = "";
         let selected = "all";
@@ -723,8 +721,8 @@ describe("compiler", () => {
       "Form.tsx",
     );
 
-    expect(result.code.match(/__solix_bind\([^\n]+"value"/g)?.length).toBe(2);
-    expect(result.code.match(/__solix_bind\([^\n]+"checked"/g)?.length).toBe(1);
+    expect(result.code.match(/__sol_bind\([^\n]+"value"/g)?.length).toBe(2);
+    expect(result.code.match(/__sol_bind\([^\n]+"checked"/g)?.length).toBe(1);
     expect(
       result.code.match(/"kind":"bind","target":"element","index":\d+,"name":"value"/g)?.length,
     ).toBe(2);
@@ -734,7 +732,7 @@ describe("compiler", () => {
   test("connects form controllers through the $form element property", () => {
     const result = compile(
       `
-      import { $component, $form } from "solix";
+      import { $component, $form } from "sol";
       const Form = $component(function Form() {
         const controller = $form({ schema: value => value, defaultValues: { title: "" } }, () => {});
         return <form $form={controller}><input name="title" $bind={controller.values.title} /></form>;
@@ -752,22 +750,22 @@ describe("compiler", () => {
   test("resolves component declarations independently of capitalization", () => {
     const result = compile(
       `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const row = $component(function row() { return <span>Row</span>; });
       const app = $component(function app() { return <row />; });
     `,
       "Lowercase.tsx",
     );
 
-    expect(result.code).toContain("const row = __solix_component");
-    expect(result.code).toContain("__solix_child");
+    expect(result.code).toContain("const row = __sol_component");
+    expect(result.code).toContain("__sol_child");
     expect(result.code).not.toContain("<row>");
   });
 
   test("compiles contexts, async components, suspense, await, and error boundaries", () => {
     const result = compile(
       `
-      import { $component, $context, Suspense, Await, ErrorBoundary } from "solix";
+      import { $component, $context, Suspense, Await, ErrorBoundary } from "sol";
       const messageContext = $context<{ message: string }>();
       const AsyncChild = $component(async function AsyncChild() {
         const context = messageContext.use();
@@ -798,19 +796,17 @@ describe("compiler", () => {
       "AsyncContext.tsx",
     );
 
-    expect(result.code).toContain("__solix_component(async (");
-    expect(result.code).toContain("__solix_context_provider");
-    expect(result.code).toContain("__solix_context_use(messageContext, __solix_frame, false)");
-    expect(result.code).toContain("__solix_context_use(service.value, __solix_frame, false)");
-    expect(result.code).toContain(
-      "__solix_context_use(messageContext.value, __solix_frame, false)",
-    );
-    expect(result.code).toContain("__solix_error_boundary");
-    expect(result.code).toContain("__solix_suspense");
-    expect(result.code).toContain("__solix_await");
-    expect(result.code).toContain('__solix_async_value(__solix_frame, "await:AsyncContext.tsx:0"');
-    expect(result.code).toContain("__solix_frame, 250)");
-    expect(result.code).toMatch(/__solix_template\(`[^`]*`, "t[a-z0-9]+", \{/);
+    expect(result.code).toContain("__sol_component(async (");
+    expect(result.code).toContain("__sol_context_provider");
+    expect(result.code).toContain("__sol_context_use(messageContext, __sol_frame, false)");
+    expect(result.code).toContain("__sol_context_use(service.value, __sol_frame, false)");
+    expect(result.code).toContain("__sol_context_use(messageContext.value, __sol_frame, false)");
+    expect(result.code).toContain("__sol_error_boundary");
+    expect(result.code).toContain("__sol_suspense");
+    expect(result.code).toContain("__sol_await");
+    expect(result.code).toContain('__sol_async_value(__sol_frame, "await:AsyncContext.tsx:0"');
+    expect(result.code).toContain("__sol_frame, 250)");
+    expect(result.code).toMatch(/__sol_template\(`[^`]*`, "t[a-z0-9]+", \{/);
     expect(result.code).toContain('"elements":["p"]');
     expect(result.code).toContain('"regions":[0,1]');
     expect(result.code).toMatch(/"operations":\[\{"id":"o[a-z0-9]+","kind":"attribute"/);
@@ -831,16 +827,16 @@ describe("compiler", () => {
       "ImportedContext.tsx",
     );
 
-    expect(result.code).toContain("__solix_context_use(sharedContext, __solix_frame, false)");
+    expect(result.code).toContain("__sol_context_use(sharedContext, __sol_frame, false)");
   });
 
   test("reserves private hydration element markers", () => {
     expect(() =>
       compile(
-        `const App = $component(function App() { return <main data-solix-e="authored">Bad</main>; });`,
+        `const App = $component(function App() { return <main data-sol-e="authored">Bad</main>; });`,
         "PrivateMarker.tsx",
       ),
-    ).toThrow("data-solix-e is reserved for hydration metadata");
+    ).toThrow("data-sol-e is reserved for hydration metadata");
   });
 
   test("captures component awaits without instrumenting fire-and-forget helper work", () => {
@@ -858,14 +854,14 @@ describe("compiler", () => {
       "AsyncSideEffect.tsx",
     );
 
-    expect(result.code.match(/__solix_async_value/g)).toHaveLength(3);
-    expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(2);
+    expect(result.code.match(/__sol_async_value/g)).toHaveLength(3);
+    expect(result.code.match(/__sol_async_value\(__sol_frame/g)).toHaveLength(2);
     expect(result.code).toContain('await Promise.resolve("side effect")');
     expect(result.code).toContain(
-      '__solix_capture_enabled ? __solix_async_value(__solix_frame, "await:AsyncSideEffect.tsx:0"',
+      '__sol_capture_enabled ? __sol_async_value(__sol_frame, "await:AsyncSideEffect.tsx:0"',
     );
     expect(result.code).toContain(
-      "const nested = __solix_signal(await __solix_async_capture_call(() => load(), true))",
+      "const nested = __sol_signal(await __sol_async_capture_call(() => load(), true))",
     );
   });
 
@@ -884,10 +880,10 @@ describe("compiler", () => {
       "AwaitedCallback.tsx",
     );
 
-    expect(result.code.match(/__solix_async_value\(__solix_frame/g)).toHaveLength(1);
+    expect(result.code.match(/__sol_async_value\(__sol_frame/g)).toHaveLength(1);
     expect(result.code).toContain('await Promise.resolve("side effect")');
     expect(result.code).toContain("void sideEffect()");
-    expect(result.code).not.toContain("__solix_async_capture_call(() => sideEffect()");
+    expect(result.code).not.toContain("__sol_async_capture_call(() => sideEffect()");
   });
 
   test("namespaces async sites by compiled module", () => {
@@ -918,17 +914,17 @@ describe("compiler", () => {
 
     expect(result.code).toContain('await Promise.resolve("shadow")');
     expect(result.code).toContain(
-      '__solix_capture_enabled ? __solix_async_value(__solix_frame, "await:ShadowedHelper.tsx:0", () => Promise.resolve("outer"))',
+      '__sol_capture_enabled ? __sol_async_value(__sol_frame, "await:ShadowedHelper.tsx:0", () => Promise.resolve("outer"))',
     );
     expect(result.code).toContain(
-      "const value = __solix_signal(await __solix_async_capture_call(() => load(), true))",
+      "const value = __sol_signal(await __sol_async_capture_call(() => load(), true))",
     );
   });
 
   test("compiles Head children and raw-text elements", () => {
     const result = compile(
       `
-      import { $component, Head as DocumentHead } from "solix";
+      import { $component, Head as DocumentHead } from "sol";
       const App = $component(function App() {
         let title = "First";
         const description = "Reactive description";
@@ -946,24 +942,24 @@ describe("compiler", () => {
       "Head.tsx",
     );
 
-    expect(result.code).toContain("__solix_head");
-    expect(result.code).toContain("__solix_raw_text");
+    expect(result.code).toContain("__sol_head");
+    expect(result.code).toContain("__sol_raw_text");
     expect(result.code).not.toContain("<DocumentHead");
-    expect(result.code).not.toContain("<!--solix:s:");
+    expect(result.code).not.toContain("<!--sol:s:");
   });
 
   test("validates the compiler-specialized Head interface", () => {
     const cases = [
       {
-        source: `import { $component, Head } from "solix"; const App = $component(function App() { return <Head title="Invalid" />; });`,
+        source: `import { $component, Head } from "sol"; const App = $component(function App() { return <Head title="Invalid" />; });`,
         message: "Unexpected title property",
       },
       {
-        source: `import { $component, Head } from "solix"; const props = {}; const App = $component(function App() { return <Head {...props} />; });`,
+        source: `import { $component, Head } from "sol"; const props = {}; const App = $component(function App() { return <Head {...props} />; });`,
         message: "JSX spread attributes are not supported in v1",
       },
       {
-        source: `import { $component, Head } from "solix"; const App = $component(function App() { return <Head><title><span>Invalid</span></title></Head>; });`,
+        source: `import { $component, Head } from "sol"; const App = $component(function App() { return <Head><title><span>Invalid</span></title></Head>; });`,
         message: "Raw-text element children must be text or expressions",
       },
     ];
@@ -975,15 +971,15 @@ describe("compiler", () => {
 
   test("treats empty Head blocks as no-ops and respects lexical shadowing", () => {
     const empty = compile(
-      `import { $component, Head } from "solix"; const App = $component(function App() { return <Head />; });`,
+      `import { $component, Head } from "sol"; const App = $component(function App() { return <Head />; });`,
       "EmptyHead.tsx",
     );
-    expect(empty.code.match(/__solix_head\(/g) ?? []).toHaveLength(0);
+    expect(empty.code.match(/__sol_head\(/g) ?? []).toHaveLength(0);
 
     expect(() =>
       compile(
         `
-        import { $component, Head as DocumentHead } from "solix";
+        import { $component, Head as DocumentHead } from "sol";
         const Local = $component(function Local() { return <p>Local</p>; });
         const App = $component(function App() {
           const DocumentHead = Local;
@@ -1004,7 +1000,7 @@ describe("compiler", () => {
     for (const expression of expressions) {
       expect(() =>
         compile(
-          `import { $component } from "solix"; const App = $component(function App() { const ready = true; return <title>{${expression}}</title>; });`,
+          `import { $component } from "sol"; const App = $component(function App() { const ready = true; return <title>{${expression}}</title>; });`,
           "RawText.tsx",
         ),
       ).toThrow("Raw-text element children must be text or expressions");
@@ -1014,31 +1010,31 @@ describe("compiler", () => {
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {
-        source: `import { $component, Suspense } from "solix"; const App = $component(function App() { return <Suspense><p>Child</p></Suspense>; });`,
+        source: `import { $component, Suspense } from "sol"; const App = $component(function App() { return <Suspense><p>Child</p></Suspense>; });`,
         message: "JSX property fallback is required",
       },
       {
-        source: `import { $component, Await } from "solix"; const App = $component(function App() { return <Await $promise={Promise.resolve(1)} />; });`,
+        source: `import { $component, Await } from "sol"; const App = $component(function App() { return <Await $promise={Promise.resolve(1)} />; });`,
         message: "Await requires exactly one inline data-renderer child",
       },
       {
-        source: `import { $component, ErrorBoundary } from "solix"; const App = $component(function App() { return <ErrorBoundary fallback={<p>Error</p>}><p>Child</p></ErrorBoundary>; });`,
+        source: `import { $component, ErrorBoundary } from "sol"; const App = $component(function App() { return <ErrorBoundary fallback={<p>Error</p>}><p>Child</p></ErrorBoundary>; });`,
         message: "Error and data renderers must be inline functions",
       },
       {
-        source: `import { $component, $context } from "solix"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider><p>Child</p></context.Provider>; });`,
+        source: `import { $component, $context } from "sol"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider><p>Child</p></context.Provider>; });`,
         message: "JSX property data is required",
       },
       {
-        source: `import { $component, Await } from "solix"; const App = $component(function App() { return <Await $promise={123}>{value => <p>{value}</p>}</Await>; });`,
+        source: `import { $component, Await } from "sol"; const App = $component(function App() { return <Await $promise={123}>{value => <p>{value}</p>}</Await>; });`,
         message: "Await $promise must be a promise expression",
       },
       {
-        source: `import { $component, Suspense } from "solix"; const App = $component(function App() { return <Suspense fallback={<p>Wait</p>} timeoutMs><p>Child</p></Suspense>; });`,
+        source: `import { $component, Suspense } from "sol"; const App = $component(function App() { return <Suspense fallback={<p>Wait</p>} timeoutMs><p>Child</p></Suspense>; });`,
         message: "Suspense timeoutMs must be a number expression",
       },
       {
-        source: `import { $component, $context } from "solix"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider data={123}><p>Child</p></context.Provider>; });`,
+        source: `import { $component, $context } from "sol"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider data={123}><p>Child</p></context.Provider>; });`,
         message: "Context Provider data must be an object expression",
       },
     ];
@@ -1049,7 +1045,7 @@ describe("compiler", () => {
 
     expect(() =>
       compile(
-        `import { $component, $context } from "solix"; const context = $context<RegExp>(); const App = $component(function App() { return <context.Provider data={/valid object/}><p>Child</p></context.Provider>; });`,
+        `import { $component, $context } from "sol"; const context = $context<RegExp>(); const App = $component(function App() { return <context.Provider data={/valid object/}><p>Child</p></context.Provider>; });`,
         "RegexContext.tsx",
       ),
     ).not.toThrow();
@@ -1083,7 +1079,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { signal } from "solix";
+      import { signal } from "sol";
       export const value = signal(1);
     `,
         "Invalid.tsx",
@@ -1093,7 +1089,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App({ name }: { name: string }) {
         return <p>{name}</p>;
       });
@@ -1105,7 +1101,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App(props: { values: string[] }) {
         return <ul>{props.values.map(value => <li>{value}</li>)}</ul>;
       });
@@ -1127,7 +1123,7 @@ describe("compiler", () => {
       compile(
         `
       import type { Missing } from "./types";
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() { return <Missing />; });
     `,
         "Invalid.tsx",
@@ -1137,7 +1133,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         let value = false;
         let kind = "checkbox";
@@ -1151,7 +1147,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         return <input $bind={"snapshot"} />;
       });
@@ -1163,7 +1159,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         let value = "";
         return <input bind:value={value} />;
@@ -1176,7 +1172,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         return <p class="one" className="two">Duplicate</p>;
       });
@@ -1188,7 +1184,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         let source = 1;
         const doubled = source * 2;
@@ -1203,7 +1199,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         const later = source + 1;
         let source = 1;
@@ -1217,7 +1213,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         const value = value + 1;
         return <p>{value}</p>;
@@ -1230,7 +1226,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         let values = [1];
         const length = values.push(2);
@@ -1244,7 +1240,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App() {
         let source = 1;
         const doubled = source * 2;
@@ -1258,7 +1254,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App(props: { value: string }) {
         return <input $bind={props.value} />;
       });
@@ -1270,7 +1266,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const Child = $component(function Child() { return <p>Child</p>; });
       const App = $component(function App() {
         let value = "";
@@ -1284,7 +1280,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       function makeComponent() {
         return $component(function Nested() { return null as never; });
       }
@@ -1296,7 +1292,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App(props: { ready: boolean }) {
         if (!props.ready) return <p>Waiting</p>;
         return <p>Ready</p>;
@@ -1309,7 +1305,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App(props: { value: string }) {
         return <div {...props}>{props.value}</div>;
       });
@@ -1321,7 +1317,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(() => <p>Arrow</p>);
     `,
         "Invalid.tsx",
@@ -1374,29 +1370,29 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      const __solix_signal = 1;
-      const App = $component(function App() { return <p>{__solix_signal}</p>; });
+      const __sol_signal = 1;
+      const App = $component(function App() { return <p>{__sol_signal}</p>; });
     `,
         "ReservedModule.tsx",
       ),
-    ).toThrow("reserved compiler prefix __solix_");
+    ).toThrow("reserved compiler prefix __sol_");
 
     expect(() =>
       compile(
         `
       const App = $component(function App() {
-        let __solix_view = 1;
-        return <p>{__solix_view}</p>;
+        let __sol_view = 1;
+        return <p>{__sol_view}</p>;
       });
     `,
         "ReservedComponent.tsx",
       ),
-    ).toThrow("reserved compiler prefix __solix_");
+    ).toThrow("reserved compiler prefix __sol_");
 
     expect(() =>
       compile(
         `
-      import { $component, Fragment } from "solix";
+      import { $component, Fragment } from "sol";
       const App = $component(function App() { return <Fragment />; });
     `,
         "FrameworkImport.tsx",
@@ -1405,19 +1401,19 @@ describe("compiler", () => {
 
     const externalComponent = compile(
       `
-      import { $component } from "solix";
+      import { $component } from "sol";
       import { Row } from "./Row";
       const App = $component(function App() { return <Row />; });
     `,
       "ExternalComponent.tsx",
     );
-    expect(externalComponent.code).toContain("__solix_child");
+    expect(externalComponent.code).toContain("__sol_child");
   });
 
   test("validates binding roots, readonly props, and event spelling", () => {
     const valid = compile(
       `
-      import { $component } from "solix";
+      import { $component } from "sol";
       const App = $component(function App(props: { todo: { done: boolean } }) {
         let todos = [{ id: 1, done: false }];
         function updateNestedProp() { props.todo.done = true; }
@@ -1429,7 +1425,7 @@ describe("compiler", () => {
     `,
       "ValidBoundaries.tsx",
     );
-    expect(valid.code.match(/__solix_bind/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(valid.code.match(/__sol_bind/g)?.length).toBeGreaterThanOrEqual(2);
 
     expect(() =>
       compile(
@@ -1463,7 +1459,7 @@ describe("compiler", () => {
       expect(() =>
         compile(
           `
-        import { $component } from "solix";
+        import { $component } from "sol";
         const external = { value: "" };
         const App = $component(function App() { return <input $bind={${expression}} />; });
       `,
@@ -1485,7 +1481,7 @@ describe("compiler", () => {
       expect(() =>
         compile(
           `
-        import { $component } from "solix";
+        import { $component } from "sol";
         const App = $component(function App(props: { value: number }) {
           function mutate() { ${statement} }
           return <button onClick={mutate}>{props.value}</button>;
@@ -1552,8 +1548,8 @@ test("the Vite plugin enables devtools only for development by default", () => {
       tag: "script",
       attrs: {
         type: "module",
-        src: "/@id/solix/devtools",
-        "data-solix-devtools": "",
+        src: "/@id/sol/devtools",
+        "data-sol-devtools": "",
       },
       injectTo: "head-prepend",
     },
@@ -1564,18 +1560,18 @@ test("the Vite plugin enables devtools only for development by default", () => {
       tag: "script",
       attrs: {
         type: "module",
-        src: "/@solix/devtools",
-        "data-solix-devtools": "",
+        src: "/@sol/devtools",
+        "data-sol-devtools": "",
       },
       injectTo: "head-prepend",
     },
   ]);
   expect(injectedDevtools("serve", false)).toEqual([]);
-  expect(() => solix({ devtools: "yes" as never })).toThrow("must be a boolean");
+  expect(() => sol({ devtools: "yes" as never })).toThrow("must be a boolean");
 });
 
 test("the Vite plugin invalidates both manifests when an existing sol module changes", () => {
-  const plugin = solix();
+  const plugin = sol();
   const resolve = plugin.configResolved as unknown as (config: ResolvedConfig) => void;
   resolve({ command: "serve", root: "/project" } as ResolvedConfig);
   const listeners = new Map<string, (file: string) => void>();
@@ -1606,33 +1602,33 @@ test("the Vite plugin invalidates both manifests when an existing sol module cha
   expect(configure(server)).toBeUndefined();
   expect([...listeners.keys()].toSorted()).toEqual(["add", "change", "unlink"]);
   listeners.get("change")!("/project/api.sol.ts");
-  expect(invalidated).toEqual(["\0virtual:solix/routes", "\0virtual:solix/server-endpoints"]);
+  expect(invalidated).toEqual(["\0virtual:sol/routes", "\0virtual:sol/server-endpoints"]);
   expect(messages).toEqual([{ type: "full-reload" }]);
 });
 
 test("the endpoint manifest respects helper bindings and canonical HTTP paths", async () => {
-  const root = await mkdtemp(join(tmpdir(), "solix-endpoints-"));
+  const root = await mkdtemp(join(tmpdir(), "sol-endpoints-"));
   try {
     await writeFile(
       join(root, "real.sol.ts"),
-      `import * as solix from "solix"; const load = solix["$rpcQuery"]("load", { schema: x => x }, async () => 1); export { load as query };`,
+      `import * as sol from "sol"; const load = sol["$rpcQuery"]("load", { schema: x => x }, async () => 1); export { load as query };`,
     );
     await writeFile(
       join(root, "shadow.sol.ts"),
       `function $rpcQuery() { return null; } export const local = $rpcQuery("load", {}, null);`,
     );
-    const plugin = solix();
+    const plugin = sol();
     (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
       command: "build",
       root,
     } as ResolvedConfig);
-    const resolved = (plugin.resolveId as (id: string) => string)("virtual:solix/server-endpoints");
+    const resolved = (plugin.resolveId as (id: string) => string)("virtual:sol/server-endpoints");
     const manifest = await (plugin.load as (id: string) => Promise<unknown>)(resolved);
     expect(manifest).toBeString();
 
     await writeFile(
       join(root, "unicode-a.sol.ts"),
-      `import { $httpRoute as route } from "solix"; export const a = route({ method: "GET", path: "/café space", schema: x => x }, async () => new Response());`,
+      `import { $httpRoute as route } from "sol"; export const a = route({ method: "GET", path: "/café space", schema: x => x }, async () => new Response());`,
     );
     await writeFile(
       join(root, "unicode-b.sol.ts"),
@@ -1651,7 +1647,7 @@ test("the endpoint manifest respects helper bindings and canonical HTTP paths", 
 test("emits authored source metadata for query and mutation diagnostics", () => {
   const result = compile(
     `
-      import { $component, $query as query, $mutation } from "solix";
+      import { $component, $query as query, $mutation } from "sol";
       const Requests = $component(function Requests() {
         const project = query({ queryKey: ["project"], query: async () => 1 });
         const save = $mutation({ mutation: async () => 1 });
@@ -1662,10 +1658,10 @@ test("emits authored source metadata for query and mutation diagnostics", () => 
   );
 
   expect(result.code).toMatch(
-    /query\(__solix_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 4,[\s\S]*?column: 24/,
+    /query\(__sol_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 4,[\s\S]*?column: 24/,
   );
   expect(result.code).toMatch(
-    /\$mutation\(__solix_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 5,[\s\S]*?column: 21/,
+    /\$mutation\(__sol_request_source\(\{[\s\S]*?file: "Requests\.tsx",[\s\S]*?line: 5,[\s\S]*?column: 21/,
   );
 });
 
@@ -1673,7 +1669,7 @@ test("an explicitly enabled production build bundles devtools", async () => {
   const result = await build({
     root: join(import.meta.dir, "fixtures/devtools-build"),
     logLevel: "silent",
-    plugins: [solix({ devtools: true })],
+    plugins: [sol({ devtools: true })],
     build: { write: false },
   });
   const outputs = (Array.isArray(result) ? result : [result]).flatMap((item) => {
@@ -1684,6 +1680,6 @@ test("an explicitly enabled production build bundles devtools", async () => {
     .map((output) => (output.type === "chunk" ? output.code : String(output.source)))
     .join("\n");
 
-  expect(bundled).toContain("solix_get_diagnostics");
-  expect(bundled).not.toContain("/@id/solix/devtools");
+  expect(bundled).toContain("sol_get_diagnostics");
+  expect(bundled).not.toContain("/@id/sol/devtools");
 });

@@ -55,7 +55,7 @@ export async function registrySource(root: string): Promise<string> {
     (document, index) =>
       `{props.slug === ${JSON.stringify(document.metadata.slug)} && <Doc${index} />}`,
   );
-  return `import { $component } from "solix";
+  return `import { $component } from "sol";
 ${imports.join("\n")}
 export const docs = ${JSON.stringify(ordered.map((document) => document.metadata))} as const;
 export const DocsContent = $component<{ readonly slug: string }>(function DocsContent(props) {

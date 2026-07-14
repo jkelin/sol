@@ -1,19 +1,19 @@
-# Solix compiler
+# Sol compiler
 
-`@solix/compiler` transforms Solix TSX into static HTML templates and fine-grained DOM operations. Most projects use its Vite adapter:
+`@sol/compiler` transforms Sol TSX into static HTML templates and fine-grained DOM operations. Most projects use its Vite adapter:
 
 ```ts
-import { solix } from "@solix/compiler/vite";
+import { sol } from "@sol/compiler/vite";
 import { defineConfig } from "vite";
 
-export default defineConfig({ plugins: [solix()] });
+export default defineConfig({ plugins: [sol()] });
 ```
 
-`solix()` injects `solix/devtools` into development HTML by default and omits it from production
+`sol()` injects `sol/devtools` into development HTML by default and omits it from production
 builds. Pass `{ devtools: false }` to disable the development panel, or `{ devtools: true }` to
 include it explicitly for another Vite command. The option boundary rejects non-boolean values.
 
-Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It returns transformed code and a source map.
+Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It returns transformed code and a source map.
 
 ## Source files
 
@@ -26,7 +26,7 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
   selecting direct server definitions or browser stubs and pruning imports, declarators,
   assignments, effect statements, attached comments, and exported dependency closures used only
   by stripped server expressions. Declaration helpers are resolved through named, aliased, or
-  namespace Solix import bindings and may be published by inline or later export declarations;
+  namespace Sol import bindings and may be published by inline or later export declarations;
   ambiguous mixed frontend/server effects receive a diagnostic instead of being deleted.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
 - `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax,
@@ -40,7 +40,7 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists, conditionals, and child expressions into templates and runtime operations.
 - `setup.ts` analyzes component setup and rewrites local state, derived values, props, frame-explicit context reads, and component factories while preserving `createRef()` objects as non-reactive handles and attaching authored locations to query/mutation diagnostics.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
-- `runtime-import.ts` defines the common generated import from `solix/compiler-runtime`; output adds
+- `runtime-import.ts` defines the common generated import from `sol/compiler-runtime`; output adds
   a target-specific endpoint import only for modules containing server declarations.
 - `compile.ts` validates input, creates compilation state, and sequences analysis, declaration lowering, final validation, and emission.
 - `vite.ts` discovers `.sol.ts` and `.sol.tsx` modules, provides UI-route and server-endpoint

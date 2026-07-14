@@ -179,7 +179,7 @@ export function instantiate(definition: TemplateDefinition, frame?: RenderFrame)
     return instantiateHydrated(definition, frame.hydration, frame.claim);
   }
   if (typeof document === "undefined") {
-    throw new Error("solix can only instantiate templates in a browser DOM");
+    throw new Error("sol can only instantiate templates in a browser DOM");
   }
   definition.element ??= document.createElement("template");
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
@@ -195,11 +195,11 @@ export function instantiate(definition: TemplateDefinition, frame?: RenderFrame)
     }
   }
   const elements: Element[] = [];
-  for (const element of fragment.querySelectorAll<HTMLElement>("[data-solix-e]")) {
-    const index = Number(element.dataset.solixE);
+  for (const element of fragment.querySelectorAll<HTMLElement>("[data-sol-e]")) {
+    const index = Number(element.dataset.solE);
     if (!Number.isInteger(index)) throw new Error("Invalid compiled element marker");
     elements[index] = element;
-    element.removeAttribute("data-solix-e");
+    element.removeAttribute("data-sol-e");
   }
 
   const starts = new Map<number, Comment>();
@@ -207,7 +207,7 @@ export function instantiate(definition: TemplateDefinition, frame?: RenderFrame)
   const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_COMMENT);
   while (walker.nextNode()) {
     const comment = walker.currentNode as Comment;
-    const match = /^solix:(s|e):(\d+)$/.exec(comment.data);
+    const match = /^sol:(s|e):(\d+)$/.exec(comment.data);
     if (!match) continue;
     const index = Number(match[2]);
     if (match[1] === "s") starts.set(index, comment);
@@ -272,8 +272,8 @@ export function block(
 ): Block {
   if (isServerFragment(fragment)) return serverBlock(fragment, cleanups);
   if (isHydratedFragment(fragment)) return hydratedBlock(fragment, cleanups, lifecycle);
-  const start = document.createComment("solix:block:start");
-  const end = document.createComment("solix:block:end");
+  const start = document.createComment("sol:block:start");
+  const end = document.createComment("sol:block:end");
   fragment.prepend(start);
   fragment.append(end);
   let disposed = false;
@@ -533,12 +533,12 @@ export function getFactory<Props extends object>(
   candidate: Component<Props>,
 ): ComponentFactory<Props> {
   if (typeof candidate !== "function") {
-    throw new TypeError("Expected a compiled Solix component");
+    throw new TypeError("Expected a compiled Sol component");
   }
   const factory = (candidate as CompiledComponent<Props>)[COMPONENT];
   if (!factory) {
     throw new TypeError(
-      "mount() received an uncompiled component. Add solix() before Vite's JSX transform.",
+      "mount() received an uncompiled component. Add sol() before Vite's JSX transform.",
     );
   }
   return factory;
@@ -731,7 +731,7 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
     };
   }
   const fragment = document.createDocumentFragment();
-  const marker = document.createComment("solix:async");
+  const marker = document.createComment("sol:async");
   fragment.append(marker);
   let disposed = false;
   let resolved: Block | undefined;

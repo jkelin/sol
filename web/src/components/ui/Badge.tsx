@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 
 export type BadgeTone = "neutral" | "solar" | "cobalt" | "tomato" | "mint";
 

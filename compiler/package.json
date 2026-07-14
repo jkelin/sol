@@ -1,5 +1,5 @@
 {
-  "name": "@solix/compiler",
+  "name": "@sol/compiler",
   "version": "0.0.0",
   "type": "module",
   "module": "./src/index.ts",
@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "happy-dom": "^20.10.6",
-    "solix": "workspace:*"
+    "sol": "workspace:*"
   },
   "peerDependencies": {
     "vite": "^8.0.10"

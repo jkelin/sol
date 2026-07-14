@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 
 export type ButtonVariant = "primary" | "solar" | "outline" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";

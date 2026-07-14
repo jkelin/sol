@@ -37,7 +37,7 @@ export function headHydrationClaims(
 ): HeadHydrationClaim[] {
   const claims: HeadHydrationClaim[] = [];
   const startPattern = new RegExp(
-    `^solix:head:start:${id.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+)$`,
+    `^sol:head:start:${id.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+)$`,
   );
   for (const node of head.childNodes) {
     if (node.nodeType !== Node.COMMENT_NODE) continue;
@@ -45,13 +45,13 @@ export function headHydrationClaims(
     const match = startPattern.exec(start.data);
     if (!match) continue;
     const index = Number(match[1]);
-    const endData = `solix:head:end:${id}:${index}`;
+    const endData = `sol:head:end:${id}:${index}`;
     let end: Comment | undefined;
     const signatures: string[] = [];
     for (let current = start.nextSibling; current; current = current.nextSibling) {
       if (current.nodeType !== Node.COMMENT_NODE) continue;
       const comment = current as Comment;
-      const signature = /^solix:block:start:(t[a-z0-9]+)$/.exec(comment.data)?.[1];
+      const signature = /^sol:block:start:(t[a-z0-9]+)$/.exec(comment.data)?.[1];
       if (signature) signatures.push(signature);
       if (comment.data === endData) {
         end = comment;
@@ -89,12 +89,11 @@ function isComment(node: Node | null, data: string): node is Comment {
   return node?.nodeType === Node.COMMENT_NODE && (node as Comment).data === data;
 }
 
-function matchingEnd(start: Comment, prefix: "solix:block" | "solix"): Comment {
-  const startPattern =
-    prefix === "solix:block" ? /^solix:block:start(?::t[a-z0-9]+)?$/ : /^solix:s:\d+$/;
+function matchingEnd(start: Comment, prefix: "sol:block" | "sol"): Comment {
+  const startPattern = prefix === "sol:block" ? /^sol:block:start(?::t[a-z0-9]+)?$/ : /^sol:s:\d+$/;
   const expectedEnd =
-    prefix === "solix:block" ? "solix:block:end" : start.data.replace("solix:s:", "solix:e:");
-  const endPattern = prefix === "solix:block" ? /^solix:block:end$/ : /^solix:e:\d+$/;
+    prefix === "sol:block" ? "sol:block:end" : start.data.replace("sol:s:", "sol:e:");
+  const endPattern = prefix === "sol:block" ? /^sol:block:end$/ : /^sol:e:\d+$/;
   let depth = 0;
   for (let node = start.nextSibling; node; node = node.nextSibling) {
     if (node.nodeType !== Node.COMMENT_NODE) continue;
@@ -118,8 +117,8 @@ export function hydratedValueBlock(
   getValue: () => string,
 ): Block {
   const start = claim.cursor;
-  if (!isComment(start, "solix:block:start")) mismatch("expected primitive block start marker");
-  const end = matchingEnd(start, "solix:block");
+  if (!isComment(start, "sol:block:start")) mismatch("expected primitive block start marker");
+  const end = matchingEnd(start, "sol:block");
   claim.cursor = end.nextSibling;
   let textNode: Text | undefined;
   const between: Node[] = [];
@@ -170,17 +169,17 @@ function matchChildren(
     const expectedNode = expected[index]!;
     if (
       expectedNode.nodeType === Node.COMMENT_NODE &&
-      /^solix:s:\d+$/.test((expectedNode as Comment).data)
+      /^sol:s:\d+$/.test((expectedNode as Comment).data)
     ) {
       const data = (expectedNode as Comment).data;
       if (!isComment(actual, data)) mismatch(`expected <!--${data}-->`);
-      const regionIndex = Number(data.slice("solix:s:".length));
-      const end = matchingEnd(actual, "solix");
+      const regionIndex = Number(data.slice("sol:s:".length));
+      const end = matchingEnd(actual, "sol");
       const expectedEnd = expected[++index];
       if (
         !expectedEnd ||
         expectedEnd.nodeType !== Node.COMMENT_NODE ||
-        (expectedEnd as Comment).data !== `solix:e:${regionIndex}`
+        (expectedEnd as Comment).data !== `sol:e:${regionIndex}`
       ) {
         mismatch(`invalid compiled region ${regionIndex}`);
       }
@@ -202,20 +201,20 @@ function matchChildren(
         mismatch(`expected <${expectedElement.tagName.toLowerCase()}>`);
       }
       for (const attribute of expectedElement.attributes) {
-        if (attribute.name === "data-solix-e") continue;
+        if (attribute.name === "data-sol-e") continue;
         if (actualElement.getAttribute(attribute.name) !== attribute.value) {
           mismatch(`static attribute ${attribute.name} differs`);
         }
       }
-      const elementIndex = expectedElement.getAttribute("data-solix-e");
+      const elementIndex = expectedElement.getAttribute("data-sol-e");
       if (elementIndex !== null) {
         const parsed = Number(elementIndex);
         if (!Number.isInteger(parsed)) mismatch("invalid element marker");
-        if (actualElement.getAttribute("data-solix-e") !== elementIndex) {
+        if (actualElement.getAttribute("data-sol-e") !== elementIndex) {
           mismatch(`expected element marker ${elementIndex}`);
         }
         elements[parsed] = actualElement;
-      } else if (actualElement.hasAttribute("data-solix-e")) {
+      } else if (actualElement.hasAttribute("data-sol-e")) {
         mismatch("unexpected element marker");
       }
       if (
@@ -247,14 +246,14 @@ export function instantiateHydrated(
 ): RenderView {
   session.claimTemplate(definition.signature);
   const start = claim.cursor;
-  if (!isComment(start, `solix:block:start:${definition.signature}`)) {
+  if (!isComment(start, `sol:block:start:${definition.signature}`)) {
     mismatch(
       `expected block signature ${definition.signature}, received ${
         start?.nodeType === Node.COMMENT_NODE ? (start as Comment).data : (start?.nodeName ?? "end")
       }`,
     );
   }
-  const end = matchingEnd(start, "solix:block");
+  const end = matchingEnd(start, "sol:block");
   definition.element ??= document.createElement("template");
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
   const elements: Element[] = [];

@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 
 export type PanelTone = "paper" | "solar" | "cobalt" | "tomato" | "mint" | "ink";
 

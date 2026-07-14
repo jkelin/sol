@@ -62,14 +62,14 @@ describe("documentation frontmatter", () => {
   });
 });
 
-describe("Markdown-to-Solix compilation", () => {
+describe("Markdown-to-Sol compilation", () => {
   test("generates a component from prose and a validated live fence", async () => {
     const generated = await markdownModule(
       `${frontmatter}
 # Hello
 
-\`\`\`solix live preview=Demo title="Live demo"
-import { $component } from "solix";
+\`\`\`sol live preview=Demo title="Live demo"
+import { $component } from "sol";
 const Demo = $component(function Demo() { let count = 0; return <button onClick={() => count++}>{count}</button>; });
 \`\`\``,
       file,
@@ -85,13 +85,13 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
     );
     expect(
       markdownModule(
-        `${frontmatter}\n\`\`\`solix live preview=Missing\nconst value = 1;\n\`\`\``,
+        `${frontmatter}\n\`\`\`sol live preview=Missing\nconst value = 1;\n\`\`\``,
         file,
       ),
     ).rejects.toThrow("does not declare preview component Missing");
     expect(
       markdownModule(
-        `${frontmatter}\n\`\`\`solix live preview=Demo\nimport Demo from "./Demo.tsx";\n\`\`\``,
+        `${frontmatter}\n\`\`\`sol live preview=Demo\nimport Demo from "./Demo.tsx";\n\`\`\``,
         file,
       ),
     ).rejects.toThrow("cannot import ./Demo.tsx");
@@ -99,11 +99,11 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
 
   test("rejects malformed code and mount calls", async () => {
     expect(
-      markdownModule(`${frontmatter}\n\`\`\`solix live preview=Demo\nconst Demo = (\n\`\`\``, file),
-    ).rejects.toThrow("invalid live Solix source");
+      markdownModule(`${frontmatter}\n\`\`\`sol live preview=Demo\nconst Demo = (\n\`\`\``, file),
+    ).rejects.toThrow("invalid live Sol source");
     expect(
       markdownModule(
-        `${frontmatter}\n\`\`\`solix live preview=Demo\nimport { $component, mount } from "solix";\nconst Demo = $component(function Demo() { return <p>Demo</p>; });\nmount(Demo, document.body);\n\`\`\``,
+        `${frontmatter}\n\`\`\`sol live preview=Demo\nimport { $component, mount } from "sol";\nconst Demo = $component(function Demo() { return <p>Demo</p>; });\nmount(Demo, document.body);\n\`\`\``,
         file,
       ),
     ).rejects.toThrow("must not call mount()");
@@ -118,7 +118,7 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
   });
 
   test("emits browser-valid JavaScript for virtual development modules", async () => {
-    const source = `import { $component } from "solix";
+    const source = `import { $component } from "sol";
 const values = [1] as const;
 export const Demo = $component(function Demo() { return <p>{values[0]}</p>; });`;
     const generated = await compileModule(source, "virtual-development-module.tsx");

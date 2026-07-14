@@ -9,11 +9,11 @@ import {
   type ServerEndpoint,
 } from "../../runtime/src/compiler-runtime.ts";
 
-await mock.module("virtual:solix/routes", () => ({ default: [] }));
+await mock.module("virtual:sol/routes", () => ({ default: [] }));
 const { createRequestHandler } = await import("../src/index.ts");
 
 const definition = template(
-  '<main data-solix-e="0"><!--solix:s:0--><!--solix:e:0--></main>',
+  '<main data-sol-e="0"><!--sol:s:0--><!--sol:e:0--></main>',
   "solkit-test",
   { elements: ["main"], regions: [0], operations: [] },
 );
@@ -63,19 +63,19 @@ test("dispatches server endpoints before rendering documents", async () => {
     new Request("https://example.test/api/rpc/greeting", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(["Solix"]),
+      body: JSON.stringify(["Sol"]),
     }),
     { template: templateHtml },
   );
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ ok: true, value: "Hello Solix" });
+  expect(await response.json()).toEqual({ ok: true, value: "Hello Sol" });
 
   const limited = createRequestHandler(Root, [endpoint], { maxBodyBytes: 3 });
   const oversized = await limited(
     new Request("https://example.test/api/rpc/greeting", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(["Solix"]),
+      body: JSON.stringify(["Sol"]),
     }),
     { template: templateHtml },
   );
@@ -88,7 +88,7 @@ test("dispatches server endpoints before rendering documents", async () => {
     new Request("https://example.test/api/rpc/greeting", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(["Solix"]),
+      body: JSON.stringify(["Sol"]),
     }),
     { template: templateHtml },
   );

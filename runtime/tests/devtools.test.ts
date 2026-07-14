@@ -1,4 +1,4 @@
-// oxlint-disable eslint/no-underscore-dangle -- exercises the documented __solix global.
+// oxlint-disable eslint/no-underscore-dangle -- exercises the documented __sol global.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import {
@@ -12,7 +12,7 @@ import { $signal, reactive, runtimeEffect } from "../src/reactivity.ts";
 import { block, blockLifecycle, component, mount, type Block } from "../src/rendering.ts";
 
 declare global {
-  var __solix: import("../src/devtools.ts").SolixDevtools | undefined;
+  var __sol: import("../src/devtools.ts").SolDevtools | undefined;
 }
 
 let window: Window;
@@ -43,12 +43,12 @@ beforeEach(() => {
     KeyboardEvent: window.KeyboardEvent,
     MouseEvent: window.MouseEvent,
   });
-  delete globalThis.__solix;
+  delete globalThis.__sol;
   delete (globalThis as { [DEVTOOLS_HOOK]?: DevtoolsHook })[DEVTOOLS_HOOK];
 });
 
 afterEach(() => {
-  delete globalThis.__solix;
+  delete globalThis.__sol;
   delete (globalThis as { [DEVTOOLS_HOOK]?: DevtoolsHook })[DEVTOOLS_HOOK];
   window.close();
 });
@@ -56,22 +56,22 @@ afterEach(() => {
 test("installs the development global, panel, and WebMCP tools", () => {
   const api = installDevtools();
 
-  expect(api).toBe(globalThis.__solix);
+  expect(api).toBe(globalThis.__sol);
   expect(api?.version).toBe("0.1");
-  expect(document.querySelector("solix-devtools")?.shadowRoot).not.toBeNull();
+  expect(document.querySelector("sol-devtools")?.shadowRoot).not.toBeNull();
   expect(registeredTools.map((tool) => tool.name)).toEqual([
-    "solix_get_diagnostics",
-    "solix_inspect_element",
+    "sol_get_diagnostics",
+    "sol_inspect_element",
   ]);
 });
 
 test("toggles the panel from the launcher and restores its persisted layout", () => {
   window.localStorage.setItem(
-    "solix.devtools.layout",
+    "sol.devtools.layout",
     JSON.stringify({ left: 24, top: 32, width: 720, height: 480, listWidth: 260 }),
   );
   installDevtools();
-  const root = document.querySelector("solix-devtools")!.shadowRoot!;
+  const root = document.querySelector("sol-devtools")!.shadowRoot!;
   const launcher = root.querySelector<HTMLButtonElement>(".launcher")!;
   const panel = root.querySelector<HTMLElement>(".panel")!;
 
@@ -81,15 +81,15 @@ test("toggles the panel from the launcher and restores its persisted layout", ()
   expect(panel.style.getPropertyValue("--list-width")).toBe("260px");
   launcher.click();
   expect(panel.hidden).toBeFalse();
-  expect(launcher.getAttribute("aria-label")).toBe("Close Solix devtools");
+  expect(launcher.getAttribute("aria-label")).toBe("Close Sol devtools");
   launcher.click();
   expect(panel.hidden).toBeTrue();
-  expect(launcher.getAttribute("aria-label")).toBe("Open Solix devtools");
+  expect(launcher.getAttribute("aria-label")).toBe("Open Sol devtools");
 });
 
 test("clamps moved panel geometry inside the viewport after resizing", () => {
   installDevtools();
-  const root = document.querySelector("solix-devtools")!.shadowRoot!;
+  const root = document.querySelector("sol-devtools")!.shadowRoot!;
   const panel = root.querySelector<HTMLElement>(".panel")!;
   Object.defineProperty(panel, "getBoundingClientRect", {
     value: () => ({ left: 900, top: 700, right: 1620, bottom: 1180, width: 720, height: 480 }),
@@ -99,7 +99,7 @@ test("clamps moved panel geometry inside the viewport after resizing", () => {
 
   expect(panel.style.left).toBe(`${window.innerWidth - 728}px`);
   expect(panel.style.top).toBe(`${window.innerHeight - 488}px`);
-  const stored = JSON.parse(window.localStorage.getItem("solix.devtools.layout")!);
+  const stored = JSON.parse(window.localStorage.getItem("sol.devtools.layout")!);
   expect(stored).toMatchObject({
     left: window.innerWidth - 728,
     top: window.innerHeight - 488,
@@ -118,8 +118,8 @@ test("falls back to the legacy navigator WebMCP surface", () => {
   installDevtools();
 
   expect(registeredTools.map((tool) => tool.name)).toEqual([
-    "solix_get_diagnostics",
-    "solix_inspect_element",
+    "sol_get_diagnostics",
+    "sol_inspect_element",
   ]);
 });
 
@@ -192,7 +192,7 @@ test("renders mounted components as a collapsible ownership tree", () => {
   hook.componentRendered(parentId, () => [element]);
   hook.componentCreated({ name: "Child", file: "Child.tsx", line: 2 }, {}, parentId);
   api.open("components");
-  const root = document.querySelector("solix-devtools")!.shadowRoot!;
+  const root = document.querySelector("sol-devtools")!.shadowRoot!;
 
   expect(root.querySelector("header nav")).not.toBeNull();
   expect(root.querySelector("header")?.textContent).not.toContain("RUNTIME FIELD UNIT");
@@ -203,13 +203,13 @@ test("renders mounted components as a collapsible ownership tree", () => {
   );
   const parent = root.querySelector<HTMLButtonElement>('.tree-node[title="Parent.tsx:1"]')!;
   parent.dispatchEvent(new MouseEvent("mouseenter"));
-  const highlight = document.querySelector<HTMLElement>("[data-solix-highlight]");
+  const highlight = document.querySelector<HTMLElement>("[data-sol-highlight]");
   expect(highlight?.style.left).toBe("10px");
   expect(highlight?.style.top).toBe("20px");
   expect(highlight?.style.width).toBe("100px");
   expect(highlight?.style.height).toBe("50px");
   parent.dispatchEvent(new MouseEvent("mouseleave"));
-  expect(document.querySelector("[data-solix-highlight]")).toBeNull();
+  expect(document.querySelector("[data-sol-highlight]")).toBeNull();
   root.querySelector<HTMLButtonElement>('.tree-toggle[aria-label="Toggle Parent"]')!.click();
   expect(root.querySelectorAll('[role="treeitem"]')).toHaveLength(1);
 });
@@ -236,11 +236,11 @@ test("keeps component ownership live when rendered root nodes change", () => {
   expect(api.components[0]?.elements).toEqual(["article#second"]);
 
   api.open("components");
-  const root = document.querySelector("solix-devtools")!.shadowRoot!;
+  const root = document.querySelector("sol-devtools")!.shadowRoot!;
   root
     .querySelector<HTMLButtonElement>('.tree-node[title="Switch.tsx:1"]')!
     .dispatchEvent(new MouseEvent("mouseenter"));
-  const highlight = document.querySelector<HTMLElement>("[data-solix-highlight]");
+  const highlight = document.querySelector<HTMLElement>("[data-sol-highlight]");
   expect(highlight?.style.left).toBe("20px");
   expect(highlight?.style.width).toBe("120px");
 });
@@ -256,7 +256,7 @@ test("renders requests and routes as selectable master-detail views", () => {
   hook.queryUpdated(queryId, { hasData: true, data: { page: 1 }, isFetching: false });
   hook.mutationCreated({ file: "queries.sol.tsx", line: 18, column: 5 });
   api.open("requests");
-  const root = document.querySelector("solix-devtools")!.shadowRoot!;
+  const root = document.querySelector("sol-devtools")!.shadowRoot!;
 
   expect(root.querySelector(".request-explorer .splitter")).not.toBeNull();
   expect(root.querySelectorAll(".request-explorer .record")).toHaveLength(2);
@@ -301,7 +301,7 @@ test("renders newlines and tabs inside props without changing the diagnostic sna
   const description = "first line\n\tsecond line";
   hook.componentCreated({ name: "Multiline", file: "Multiline.tsx", line: 1 }, { description });
   api.open("components");
-  const root = document.querySelector("solix-devtools")!.shadowRoot!;
+  const root = document.querySelector("sol-devtools")!.shadowRoot!;
   const rendered = root.querySelector("pre")!.textContent!;
 
   expect(rendered).toContain('"description": "first line\n  \tsecond line"');
@@ -312,7 +312,7 @@ test("renders newlines and tabs inside props without changing the diagnostic sna
 test("preserves router errors and hides the panel while picking", () => {
   const api = installDevtools()!;
   const hook = (globalThis as { [DEVTOOLS_HOOK]?: DevtoolsHook })[DEVTOOLS_HOOK]!;
-  const host = document.querySelector("solix-devtools")!;
+  const host = document.querySelector("sol-devtools")!;
   const panel = host.shadowRoot!.querySelector<HTMLElement>(".panel")!;
 
   hook.routerUpdated({ pathname: "/broken", status: "error", error: new Error("Bad route") });

@@ -171,7 +171,7 @@ export function solkit(options: SolkitOptions): Plugin {
     },
     load(id) {
       if (id === RESOLVED_CLIENT_ENTRY) {
-        return `import { hydrate, routerReady } from "solix";
+        return `import { hydrate, routerReady } from "sol";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
 const target = document.querySelector("#app");
 if (!target) throw new Error("The #app hydration target is missing");
@@ -182,7 +182,7 @@ document.documentElement.dataset.solkitHydrated = "true";`;
       }
       if (id === RESOLVED_SERVER_ENTRY) {
         return `import { createRequestHandler } from "solkit";
-import endpoints from "virtual:solix/server-endpoints";
+import endpoints from "virtual:sol/server-endpoints";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
 export const handle = createRequestHandler(Root, endpoints, { maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });`;
       }

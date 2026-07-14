@@ -4,7 +4,7 @@ export const HYDRATION_VERSION = 1;
 
 export class HydrationMismatchError extends Error {
   constructor(message: string) {
-    super(`Solix hydration mismatch: ${message}`);
+    super(`Sol hydration mismatch: ${message}`);
     this.name = "HydrationMismatchError";
   }
 }
@@ -93,7 +93,7 @@ export class SsrSession {
       .map(({ index, block }) => {
         const render = (block as { serverHtml?: unknown }).serverHtml;
         if (typeof render !== "function") throw new Error("Invalid server-rendered Head block");
-        return `<!--solix:head:start:${this.headId}:${index}-->${render.call(block)}<!--solix:head:end:${this.headId}:${index}-->`;
+        return `<!--sol:head:start:${this.headId}:${index}-->${render.call(block)}<!--sol:head:end:${this.headId}:${index}-->`;
       })
       .join("");
   }
@@ -206,7 +206,7 @@ export class SsrSession {
     const rootTimeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         if (this.rootPending > 0) {
-          reject(new Error(`Solix server rendering timed out after ${timeoutMs}ms`));
+          reject(new Error(`Sol server rendering timed out after ${timeoutMs}ms`));
         }
       }, timeoutMs);
     });
@@ -288,20 +288,20 @@ export class HydrationSession {
 
   constructor(readonly payload: HydrationPayload) {
     if (payload.version !== HYDRATION_VERSION) {
-      throw new Error(`Unsupported Solix hydration protocol ${String(payload.version)}`);
+      throw new Error(`Unsupported Sol hydration protocol ${String(payload.version)}`);
     }
     if (!payload.templates.every((signature) => typeof signature === "string")) {
-      throw new TypeError("Invalid Solix hydration template payload");
+      throw new TypeError("Invalid Sol hydration template payload");
     }
     if (
       !payload.boundaries.every(
         (state) => state === "resolved" || state === "timeout" || state === "error",
       )
     ) {
-      throw new TypeError("Invalid Solix hydration boundary payload");
+      throw new TypeError("Invalid Sol hydration boundary payload");
     }
     if (!payload.async.every((entry) => validAsyncEntry(entry))) {
-      throw new TypeError("Invalid Solix hydration async payload");
+      throw new TypeError("Invalid Sol hydration async payload");
     }
     for (const signature of payload.templates) {
       this.templates.set(signature, (this.templates.get(signature) ?? 0) + 1);

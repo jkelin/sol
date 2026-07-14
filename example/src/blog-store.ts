@@ -1,4 +1,4 @@
-import { $signal } from "solix";
+import { $signal } from "sol";
 
 export interface BlogEntry {
   id: number;

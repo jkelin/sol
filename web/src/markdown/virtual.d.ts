@@ -1,5 +1,5 @@
-declare module "virtual:solix-docs" {
-  import type { Component } from "solix";
+declare module "virtual:sol-docs" {
+  import type { Component } from "sol";
 
   export interface DocNavigationItem {
     readonly slug: string;
@@ -13,7 +13,7 @@ declare module "virtual:solix-docs" {
   export const DocsContent: Component<{ readonly slug: string }>;
 }
 
-declare module "virtual:solix-code-tokens" {
+declare module "virtual:sol-code-tokens" {
   import type { CodeLine } from "../components/ui/CodePanel.tsx";
 
   export const counterLines: readonly CodeLine[];

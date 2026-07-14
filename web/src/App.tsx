@@ -1,4 +1,4 @@
-import { $component, Route } from "solix";
+import { $component, Route } from "sol";
 
 const RoutePending = $component(function RoutePending() {
   return (
@@ -26,14 +26,14 @@ export const App = $component(function App() {
           class="sunblock-container flex items-center justify-between gap-4 py-3"
           aria-label="Primary navigation"
         >
-          <a href="/" class="group flex items-center gap-3" aria-label="Solix home">
+          <a href="/" class="group flex items-center gap-3" aria-label="Sol home">
             <span
               class="grid size-10 place-items-center rounded-full border-[3px] border-ink bg-solar transition-transform group-hover:rotate-12"
               aria-hidden="true"
             >
               <span class="size-2.5 bg-ink"></span>
             </span>
-            <span class="font-display text-xl uppercase tracking-tight sm:text-2xl">Solix</span>
+            <span class="font-display text-xl uppercase tracking-tight sm:text-2xl">Sol</span>
             <span class="hidden -rotate-2 border-2 border-ink bg-tomato px-2 py-0.5 font-mono text-[0.625rem] font-bold uppercase text-white lg:inline">
               experimental / v0
             </span>
@@ -99,7 +99,7 @@ export const App = $component(function App() {
             <span class="grid size-9 place-items-center rounded-full border-[3px] border-ink bg-solar">
               <span class="size-2 bg-ink"></span>
             </span>
-            <span class="font-display text-xl uppercase">Solix</span>
+            <span class="font-display text-xl uppercase">Sol</span>
           </div>
           <p class="font-mono text-[0.625rem] font-bold uppercase tracking-wider">
             Experimental JSX framework / Sunblock system

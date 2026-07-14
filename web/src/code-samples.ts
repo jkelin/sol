@@ -1,10 +1,10 @@
-export const counterSource = `import { $component, $query, $rpcQuery } from "solix";
+export const counterSource = `import { $component, $query, $rpcQuery } from "sol";
 import * as v from "valibot";
 
 export const websiteMessage = $rpcQuery(
   "website-message",
   { schema: v.tuple([]) },
-  async () => ({ message: "Validated on the Solix server." }),
+  async () => ({ message: "Validated on the Sol server." }),
 );
 
 const Counter = $component(function Counter() {
@@ -27,7 +27,7 @@ const Counter = $component(function Counter() {
   );
 });`;
 
-export const listSource = `import { $component } from "solix";
+export const listSource = `import { $component } from "sol";
 
 const SolarList = $component(function SolarList() {
   let items = [{ id: 1, label: "Static template", ready: true }];
@@ -41,7 +41,7 @@ const SolarList = $component(function SolarList() {
   ))}</ul>;
 });`;
 
-export const formSource = `import { $component, $form } from "solix";
+export const formSource = `import { $component, $form } from "sol";
 import * as v from "valibot";
 
 const Email = v.object({

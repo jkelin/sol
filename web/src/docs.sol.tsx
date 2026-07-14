@@ -1,5 +1,5 @@
-import { $component, $route } from "solix";
-import { DocsContent, docs } from "virtual:solix-docs";
+import { $component, $route } from "sol";
+import { DocsContent, docs } from "virtual:sol-docs";
 import { Badge, buttonClass } from "./components/ui/index.ts";
 
 const DocsPage = $component(function DocsPage() {

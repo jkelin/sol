@@ -7,7 +7,7 @@ import {
   $rpcMutation,
   $rpcQuery,
   Suspense,
-} from "solix";
+} from "sol";
 import {
   noteHttpSchema,
   notesPageSchema,

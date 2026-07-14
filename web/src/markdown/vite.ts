@@ -1,4 +1,4 @@
-import { compile } from "@solix/compiler";
+import { compile } from "@sol/compiler";
 import { join } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath, transformWithOxc } from "vite";
@@ -6,11 +6,11 @@ import { counterSource, formSource, listSource } from "../code-samples.ts";
 import { highlightCode, markdownModule } from "./compile.ts";
 import { registrySource } from "./registry.ts";
 
-const virtualId = "virtual:solix-docs";
+const virtualId = "virtual:sol-docs";
 const resolvedVirtualId = `\0/node_modules/${virtualId}.tsx`;
-const codeTokensId = "virtual:solix-code-tokens";
+const codeTokensId = "virtual:sol-code-tokens";
 const resolvedCodeTokensId = `\0${codeTokensId}`;
-const markdownPrefix = "\0/node_modules/solix-markdown:";
+const markdownPrefix = "\0/node_modules/sol-markdown:";
 
 export async function compileModule(
   source: string,
@@ -21,7 +21,7 @@ export async function compileModule(
   return { code: transformed.code, map: null, moduleType: "js" };
 }
 
-export function solixMarkdown(): Plugin {
+export function solMarkdown(): Plugin {
   let config: ResolvedConfig;
   const invalidate = (server: ViteDevServer): void => {
     const module = server.moduleGraph.getModuleById(resolvedVirtualId);
@@ -29,7 +29,7 @@ export function solixMarkdown(): Plugin {
     server.ws.send({ type: "full-reload" });
   };
   return {
-    name: "solix-markdown",
+    name: "sol-markdown",
     enforce: "pre",
     configResolved(resolved) {
       config = resolved;
@@ -58,7 +58,7 @@ export const formLines = ${JSON.stringify(formLines)};`,
         };
       }
       if (id === resolvedVirtualId) {
-        return compileModule(await registrySource(config.root), "virtual-solix-docs.tsx");
+        return compileModule(await registrySource(config.root), "virtual-sol-docs.tsx");
       }
       if (!id.startsWith(markdownPrefix) || !id.endsWith(".md.tsx")) return null;
       const file = id.slice(markdownPrefix.length, -".tsx".length);

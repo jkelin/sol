@@ -64,8 +64,8 @@ const firstValue = $signal("First");
 function page(label: string, animated: boolean, reactive = false): Component {
   const definition = template(
     reactive
-      ? '<section data-solix-e="0" data-page="first"><!--solix:s:0--><!--solix:e:0--></section>'
-      : `<section data-solix-e="0" data-page="${label.toLowerCase()}">${label}</section>`,
+      ? '<section data-sol-e="0" data-page="first"><!--sol:s:0--><!--sol:e:0--></section>'
+      : `<section data-sol-e="0" data-page="${label.toLowerCase()}">${label}</section>`,
     `route-${label}`,
     {
       elements: ["section"],
@@ -131,7 +131,7 @@ const routes = [
   ),
 ];
 
-await mock.module("virtual:solix/routes", () => ({ default: routes }));
+await mock.module("virtual:sol/routes", () => ({ default: routes }));
 const devtools = installDevtools()!;
 const { Route, router } = await import("../src/router.ts");
 
@@ -184,7 +184,7 @@ test("renders the matched route from an isolated server request URL", async () =
 });
 
 test("resolves asynchronous route state before rendering the server root", async () => {
-  const definition = template("<p><!--solix:s:0--><!--solix:e:0--></p>", "route-shell", {
+  const definition = template("<p><!--sol:s:0--><!--sol:e:0--></p>", "route-shell", {
     elements: [],
     regions: [0],
     operations: [],
@@ -199,5 +199,5 @@ test("resolves asynchronous route state before rendering the server root", async
     url: "https://example.test/async/7",
   });
 
-  expect(html).toContain("<p><!--solix:s:0-->7<!--solix:e:0--></p>");
+  expect(html).toContain("<p><!--sol:s:0-->7<!--sol:e:0--></p>");
 });

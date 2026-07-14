@@ -55,12 +55,12 @@ const contexts = new WeakSet<object>();
 export function $component<Props extends object>(
   _setup: (props: Readonly<Props>) => JSX.Element | Promise<JSX.Element>,
 ): Component<Props> {
-  throw new Error("$component() reached runtime. Add solix() before Vite's JSX transform.");
+  throw new Error("$component() reached runtime. Add sol() before Vite's JSX transform.");
 }
 
 export function $context<TShape extends object>(): Context<TShape> {
   if (arguments.length !== 0) throw new TypeError("$context() does not accept a default value");
-  const key = Symbol("solix.context.value");
+  const key = Symbol("sol.context.value");
   const Provider = (() => {
     throw new Error("Context providers must be rendered as JSX inside a compiled component");
   }) as Component<{ data: TShape; children?: JSX.Element | readonly JSX.Element[] }>;
@@ -146,7 +146,7 @@ export function $route<
   Values extends RouteValues = DefaultRouteValues<Path>,
 >(_config: RouteConfig<Path, Values>, _candidate: Component): RouteDefinition<Path, Values> {
   throw new Error(
-    "$route() reached runtime. Define exported routes in a *.sol.ts or *.sol.tsx file and add solix() to Vite.",
+    "$route() reached runtime. Define exported routes in a *.sol.ts or *.sol.tsx file and add sol() to Vite.",
   );
 }
 
@@ -182,5 +182,5 @@ export function $httpRoute<Input extends HttpRouteInput, Parsed>(
 export function Link<const Path extends string, Values extends RouteValues>(
   _props: LinkProps<Path, Values>,
 ): JSX.Element {
-  throw new Error("Link reached runtime. Add solix() before Vite's JSX transform.");
+  throw new Error("Link reached runtime. Add sol() before Vite's JSX transform.");
 }

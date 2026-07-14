@@ -32,7 +32,7 @@ test("dispatches the production HTTP route", async () => {
   const response = await fetch("http://127.0.0.1:4174/api/health");
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("application/json");
-  expect(await response.json()).toEqual({ ok: true, framework: "solix" });
+  expect(await response.json()).toEqual({ ok: true, framework: "sol" });
 });
 
 test("runs landing examples and preserves preview state across view modes", async ({ page }) => {
@@ -64,7 +64,7 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await counter.getByRole("button", { name: "both", exact: true }).click();
   await expect(counter.locator("output")).toHaveText("1");
   await counter.getByRole("button", { name: "Call named RPC" }).click();
-  await expect(counter.getByText("Validated on the Solix server.", { exact: true })).toBeVisible();
+  await expect(counter.getByText("Validated on the Sol server.", { exact: true })).toBeVisible();
 
   const list = page.getByTestId("list-example");
   const template = list.getByRole("button", { name: /Static template/ });
@@ -77,9 +77,9 @@ test("runs landing examples and preserves preview state across view modes", asyn
   const form = page.getByTestId("form-example");
   await form.getByRole("button", { name: "Validate" }).click();
   await expect(form.getByRole("alert")).toContainText("valid email");
-  await form.getByLabel("Email address").fill("hello@solix.dev");
+  await form.getByLabel("Email address").fill("hello@sol.dev");
   await form.getByRole("button", { name: "Validate" }).click();
-  await expect(form.getByText("Accepted: hello@solix.dev")).toBeVisible();
+  await expect(form.getByText("Accepted: hello@sol.dev")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -204,7 +204,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
   const heroLayout = await page.evaluate(() => {
     const headline = document.querySelector<HTMLElement>("#hero-title span.relative")!;
     const orbit = document.querySelector<HTMLElement>(
-      '[aria-label="Solix blocks assembling around a precise DOM output"]',
+      '[aria-label="Sol blocks assembling around a precise DOM output"]',
     )!;
     const headlineBounds = headline.getBoundingClientRect();
     const orbitBounds = orbit.getBoundingClientRect();
@@ -237,7 +237,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
       .querySelector<HTMLElement>("#hero-title span.relative")!
       .getBoundingClientRect();
     const orbit = document.querySelector<HTMLElement>(
-      '[aria-label="Solix blocks assembling around a precise DOM output"]',
+      '[aria-label="Sol blocks assembling around a precise DOM output"]',
     )!;
     const cards = [...orbit.querySelectorAll<HTMLElement>(":scope > div")].slice(2);
     const writable = cards[0]!.getBoundingClientRect();

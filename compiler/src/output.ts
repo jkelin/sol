@@ -18,15 +18,15 @@ export function emitCompilation(state: CompilationState): CompileResult {
         operations: template.operations.map(operationMetadata),
       };
       const signature = templateSignature(template.html, metadata);
-      return `const __solix_template_${index} = __solix_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
+      return `const __sol_template_${index} = __sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
     })
     .join("\n");
   const serverRuntimeImport =
     state.serverCallRanges.size === 0
       ? ""
       : compiler.target === "server"
-        ? `import { httpRouteServer as __solix_http_route_server, rpcMutationServer as __solix_rpc_mutation_server, rpcQueryServer as __solix_rpc_query_server } from "solix/compiler-runtime";`
-        : `import { httpRouteClient as __solix_http_route_client, rpcMutationClient as __solix_rpc_mutation_client, rpcQueryClient as __solix_rpc_query_client } from "solix/compiler-runtime";`;
+        ? `import { httpRouteServer as __sol_http_route_server, rpcMutationServer as __sol_rpc_mutation_server, rpcQueryServer as __sol_rpc_query_server } from "sol/compiler-runtime";`
+        : `import { httpRouteClient as __sol_http_route_client, rpcMutationClient as __sol_rpc_mutation_client, rpcQueryClient as __sol_rpc_query_client } from "sol/compiler-runtime";`;
   transformedSource.prepend(
     serverRuntimeImport
       ? `${RUNTIME_IMPORT}\n${serverRuntimeImport}\n${templates}\n`
@@ -79,9 +79,9 @@ function operationMetadata(operation: string): {
   index?: number;
   name?: string;
 } {
-  const code = operation.replaceAll(/\/\*__solix_source_\d+__\*\//g, "");
-  const kind = /__solix_([a-z_]+)\(/.exec(code)?.[1];
-  const target = /__solix_view\.(elements|regions)\[(\d+)\]/.exec(code);
+  const code = operation.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
+  const kind = /__sol_([a-z_]+)\(/.exec(code)?.[1];
+  const target = /__sol_view\.(elements|regions)\[(\d+)\]/.exec(code);
   if (!kind) throw new Error(`Cannot describe compiled operation ${code}`);
   const metadata: {
     id: string;
@@ -98,7 +98,7 @@ function operationMetadata(operation: string): {
     metadata.index = Number(target[2]);
   }
   if (kind === "attribute" || kind === "bind") {
-    const name = /__solix_view\.elements\[\d+\],\s*"([^"]+)"/.exec(code)?.[1];
+    const name = /__sol_view\.elements\[\d+\],\s*"([^"]+)"/.exec(code)?.[1];
     if (name) metadata.name = name;
   }
   return metadata;

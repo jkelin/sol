@@ -1,5 +1,5 @@
 {
-  "name": "solix-workspace",
+  "name": "sol-workspace",
   "private": true,
   "workspaces": [
     "runtime",

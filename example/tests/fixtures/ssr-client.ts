@@ -1,22 +1,22 @@
-import { hydrate } from "solix";
+import { hydrate } from "sol";
 import { SsrApp } from "./ssr-app.tsx";
 
 interface BrowserTestRuntime {
-  solixPrimaryCalls?: number;
-  solixPrimaryLoad?: () => Promise<string>;
-  solixTimedLoad?: () => Promise<string>;
-  solixResolveTimed?: (value: string) => void;
+  solPrimaryCalls?: number;
+  solPrimaryLoad?: () => Promise<string>;
+  solTimedLoad?: () => Promise<string>;
+  solResolveTimed?: (value: string) => void;
 }
 
 const runtime = globalThis as typeof globalThis & BrowserTestRuntime;
-runtime.solixPrimaryCalls = 0;
-runtime.solixPrimaryLoad = () => {
-  runtime.solixPrimaryCalls! += 1;
+runtime.solPrimaryCalls = 0;
+runtime.solPrimaryLoad = () => {
+  runtime.solPrimaryCalls! += 1;
   return Promise.resolve("duplicate browser data");
 };
-runtime.solixTimedLoad = () =>
+runtime.solTimedLoad = () =>
   new Promise<string>((resolve) => {
-    runtime.solixResolveTimed = resolve;
+    runtime.solResolveTimed = resolve;
   });
 
 export async function startHydration(): Promise<() => void> {

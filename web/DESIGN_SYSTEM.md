@@ -1,6 +1,6 @@
-# Solix Sunblock Design System
+# Sol Sunblock Design System
 
-Sunblock makes Solix feel like a modular solar workshop: direct, mechanical, warm, and visibly assembled. It serves developers evaluating a compiler and documentation readers trying to connect authored JSX to exact browser work.
+Sunblock makes Sol feel like a modular solar workshop: direct, mechanical, warm, and visibly assembled. It serves developers evaluating a compiler and documentation readers trying to connect authored JSX to exact browser work.
 
 ## Design intent
 
@@ -22,7 +22,7 @@ Sunblock makes Solix feel like a modular solar workshop: direct, mechanical, war
 | Mint   | `#B9E6C6` | Success, readiness, supporting callouts |
 | Muted  | `#6D695A` | Secondary metadata and placeholders     |
 
-Ink and cream provide structure. Cobalt identifies Solix and navigation. Solar is reserved for action, active state, and focus. Tomato communicates problems or exceptional attention. Mint communicates ready or successful states.
+Ink and cream provide structure. Cobalt identifies Sol and navigation. Solar is reserved for action, active state, and focus. Tomato communicates problems or exceptional attention. Mint communicates ready or successful states.
 
 ## Typography
 
@@ -63,14 +63,14 @@ Fonts are self-hosted through Fontsource so builds and visual tests do not depen
 - **Documentation measure:** prose stays within 52rem for reading; live workbenches expand to the full documentation column so code and preview both remain useful.
 - **Docs sheet:** mobile-only modal layer with a real close control, backdrop control, current-page state, and the same cream canvas as the content.
 
-Solix does not currently support general component children. Reusable primitives therefore use explicit typed props and focused leaf APIs instead of pretending standard React shadcn components are compatible.
+Sol does not currently support general component children. Reusable primitives therefore use explicit typed props and focused leaf APIs instead of pretending standard React shadcn components are compatible.
 
 ## Content and diagrams
 
 - Explain the transformation as authored JSX → compiler graph → static template plus precise DOM operations.
 - Pair abstract claims with code or an interactive proof.
 - Use numbered blocks and short instrument labels to orient, not decorate.
-- Never claim virtual-DOM reconciliation; Solix setup runs once and dependencies drive exact operations.
+- Never claim virtual-DOM reconciliation; Sol setup runs once and dependencies drive exact operations.
 
 ## Interaction and motion
 

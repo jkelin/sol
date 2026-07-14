@@ -1,7 +1,7 @@
 // oxlint-disable-next-line typescript/triple-slash-reference -- Vite provides this virtual module.
 /// <reference path="./virtual-routes.d.ts" />
 
-import routes from "virtual:solix/routes";
+import routes from "virtual:sol/routes";
 import type { Component } from "./components.ts";
 import { devtoolsRouterUpdated } from "./devtools-hook.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
@@ -368,7 +368,7 @@ function listenForNavigation(): () => void {
   };
 }
 
-const routeTemplate = template("<!--solix:s:0--><!--solix:e:0-->", "tsolixroute", {
+const routeTemplate = template("<!--sol:s:0--><!--sol:e:0-->", "tsolroute", {
   elements: [],
   regions: [0],
   operations: [],

@@ -8,3 +8,7 @@
 
 - Keep the root and package `README.md` files synchronized with behavior, commands, package interfaces, and folder structure whenever those change.
 - Keep the runtime and compiler READMEs synchronized with their `src` files, including a brief description of each source file and how the package internals work.
+
+# Naming
+
+- If you find `solix` anywhere, rename it to `sol`.

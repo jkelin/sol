@@ -18,8 +18,8 @@ interface ReactiveEffect {
   run: () => void;
 }
 
-const ITERATE = Symbol("solix.iterate");
-const SIGNAL = Symbol("solix.signal");
+const ITERATE = Symbol("sol.iterate");
+const SIGNAL = Symbol("sol.signal");
 const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
 const proxyCache = new WeakMap<object, object>();
 const proxyTargets = new WeakMap<object, object>();

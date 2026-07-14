@@ -1,4 +1,4 @@
-import type { Transition } from "solix";
+import type { Transition } from "sol";
 
 const fade: Transition = {
   enter: "fade-in duration-100",

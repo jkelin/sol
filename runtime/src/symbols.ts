@@ -1,3 +1,3 @@
-export const COMPONENT = Symbol("solix.component");
-export const CONTEXT = Symbol("solix.context");
-export const ROUTE = Symbol("solix.route");
+export const COMPONENT = Symbol("sol.component");
+export const CONTEXT = Symbol("sol.context");
+export const ROUTE = Symbol("sol.route");

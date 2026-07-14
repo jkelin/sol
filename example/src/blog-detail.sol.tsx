@@ -1,4 +1,4 @@
-import { $component, $route } from "solix";
+import { $component, $route } from "sol";
 import * as v from "valibot";
 import { BlogList } from "./BlogList.tsx";
 import { blogEntries } from "./blog-store.ts";

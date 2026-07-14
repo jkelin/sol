@@ -5,14 +5,14 @@ section: Systems
 order: 7
 ---
 
-`$query()` and `$mutation()` are component-owned async controllers. Create them during component setup so Solix can stop polling, release cache observers, and finish Suspense work when that component leaves.
+`$query()` and `$mutation()` are component-owned async controllers. Create them during component setup so Sol can stop polling, release cache observers, and finish Suspense work when that component leaves.
 
 Async operations that belong on the server can be declared beside routes in a `.sol.ts` or
 `.sol.tsx` module. Their required schemas validate the complete argument tuple, while the exported
 value remains directly callable by the controllers:
 
 ```tsx
-import { $rpcMutation, $rpcQuery } from "solix";
+import { $rpcMutation, $rpcQuery } from "sol";
 import * as v from "valibot";
 
 export const loadPosts = $rpcQuery("load-posts", { schema: v.tuple([v.number()]) }, async (page) =>
@@ -79,8 +79,8 @@ An uncached initial request participates in the nearest parent `Suspense` by def
 
 Opted-in failures select the parent Suspense error renderer. Without a participating boundary, automatic failures remain in controller state. Manual `refetch()` and `mutate()` calls always reject, so event handlers should await them or deliberately handle the returned promise.
 
-```solix live preview=QueryWorkbench title="Cached query and explicit mutation"
-import { $component, $mutation, $query, Suspense } from "solix";
+```sol live preview=QueryWorkbench title="Cached query and explicit mutation"
+import { $component, $mutation, $query, Suspense } from "sol";
 
 let serverRevision = 1;
 

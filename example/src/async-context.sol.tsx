@@ -8,7 +8,7 @@ import {
   GlobalPortal,
   Portal,
   Suspense,
-} from "solix";
+} from "sol";
 
 interface ShowcaseContextData {
   accent: string;

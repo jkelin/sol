@@ -36,7 +36,7 @@ export interface DevtoolsHook {
   routerUpdated(state: object): void;
 }
 
-export const DEVTOOLS_HOOK = Symbol.for("solix.devtools.hook");
+export const DEVTOOLS_HOOK = Symbol.for("sol.devtools.hook");
 
 function hook(): DevtoolsHook | undefined {
   return (globalThis as { [DEVTOOLS_HOOK]?: DevtoolsHook })[DEVTOOLS_HOOK];

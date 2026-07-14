@@ -41,7 +41,7 @@ interface RenderState {
 }
 
 const metadataKeys = new Set(["title", "description", "section", "order"]);
-const allowedExampleImports = new Set(["solix", "valibot"]);
+const allowedExampleImports = new Set(["sol", "valibot"]);
 
 function fail(file: string, message: string, line?: number): never {
   throw new Error(`${file}${line ? `:${line}` : ""}: ${message}`);
@@ -175,7 +175,7 @@ function walkAst(value: unknown, visit: (node: t.Node) => void): void {
 function parseLiveMeta(node: Code, file: string): { preview: string; title: string } {
   const meta = node.meta ?? "";
   if (!/(^|\s)live(?:\s|$)/.test(meta)) {
-    fail(file, "solix code fences must include the live flag", node.position?.start.line);
+    fail(file, "sol code fences must include the live flag", node.position?.start.line);
   }
   const preview = /(?:^|\s)preview=([A-Za-z_$][\w$]*)/.exec(meta)?.[1];
   if (!preview) {
@@ -197,7 +197,7 @@ function parseLiveBlock(node: Code, state: RenderState): Omit<LiveBlock, "linesN
   } catch (error) {
     fail(
       state.file,
-      `invalid live Solix source: ${error instanceof Error ? error.message : String(error)}`,
+      `invalid live Sol source: ${error instanceof Error ? error.message : String(error)}`,
       node.position?.start.line,
     );
   }
@@ -252,7 +252,7 @@ function parseLiveBlock(node: Code, state: RenderState): Omit<LiveBlock, "linesN
 
 export async function highlightCode(code: string, language: string): Promise<readonly unknown[]> {
   try {
-    const languageId = (language === "solix" ? "tsx" : language) as BundledLanguage;
+    const languageId = (language === "sol" ? "tsx" : language) as BundledLanguage;
     const result = await codeToTokens(code, { lang: languageId, theme: "github-dark" });
     return result.tokens.map((line) => ({
       tokens: line.map((token) => ({ content: token.content, color: token.color })),
@@ -267,7 +267,7 @@ async function renderCode(node: Code, state: RenderState): Promise<string> {
   const lines = await highlightCode(node.value, node.lang ?? "text");
   const linesName = `__code_lines_${index}`;
   state.moduleDeclarations.push(`const ${linesName} = ${JSON.stringify(lines)};`);
-  if (node.lang === "solix") {
+  if (node.lang === "sol") {
     const block = parseLiveBlock(node, state);
     const liveIndex = state.liveBlocks.push({ ...block, linesName }) - 1;
     return `<__LiveExample${liveIndex} />`;
@@ -382,10 +382,7 @@ function mergeImports(blocks: readonly LiveBlock[], file: string): string[] {
             specifier.imported.type === "Identifier"
               ? specifier.imported.name
               : specifier.imported.value;
-          if (
-            specifier.importKind === "type" ||
-            (source === "solix" && imported === "$component")
-          ) {
+          if (specifier.importKind === "type" || (source === "sol" && imported === "$component")) {
             continue;
           }
           const sourceImports = imports.get(source) ?? new Map<string, string>();
@@ -434,7 +431,7 @@ export async function markdownModule(
   let mode = "both" as ExampleMode;
   return <section class="my-8 border-[3px] border-ink bg-paper shadow-block" data-live-example=${JSON.stringify(block.preview)}>
     <header class="flex flex-col gap-4 border-b-[3px] border-ink bg-solar p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div><p class="font-mono text-[0.6875rem] font-bold uppercase text-cobalt">Live Solix / compiled</p><h3 class="mt-2 font-display text-2xl uppercase">${jsxText(block.title)}</h3></div>
+      <div><p class="font-mono text-[0.6875rem] font-bold uppercase text-cobalt">Live Sol / compiled</p><h3 class="mt-2 font-display text-2xl uppercase">${jsxText(block.title)}</h3></div>
       <ExampleViewToggle mode={mode} onChange={(next) => mode = next} />
     </header>
     <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
@@ -447,7 +444,7 @@ export async function markdownModule(
     .join("\n");
   return {
     metadata: parsed.metadata,
-    code: `import { $component } from "solix";
+    code: `import { $component } from "sol";
 import { CodePanel, ExampleViewToggle, type ExampleMode } from ${JSON.stringify(uiModule)};
 ${imports.join("\n")}
 ${state.moduleDeclarations.join("\n")}

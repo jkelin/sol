@@ -28,19 +28,19 @@ test("claims async server HTML and resumes a timed-out boundary", async ({ page 
     <div id="ssr-app">${html}</div>
     <script type="module">
       const client = await import("/tests/fixtures/ssr-client.ts");
-      window.solixStartHydration = client.startHydration;
-      window.solixClientLoaded = true;
+      window.solStartHydration = client.startHydration;
+      window.solClientLoaded = true;
     </script>
   `);
   await page.waitForFunction(
-    () => (window as typeof window & { solixClientLoaded?: boolean }).solixClientLoaded,
+    () => (window as typeof window & { solClientLoaded?: boolean }).solClientLoaded,
   );
 
   const serverButton = await page.locator("#ssr-primary").elementHandle();
   const timedFallback = await page.locator("#ssr-timed-fallback").elementHandle();
   await page.evaluate(async () => {
-    const runtime = window as typeof window & { solixStartHydration(): Promise<() => void> };
-    await runtime.solixStartHydration();
+    const runtime = window as typeof window & { solStartHydration(): Promise<() => void> };
+    await runtime.solStartHydration();
   });
 
   expect(
@@ -54,15 +54,15 @@ test("claims async server HTML and resumes a timed-out boundary", async ({ page 
   ).toBe(true);
   expect(
     await page.evaluate(
-      () => (window as typeof window & { solixPrimaryCalls: number }).solixPrimaryCalls,
+      () => (window as typeof window & { solPrimaryCalls: number }).solPrimaryCalls,
     ),
   ).toBe(0);
   await page.locator("#ssr-primary").click();
   await expect(page.locator("#ssr-primary")).toHaveText("server data:1");
 
   await page.evaluate(() => {
-    const runtime = window as typeof window & { solixResolveTimed(value: string): void };
-    runtime.solixResolveTimed("browser continuation");
+    const runtime = window as typeof window & { solResolveTimed(value: string): void };
+    runtime.solResolveTimed("browser continuation");
   });
   await expect(page.locator("#ssr-timed-ready")).toHaveText("browser continuation");
   await expect(page.locator("#ssr-timed-fallback")).toHaveCount(0);

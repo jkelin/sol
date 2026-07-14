@@ -3,7 +3,7 @@ import MagicString, { SourceMap } from "magic-string";
 import type { CompilerContext } from "./context.ts";
 
 export function mappedCode(compiler: CompilerContext, node: t.Node, code: string): string {
-  const marker = `/*__solix_source_${compiler.mappingOrigins.length}__*/`;
+  const marker = `/*__sol_source_${compiler.mappingOrigins.length}__*/`;
   compiler.mappingOrigins.push({ marker, originalOffset: node.start ?? 0 });
   return `${marker}${code}`;
 }

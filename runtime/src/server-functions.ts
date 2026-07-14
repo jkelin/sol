@@ -1,8 +1,8 @@
 import { isObject, isPromiseLike } from "./reactivity.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 
-const ENDPOINT = Symbol.for("solix.server.endpoint");
-const REQUEST_ERROR_STATUS = Symbol("solix.request.error.status");
+const ENDPOINT = Symbol.for("sol.server.endpoint");
+const REQUEST_ERROR_STATUS = Symbol("sol.request.error.status");
 const RPC_PREFIX = "/api/rpc/";
 const RPC_CONTENT_TYPE = "application/json";
 export const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
@@ -349,8 +349,8 @@ function compileHttpPath(path: string): CompiledHttpPath {
         throw new TypeError("HTTP route path cannot contain dot segments");
       }
       specificity.push(1);
-      const canonical = new URL(`/solix/${segment}`, "http://solix.invalid").pathname
-        .slice("/solix/".length)
+      const canonical = new URL(`/sol/${segment}`, "http://sol.invalid").pathname
+        .slice("/sol/".length)
         .replaceAll(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
       return canonical.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
     })

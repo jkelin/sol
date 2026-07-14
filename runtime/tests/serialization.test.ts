@@ -33,7 +33,7 @@ describe("SSR graph serialization", () => {
   });
 
   test("round trips supported scalar and built-in values", () => {
-    const expression = /solix/giu;
+    const expression = /sol/giu;
     expression.lastIndex = 1.5;
     const error = new TypeError("failed", { cause: { code: 42 } });
     const values = {
@@ -61,7 +61,7 @@ describe("SSR graph serialization", () => {
     expect(restored.bigint).toBe(values.bigint);
     expect(restored.date.toISOString()).toBe(values.date.toISOString());
     expect(Number.isNaN(restored.invalidDate.getTime())).toBe(true);
-    expect(restored.expression.source).toBe("solix");
+    expect(restored.expression.source).toBe("sol");
     expect(restored.expression.flags).toBe("giu");
     expect(restored.expression.lastIndex).toBe(1.5);
     expect(restored.url.href).toBe(values.url.href);

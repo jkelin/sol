@@ -1,4 +1,4 @@
-import { $component, $route } from "solix";
+import { $component, $route } from "sol";
 import { BlogList } from "./BlogList.tsx";
 import { blogDetailRoute } from "./blog-detail.sol.tsx";
 import { blogEntries, createBlogEntry } from "./blog-store.ts";

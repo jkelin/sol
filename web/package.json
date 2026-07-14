@@ -1,5 +1,5 @@
 {
-  "name": "@solix/web",
+  "name": "@sol/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "solix": "workspace:*",
+    "sol": "workspace:*",
     "solkit": "workspace:*",
     "valibot": "^1.4.2"
   },
@@ -23,7 +23,7 @@
     "@fontsource/chivo-mono": "^5.2.6",
     "@fontsource/familjen-grotesk": "^5.2.6",
     "@playwright/test": "^1.61.1",
-    "@solix/compiler": "workspace:*",
+    "@sol/compiler": "workspace:*",
     "@tailwindcss/vite": "^4.1.14",
     "@types/mdast": "^4.0.4",
     "remark-gfm": "^4.0.1",

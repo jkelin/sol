@@ -57,7 +57,7 @@ export function jsxName(
 
 export function region(context: TemplateContext): number {
   const index = context.nextRegion++;
-  context.html.push(`<!--solix:s:${index}--><!--solix:e:${index}-->`);
+  context.html.push(`<!--sol:s:${index}--><!--sol:e:${index}-->`);
   return index;
 }
 
@@ -133,7 +133,7 @@ export function keyCode(context: CompilerContext, attribute: t.JSXAttribute, sco
 export type ReactiveKind = "signal" | "computed";
 
 export function isReservedCompilerName(name: string): boolean {
-  return name.startsWith("__solix_");
+  return name.startsWith("__sol_");
 }
 
 export function validateReservedIdentifier(
@@ -144,7 +144,7 @@ export function validateReservedIdentifier(
     codeFrame(
       compiler,
       identifier,
-      `Identifier ${identifier.name} uses the reserved compiler prefix __solix_`,
+      `Identifier ${identifier.name} uses the reserved compiler prefix __sol_`,
     );
   }
 }

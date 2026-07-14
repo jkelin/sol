@@ -105,8 +105,8 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtimeModule).toString("base64")}`;
   const compilerRuntimeUrl = new URL("../../runtime/src/compiler-runtime.ts", import.meta.url).href;
   const sourceWithRuntime = result.code
-    .replaceAll('"solix/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
-    .replaceAll('"solix"', JSON.stringify(runtimeUrl));
+    .replaceAll('"sol/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
+    .replaceAll('"sol"', JSON.stringify(runtimeUrl));
   const javascript =
     ts.transpileModule(sourceWithRuntime, {
       compilerOptions: {
@@ -199,7 +199,7 @@ test("Head mounts reactive owned content into document.head", async () => {
   preservedTitle.textContent = "Static title";
   document.head.append(preserved, preservedTitle);
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App() {
       let title = "First";
       let description = "Initial description";
@@ -248,7 +248,7 @@ test("Head mounts reactive owned content into document.head", async () => {
 test("Head keeps reactive script bindings on the executable replacement", async () => {
   window.happyDOM.settings.enableJavaScriptEvaluation = true;
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App() {
       let body = "globalThis.dynamicHeadScripts = (globalThis.dynamicHeadScripts ?? 0) + 1;";
       let nonce = "first";
@@ -295,7 +295,7 @@ test("SSR serializes Head separately and hydration claims its owned nodes", asyn
   staticTitle.textContent = "Static title";
   document.head.append(staticTitle);
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App() {
       let title = "Server title";
       let description = "Server description";
@@ -323,7 +323,7 @@ test("SSR serializes Head separately and hydration claims its owned nodes", asyn
   expect(headHtml).toContain("Page: Server title");
   expect(headHtml).toContain('content="Server description"');
   expect(headHtml).toContain("body { color: Server title; }");
-  expect(headHtml).toContain("solix:head:start:");
+  expect(headHtml).toContain("sol:head:start:");
 
   const headTemplate = document.createElement("template");
   headTemplate.innerHTML = headHtml;
@@ -353,7 +353,7 @@ test("SSR serializes Head separately and hydration claims its owned nodes", asyn
 
 test("SSR Head preserves independent ordering and script identity through hydration", async () => {
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App() {
       let showNewer = true;
       return <main>
@@ -403,7 +403,7 @@ test("SSR Head preserves independent ordering and script identity through hydrat
 
 test("a later hydration mismatch preserves server-rendered Head nodes", async () => {
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App(props: { label: string }) {
       return <main>
         <Head><title>Preserved {props.label}</title><meta name="preserved-head" content={props.label} /></Head>
@@ -439,7 +439,7 @@ test("empty Head is inert and scripts outside Head stay inert", async () => {
   window.happyDOM.settings.enableJavaScriptEvaluation = true;
   const before = [...document.head.childNodes];
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App() {
       return <main>
         <Head />
@@ -459,7 +459,7 @@ test("empty Head is inert and scripts outside Head stay inert", async () => {
 
 test("raw-text elements render mixed values and update without marker text", async () => {
   const module = await loadCompiled(`
-    import { $component } from "solix";
+    import { $component } from "sol";
     export const App = $component(function App() {
       let count = 1;
       const missing = null;
@@ -476,7 +476,7 @@ test("raw-text elements render mixed values and update without marker text", asy
 
   expect(target.querySelector("textarea")?.textContent).toBe("Count 1; missing ; disabled ");
   expect(target.querySelector("style")?.textContent).toBe("\n.rule {\n  order: 1;\n}\n");
-  expect(target.textContent).not.toContain("solix:");
+  expect(target.textContent).not.toContain("sol:");
   target.querySelector("button")!.click();
   expect(target.querySelector("textarea")?.textContent).toBe("Count 2; missing ; disabled ");
   expect(target.querySelector("style")?.textContent).toBe("\n.rule {\n  order: 2;\n}\n");
@@ -488,7 +488,7 @@ test("conditional and sibling Head blocks retain independent ownership", async (
   staticTitle.textContent = "Static";
   document.head.append(staticTitle);
   const module = await loadCompiled(`
-    import { $component, Head } from "solix";
+    import { $component, Head } from "sol";
     export const App = $component(function App() {
       let showOptional = true;
       let olderTitle = "Older";
@@ -705,7 +705,7 @@ test("nested keyed lists preserve and react to outer row state", async () => {
 
 test("contexts compose with async components, Suspense, Await, and ErrorBoundary", async () => {
   const module = await loadCompiled(`
-    import { $component, $context, Suspense, Await, ErrorBoundary } from "solix";
+    import { $component, $context, Suspense, Await, ErrorBoundary } from "sol";
 
     const sharedContext = $context<{ label: string; count: number }>();
 
@@ -769,7 +769,7 @@ test("contexts compose with async components, Suspense, Await, and ErrorBoundary
 
 test("query and mutation controllers update compiled DOM and opt into Suspense per request", async () => {
   const module = await loadCompiled(`
-    import { $component, Suspense } from "solix";
+    import { $component, Suspense } from "sol";
 
     const DataPanel = $component(function DataPanel() {
       const query = globalThis.integrationQuery({
@@ -900,7 +900,7 @@ test("hydrates a fulfilled non-suspending initial query from its server loading 
 
 test("disposing a suspended query finishes its parent boundary before settlement", async () => {
   const module = await loadCompiled(`
-    import { $component, Suspense } from "solix";
+    import { $component, Suspense } from "sol";
     const Pending = $component(function Pending() {
       const query = globalThis.integrationQuery({
         queryKey: ["disposed-query", ${JSON.stringify(crypto.randomUUID())}],
@@ -925,7 +925,7 @@ test("disposing a suspended query finishes its parent boundary before settlement
 
 test("a query failure without an async boundary remains in reactive controller state", async () => {
   const module = await loadCompiled(`
-    import { $component } from "solix";
+    import { $component } from "sol";
     export const App = $component(function App() {
       const query = globalThis.integrationQuery({
         queryKey: ["boundary-free-failure", ${JSON.stringify(crypto.randomUUID())}],
@@ -955,7 +955,7 @@ test("a query failure without an async boundary remains in reactive controller s
 
 test("context optional reads and local Await errors work without Suspense", async () => {
   const module = await loadCompiled(`
-    import { $component, $context, Await } from "solix";
+    import { $component, $context, Await } from "sol";
     const optionalContext = $context<{ value: string }>();
     export const App = $component(function App() {
       const optional = optionalContext.useOptional();
@@ -982,7 +982,7 @@ test("context optional reads and local Await errors work without Suspense", asyn
 
 test("preserves context reads after async setup resumes", async () => {
   const module = await loadCompiled(`
-    import { $component, $context, Suspense } from "solix";
+    import { $component, $context, Suspense } from "sol";
     const shared = $context<{ label: string }>();
     const AsyncChild = $component(async function AsyncChild(props: { context: typeof shared }) {
       const alias = props.context;
@@ -1011,7 +1011,7 @@ test("preserves context reads after async setup resumes", async () => {
 
 test("missing contexts throw and ErrorBoundary catches sync and async render failures", async () => {
   const missingModule = await loadCompiled(`
-    import { $component, $context } from "solix";
+    import { $component, $context } from "sol";
     const missingContext = $context<{ value: string }>();
     export const App = $component(function App() {
       const value = missingContext.use();
@@ -1024,7 +1024,7 @@ test("missing contexts throw and ErrorBoundary catches sync and async render fai
   );
 
   const boundaryModule = await loadCompiled(`
-    import { $component, ErrorBoundary } from "solix";
+    import { $component, ErrorBoundary } from "sol";
     const SyncFailure = $component(function SyncFailure() {
       throw new Error("sync failure");
       return <p>unreachable</p>;
@@ -1057,7 +1057,7 @@ test("missing contexts throw and ErrorBoundary catches sync and async render fai
 
 test("Await replaces stale promises and re-enters its Suspense fallback", async () => {
   const module = await loadCompiled(`
-    import { $component, Await, Suspense } from "solix";
+    import { $component, Await, Suspense } from "sol";
     let resolveFirst!: (value: string) => void;
     const first = new Promise<string>(resolve => resolveFirst = resolve);
     export function settleFirst() { resolveFirst("stale"); }
@@ -1090,7 +1090,7 @@ test("Await replaces stale promises and re-enters its Suspense fallback", async 
 
 test("nested and sibling providers select the nearest context value", async () => {
   const module = await loadCompiled(`
-    import { $component, $context } from "solix";
+    import { $component, $context } from "sol";
     const context = $context<{ value: string }>();
     const Consumer = $component(function Consumer(props: { id: string }) {
       const data = context.use();
@@ -1120,7 +1120,7 @@ test("nested and sibling providers select the nearest context value", async () =
 
 test("nested Suspense owns its work while a parent waits for multiple promises", async () => {
   const module = await loadCompiled(`
-    import { $component, Await, Suspense } from "solix";
+    import { $component, Await, Suspense } from "sol";
     let resolveFirst!: (value: string) => void;
     let resolveSecond!: (value: string) => void;
     let resolveNested!: (value: string) => void;
@@ -1165,7 +1165,7 @@ test("nested Suspense owns its work while a parent waits for multiple promises",
 
 test("async rejections prefer Await, then Suspense, then ErrorBoundary", async () => {
   const module = await loadCompiled(`
-    import { $component, Await, ErrorBoundary, Suspense } from "solix";
+    import { $component, Await, ErrorBoundary, Suspense } from "sol";
     export const App = $component(function App() {
       const localFailure = Promise.reject(new Error("local"));
       const suspenseFailure = Promise.reject(new Error("suspense"));
@@ -1209,7 +1209,7 @@ test("async rejections prefer Await, then Suspense, then ErrorBoundary", async (
 test("compiled refs and portals preserve ownership across targets and body", async () => {
   const animations = installAnimations();
   const module = await loadCompiled(`
-    import { $component, $context, Await, createRef, GlobalPortal, Portal } from "solix";
+    import { $component, $context, Await, createRef, GlobalPortal, Portal } from "sol";
     const context = $context<{ label: string }>();
 
     const PortalContent = $component(function PortalContent() {
@@ -1295,7 +1295,7 @@ test("compiled refs and portals preserve ownership across targets and body", asy
 
 test("defers nested mount phases and activates keyed refs and portals", async () => {
   const module = await loadCompiled(`
-    import { $component, createRef, Portal } from "solix";
+    import { $component, createRef, Portal } from "sol";
     export const App = $component(function App() {
       const conditionalTarget = createRef<HTMLDivElement>();
       const listTarget = createRef<HTMLDivElement>();
@@ -1347,7 +1347,7 @@ test("defers nested mount phases and activates keyed refs and portals", async ()
 
 test("server renders compiled primitives and resolved Suspense without a DOM", async () => {
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Child = $component(async function Child(props: { label: string }) {
       const value = await Promise.resolve(props.label);
       return <strong className={["ready", { active: true }]}>{value}</strong>;
@@ -1356,7 +1356,7 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
       const items = ["one", "two"];
       const disabled = false;
       return <>
-        <p id="marker-text">data-solix-e="0"</p>
+        <p id="marker-text">data-sol-e="0"</p>
         <main data-title={"<&"} aria-hidden={disabled} data-enabled={disabled}>
         <Suspense fallback={<p id="loading">Loading</p>} timeoutMs={100}>
           <Child label="done" />
@@ -1375,14 +1375,14 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
     globalThis.document = activeDocument;
   }
   expect(html).toContain('<main data-title="&lt;&amp;"');
-  expect(html).toContain('<p id="marker-text">data-solix-e="0"</p>');
+  expect(html).toContain('<p id="marker-text">data-sol-e="0"</p>');
   expect(html).toContain('aria-hidden="false"');
   expect(html).toContain('data-enabled="false"');
   expect(html).toContain('<strong class="ready active"');
-  expect(html).toContain(">done<!--solix:e:0-->");
-  expect(html).toContain(">one<!--solix:e:0-->");
+  expect(html).toContain(">done<!--sol:e:0-->");
+  expect(html).toContain(">one<!--sol:e:0-->");
   expect(html).not.toContain('id="loading"');
-  expect(html).toContain("data-solix-hydration");
+  expect(html).toContain("data-sol-hydration");
 });
 
 test("server rendering keeps parent region slots distinct from nested region markers", async () => {
@@ -1408,7 +1408,7 @@ test("server rendering keeps parent region slots distinct from nested region mar
 
 test("server renders a timed-out Suspense fallback and rejects root timeouts", async () => {
   const module = await loadCompiled(`
-    import { ErrorBoundary, Suspense } from "solix";
+    import { ErrorBoundary, Suspense } from "sol";
     const Pending = $component(async function Pending() {
       await new Promise(() => {});
       return <p>never</p>;
@@ -1464,7 +1464,7 @@ test("server renders a timed-out Suspense fallback and rejects root timeouts", a
 test("hydrates server DOM in place and replays async component data", async () => {
   globalThis.integrationSetups.app = 0;
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Child = $component(async function Child() {
       const value = await Promise.resolve().then(() => {
         globalThis.integrationSetups.app += 1;
@@ -1499,7 +1499,7 @@ test("hydrates server DOM in place and replays async component data", async () =
 
 test("hydrates refs and mounts browser-only portals after claiming server DOM", async () => {
   const module = await loadCompiled(`
-    import { $component, createRef, Portal } from "solix";
+    import { $component, createRef, Portal } from "sol";
     export const App = $component(function App() {
       const target = createRef<HTMLDivElement>();
       return <main>
@@ -1598,7 +1598,7 @@ test("hydrates a timed-out fallback and resumes only its pending work", async ()
     globalThis.integrationResolve = resolve;
   });
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Child = $component(async function Child() {
       const value = await (() => {
         globalThis.integrationSetups.app += 1;
@@ -1643,9 +1643,9 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
 
   target.innerHTML = await renderToStringAsync(App);
   const signedStart = target.firstChild as Comment;
-  signedStart.data = "solix:block:start:tstale";
+  signedStart.data = "sol:block:start:tstale";
   await expectRejection(hydrate(App, target), "template payload order mismatch");
-  expect((target.firstChild as Comment).data).toBe("solix:block:start:tstale");
+  expect((target.firstChild as Comment).data).toBe("sol:block:start:tstale");
 
   const dynamicModule = await loadCompiled(`
     export const App = $component(function App(props: { label: string }) {
@@ -1655,7 +1655,7 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
   const dynamicApp = dynamicModule.App as Component<{ label: string }>;
   const dynamicHtml = await renderToStringAsync(dynamicApp, { label: "server" });
   target.innerHTML = dynamicHtml;
-  target.querySelector("main")!.removeAttribute("data-solix-e");
+  target.querySelector("main")!.removeAttribute("data-sol-e");
   const missingElementMarker = target.innerHTML;
   await expectRejection(
     hydrate(dynamicApp, target, { label: "server" }),
@@ -1664,7 +1664,7 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
   expect(target.innerHTML).toBe(missingElementMarker);
 
   target.innerHTML = dynamicHtml;
-  target.querySelector("main")!.setAttribute("data-solix-e", "1");
+  target.querySelector("main")!.setAttribute("data-sol-e", "1");
   const wrongElementMarker = target.innerHTML;
   await expectRejection(
     hydrate(dynamicApp, target, { label: "server" }),
@@ -1675,7 +1675,7 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
 
 test("does not let ErrorBoundary swallow hydration mismatches", async () => {
   const module = await loadCompiled(`
-    import { ErrorBoundary, Suspense } from "solix";
+    import { ErrorBoundary, Suspense } from "sol";
     export const App = $component(function App(props: { label: string }) {
       return <ErrorBoundary fallback={error => <p id="boundary-fallback">{String(error)}</p>}>
         <Suspense fallback={<p>Loading</p>} error={error => <p id="suspense-error">{String(error)}</p>}>
@@ -1796,8 +1796,8 @@ test("hydrates dynamic textarea and select values as DOM properties", async () =
 
 test("hydration rejects a Link destination mismatch without rewriting href", async () => {
   const module = await loadCompiled(`
-    import { Link } from "solix";
-    import { route as runtimeRoute } from "solix/compiler-runtime";
+    import { Link } from "sol";
+    import { route as runtimeRoute } from "sol/compiler-runtime";
     const Page = $component(function Page() { return <main>Page</main>; });
     const destination = runtimeRoute(
       { path: "/item/:id" },
@@ -1833,7 +1833,7 @@ test("rejects reordered template payload entries", async () => {
   const App = module.App as Component;
   const target = document.createElement("div");
   target.innerHTML = await renderToStringAsync(App);
-  const script = target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!;
+  const script = target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!;
   const payload = deserializeGraph(script.textContent) as { templates: string[] };
   payload.templates.reverse();
   script.textContent = serializeGraph(payload);
@@ -1853,22 +1853,22 @@ test("rejects missing and reordered hydration region comments", async () => {
   const html = await renderToStringAsync(App);
   const target = document.createElement("div");
 
-  target.innerHTML = html.replace("<!--solix:s:0-->", "");
+  target.innerHTML = html.replace("<!--sol:s:0-->", "");
   const missingMarkup = target.innerHTML;
   await expectRejection(hydrate(App, target), "hydration mismatch");
   expect(target.innerHTML).toBe(missingMarkup);
 
   target.innerHTML = html.replace(
-    "<!--solix:s:0-->dynamic<!--solix:e:0-->",
-    "<!--solix:e:0-->dynamic<!--solix:s:0-->",
+    "<!--sol:s:0-->dynamic<!--sol:e:0-->",
+    "<!--sol:e:0-->dynamic<!--sol:s:0-->",
   );
   const reorderedMarkup = target.innerHTML;
   await expectRejection(hydrate(App, target), "hydration mismatch");
   expect(target.innerHTML).toBe(reorderedMarkup);
 
-  target.innerHTML = html.replace("<!--solix:e:0-->", "<!--solix:e:999-->");
+  target.innerHTML = html.replace("<!--sol:e:0-->", "<!--sol:e:999-->");
   const wrongIdentityMarkup = target.innerHTML;
-  await expectRejection(hydrate(App, target), "expected <!--solix:e:0-->");
+  await expectRejection(hydrate(App, target), "expected <!--sol:e:0-->");
   expect(target.innerHTML).toBe(wrongIdentityMarkup);
 });
 
@@ -1879,7 +1879,7 @@ test("rejects extra replay entries and nested async-site mismatches", async () =
   const staticApp = staticModule.App as Component;
   const target = document.createElement("div");
   target.innerHTML = await renderToStringAsync(staticApp);
-  let script = target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!;
+  let script = target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!;
   const extraPayload = deserializeGraph(script.textContent) as {
     async: { site: string; status: "pending" }[];
   };
@@ -1898,7 +1898,7 @@ test("rejects extra replay entries and nested async-site mismatches", async () =
   `);
   const asyncApp = asyncModule.App as Component;
   target.innerHTML = await renderToStringAsync(asyncApp);
-  script = target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!;
+  script = target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!;
   const stalePayload = deserializeGraph(script.textContent) as {
     async: { site: string }[];
   };
@@ -1914,7 +1914,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     export const App = $component(function App() { return <main>Valid</main>; });
   `);
   const App = module.App as Component;
-  await expectRejection(renderToStringAsync(null as never), "compiled Solix component");
+  await expectRejection(renderToStringAsync(null as never), "compiled Sol component");
   await expectRejection(renderToStringAsync(App, 1 as never), "props must be an object");
   await expectRejection(renderToStringAsync(App, [] as never), "props must be an object");
   await expectRejection(
@@ -1931,7 +1931,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     "onHead must be a function",
   );
   const headModule = await loadCompiled(`
-    import { Head } from "solix";
+    import { Head } from "sol";
     export const App = $component(function App() { return <><Head><title>Required callback</title></Head><main /></>; });
   `);
   await expectRejection(
@@ -1940,7 +1940,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
   );
 
   const suspenseModule = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     export const App = $component(function App(props: { timeoutMs: number }) {
       return <Suspense fallback={<p>Loading</p>} timeoutMs={props.timeoutMs}><main>Ready</main></Suspense>;
     });
@@ -1953,59 +1953,59 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
   }
 
   const target = document.createElement("div");
-  await expectRejection(hydrate(null as never, target), "compiled Solix component");
+  await expectRejection(hydrate(null as never, target), "compiled Sol component");
   await expectRejection(hydrate(App, { nodeType: 1 } as never), "DOM Element target");
   await expectRejection(hydrate(App, target, [] as never), "props must be an object");
   await expectRejection(hydrate(App, target), "payload is missing");
   target.innerHTML =
-    '<script type="application/json" data-solix-hydration>{</script>' +
-    '<script type="application/json" data-solix-hydration>{}</script>';
+    '<script type="application/json" data-sol-hydration>{</script>' +
+    '<script type="application/json" data-sol-hydration>{}</script>';
   await expectRejection(hydrate(App, target), "exactly once");
-  target.innerHTML = `<script data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script data-sol-hydration>${serializeGraph({
     version: 1,
     templates: [],
     async: [],
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), 'type="application/json"');
-  target.innerHTML = `<script type="text/javascript" data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script type="text/javascript" data-sol-hydration>${serializeGraph({
     version: 1,
     templates: [],
     async: [],
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), 'type="application/json"');
-  target.innerHTML = '<script type="application/json" data-solix-hydration>{</script>';
+  target.innerHTML = '<script type="application/json" data-sol-hydration>{</script>';
   await expectRejection(hydrate(App, target), "payload JSON");
-  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script type="application/json" data-sol-hydration>${serializeGraph({
     version: 999,
     templates: [],
     async: [],
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), "protocol 999");
-  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script type="application/json" data-sol-hydration>${serializeGraph({
     version: 1,
     templates: [],
     async: [{ site: 1, status: "fulfilled", value: "bad" }],
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), "async payload");
-  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script type="application/json" data-sol-hydration>${serializeGraph({
     version: 1,
     templates: [],
     async: [{ site: "await:test:0", status: "pending", value: "unexpected" }],
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), "async payload");
-  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script type="application/json" data-sol-hydration>${serializeGraph({
     version: 1,
     templates: [],
     async: [{ site: "await:test:0", status: "fulfilled", value: "ok", extra: true }],
     boundaries: [],
   })}</script>`;
   await expectRejection(hydrate(App, target), "async payload");
-  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+  target.innerHTML = `<script type="application/json" data-sol-hydration>${serializeGraph({
     version: 1,
     templates: [],
     async: [],
@@ -2065,7 +2065,7 @@ test("does not capture fire-and-forget helper awaits", async () => {
   target.innerHTML = await renderToStringAsync(App);
   expect(globalThis.integrationSetups.app).toBe(1);
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { async: unknown[] };
   expect(payload.async).toHaveLength(1);
   const dispose = await hydrate(App, target);
@@ -2093,7 +2093,7 @@ test("captures awaited and fire-and-forget invocations of one helper independent
   target.innerHTML = await renderToStringAsync(App);
   expect(globalThis.integrationLoads).toBe(2);
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { async: { status: string }[] };
   expect(payload.async).toHaveLength(1);
   expect(payload.async[0]?.status).toBe("fulfilled");
@@ -2131,7 +2131,7 @@ test("replays repeated same-site component awaits resolved out of order", async 
   const first = target.querySelector('[data-id="first"]');
   const second = target.querySelector('[data-id="second"]');
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { async: { site: string }[] };
   expect(payload.async.map((entry) => entry.site)).toEqual([
     "await:Integration.tsx:0",
@@ -2171,7 +2171,7 @@ test("replays nested helper Promise.all data driving branches and lists", async 
   target.innerHTML = await renderToStringAsync(App);
   expect(globalThis.integrationLoads).toBe(2);
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { async: { site: string }[] };
   expect(payload.async.map((entry) => entry.site)).toEqual(["await:Integration.tsx:0"]);
   const branch = target.querySelector("#async-branch");
@@ -2221,7 +2221,7 @@ test("replays eagerly initialized promises and Promise.all helper sites", async 
   expect(globalThis.integrationLoads).toBe(2);
   const allParagraph = target.querySelector("#all-result");
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { async: { site: string }[] };
   expect(payload.async.map((entry) => entry.site)).toEqual([
     "await:Integration.tsx:0",
@@ -2236,7 +2236,7 @@ test("replays eagerly initialized promises and Promise.all helper sites", async 
 
 test("SSR preserves Await promise-like validation", async () => {
   const module = await loadCompiled(`
-    import { Await } from "solix";
+    import { Await } from "sol";
     export const App = $component(function App() {
       const invalid = 123 as unknown as Promise<number>;
       return <Await $promise={invalid}>{value => <main>{value}</main>}</Await>;
@@ -2248,7 +2248,7 @@ test("SSR preserves Await promise-like validation", async () => {
 test("SSR and hydration preserve Await, Suspense, and ErrorBoundary failures", async () => {
   globalThis.integrationSetups.app = 0;
   const module = await loadCompiled(`
-    import { Await, ErrorBoundary, Suspense } from "solix";
+    import { Await, ErrorBoundary, Suspense } from "sol";
     const SuspenseFailure = $component(async function SuspenseFailure() {
       await Promise.reject(new Error("suspense failed"));
       return <p>unexpected</p>;
@@ -2293,7 +2293,7 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
     globalThis.integrationResolve = resolve;
   });
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Pending = $component(async function Pending() {
       const value = await globalThis.integrationPending;
       return <p id="nested-ready">{value}</p>;
@@ -2326,7 +2326,7 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
 
 test("an outer Suspense timeout retires pending descendant boundaries", async () => {
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Pending = $component(async function Pending() {
       await new Promise(() => {});
       return <p>Never</p>;
@@ -2355,7 +2355,7 @@ test("an outer Suspense timeout retires pending descendant boundaries", async ()
   target.innerHTML = html;
   expect(target.querySelector("#outer-retired")?.textContent).toBe("Outer fallback");
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { boundaries: string[] };
   expect(payload.boundaries).toEqual(["timeout", "timeout"]);
 });
@@ -2367,7 +2367,7 @@ test("keeps late settlements from timed-out boundaries uncaptured", async () => 
     return new Promise((resolve) => setTimeout(() => resolve(`${id} result`), delay));
   };
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Child = $component(async function Child(props: { id: string }) {
       const value = await globalThis.integrationLoad(props.id);
       return <p data-id={props.id}>{String(value)}</p>;
@@ -2389,7 +2389,7 @@ test("keeps late settlements from timed-out boundaries uncaptured", async () => 
   target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 120 });
   expect(globalThis.integrationLoads).toBe(3);
   const payload = deserializeGraph(
-    target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
+    target.querySelector<HTMLScriptElement>("script[data-sol-hydration]")!.textContent,
   ) as { async: { status: string }[] };
   expect(payload.async.map((entry) => entry.status)).toEqual(["fulfilled", "pending", "fulfilled"]);
   const fallback = target.querySelector("#late-fallback");
@@ -2407,7 +2407,7 @@ test("a timed-out outer boundary resumes nested boundary payloads", async () => 
     globalThis.integrationResolve = resolve;
   });
   const module = await loadCompiled(`
-    import { Suspense } from "solix";
+    import { Suspense } from "sol";
     const Ready = $component(async function Ready() {
       const value = await Promise.resolve("nested ready");
       return <p id="nested-resume-ready">{value}</p>;

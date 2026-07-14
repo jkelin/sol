@@ -1,38 +1,38 @@
 ---
 title: Getting Started
-description: Install Solix, connect the compiler, and mount a first reactive component.
+description: Install Sol, connect the compiler, and mount a first reactive component.
 section: Guide
 order: 1
 ---
 
-Solix is an experimental JSX framework whose compiler turns components into **static HTML templates** plus narrowly scoped DOM operations. Component setup runs once per mounted instance; reactive changes patch only the work that depends on them.
+Sol is an experimental JSX framework whose compiler turns components into **static HTML templates** plus narrowly scoped DOM operations. Component setup runs once per mounted instance; reactive changes patch only the work that depends on them.
 
 ## Install the packages
 
 Add the browser runtime, compiler, and Vite:
 
 ```sh
-bun add solix
-bun add --dev @solix/compiler vite
+bun add sol
+bun add --dev @sol/compiler vite
 ```
 
 Enable the compiler before Vite transforms JSX:
 
 ```ts
-import { solix } from "@solix/compiler/vite";
+import { sol } from "@sol/compiler/vite";
 import { defineConfig } from "vite";
 
-export default defineConfig({ plugins: [solix()] });
+export default defineConfig({ plugins: [sol()] });
 ```
 
-Set TypeScript's `jsxImportSource` to `solix`, then mount a compiled component into a real DOM element. Validate that mount boundary instead of assuming it exists.
+Set TypeScript's `jsxImportSource` to `sol`, then mount a compiled component into a real DOM element. Validate that mount boundary instead of assuming it exists.
 
 ## First light
 
 This source is both the code-panel content and the component running beside it.
 
-```solix live preview=FirstCounter title="Your first reactive component"
-import { $component } from "solix";
+```sol live preview=FirstCounter title="Your first reactive component"
+import { $component } from "sol";
 
 const FirstCounter = $component(function FirstCounter() {
   let count = 0;
@@ -54,7 +54,7 @@ Writable declarations become signals and directly derived constants become compu
 ## Mount the application
 
 ```tsx
-import { mount } from "solix";
+import { mount } from "sol";
 import { App } from "./App.tsx";
 
 const target = document.querySelector("#app");

@@ -1,8 +1,8 @@
-import { $component, renderToStringAsync, Suspense } from "solix";
+import { $component, renderToStringAsync, Suspense } from "sol";
 
 interface TestRuntime {
-  solixPrimaryLoad?: () => Promise<string>;
-  solixTimedLoad?: () => Promise<string>;
+  solPrimaryLoad?: () => Promise<string>;
+  solTimedLoad?: () => Promise<string>;
 }
 
 function runtime(): typeof globalThis & TestRuntime {
@@ -10,7 +10,7 @@ function runtime(): typeof globalThis & TestRuntime {
 }
 
 const Primary = $component(async function Primary() {
-  const value = await runtime().solixPrimaryLoad!();
+  const value = await runtime().solPrimaryLoad!();
   let clicks = 0;
   async function increment() {
     clicks = await Promise.resolve(clicks + 1);
@@ -23,7 +23,7 @@ const Primary = $component(async function Primary() {
 });
 
 const Timed = $component(async function Timed() {
-  const value = await runtime().solixTimedLoad!();
+  const value = await runtime().solTimedLoad!();
   return <p id="ssr-timed-ready">{value}</p>;
 });
 
@@ -41,7 +41,7 @@ export const SsrApp = $component(function SsrApp() {
 });
 
 export async function serverHtml(): Promise<string> {
-  runtime().solixPrimaryLoad = () => Promise.resolve("server data");
-  runtime().solixTimedLoad = () => new Promise(() => undefined);
+  runtime().solPrimaryLoad = () => Promise.resolve("server data");
+  runtime().solTimedLoad = () => new Promise(() => undefined);
   return renderToStringAsync(SsrApp, undefined, { timeoutMs: 100 });
 }

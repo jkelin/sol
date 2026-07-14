@@ -14,14 +14,14 @@ import { HydrationMismatchError, HydrationSession, type HydrationPayload } from 
 
 function hydrationPayload(value: unknown): HydrationPayload {
   if (!isObject(value) || Array.isArray(value)) {
-    throw new TypeError("Invalid Solix hydration payload");
+    throw new TypeError("Invalid Sol hydration payload");
   }
   const keys = Object.keys(value).toSorted().join(",");
   if (
     keys !== "async,boundaries,templates,version" &&
     keys !== "async,boundaries,head,templates,version"
   ) {
-    throw new TypeError("Invalid Solix hydration payload fields");
+    throw new TypeError("Invalid Sol hydration payload fields");
   }
   const payload = value as Partial<HydrationPayload>;
   if (
@@ -30,7 +30,7 @@ function hydrationPayload(value: unknown): HydrationPayload {
     !Array.isArray(payload.async) ||
     !Array.isArray(payload.boundaries)
   ) {
-    throw new TypeError("Invalid Solix hydration payload");
+    throw new TypeError("Invalid Sol hydration payload");
   }
   if (
     payload.head !== undefined &&
@@ -41,7 +41,7 @@ function hydrationPayload(value: unknown): HydrationPayload {
       !Number.isInteger(payload.head.count) ||
       payload.head.count < 1)
   ) {
-    throw new TypeError("Invalid Solix hydration Head payload");
+    throw new TypeError("Invalid Sol hydration Head payload");
   }
   return payload as HydrationPayload;
 }
@@ -50,7 +50,7 @@ function templateSignatures(target: Element): string[] {
   const signatures: string[] = [];
   const walker = document.createTreeWalker(target, NodeFilter.SHOW_COMMENT);
   while (walker.nextNode()) {
-    const match = /^solix:block:start:(t[a-z0-9]+)$/.exec((walker.currentNode as Comment).data);
+    const match = /^sol:block:start:(t[a-z0-9]+)$/.exec((walker.currentNode as Comment).data);
     if (match) signatures.push(match[1]!);
   }
   return signatures;
@@ -69,17 +69,17 @@ export async function hydrate<Props extends object>(
     throw new TypeError("hydrate() props must be an object");
   }
   const factory = getFactory(candidate);
-  const scripts = [...target.querySelectorAll<HTMLScriptElement>("script[data-solix-hydration]")];
+  const scripts = [...target.querySelectorAll<HTMLScriptElement>("script[data-sol-hydration]")];
   if (scripts.length !== 1) {
     throw new Error(
       scripts.length === 0
-        ? "Solix hydration payload is missing"
-        : "Solix hydration payload must appear exactly once",
+        ? "Sol hydration payload is missing"
+        : "Sol hydration payload must appear exactly once",
     );
   }
   const script = scripts[0]!;
   if (script.type !== "application/json") {
-    throw new Error('Solix hydration payload script must use type="application/json"');
+    throw new Error('Sol hydration payload script must use type="application/json"');
   }
   const payload = hydrationPayload(deserializeGraph(script.textContent ?? ""));
   const session = new HydrationSession(payload);
@@ -113,8 +113,8 @@ export async function hydrate<Props extends object>(
     }
     activateMounts(frame);
     session.commit();
-    for (const element of target.querySelectorAll("[data-solix-e]")) {
-      element.removeAttribute("data-solix-e");
+    for (const element of target.querySelectorAll("[data-sol-e]")) {
+      element.removeAttribute("data-sol-e");
     }
     for (const headClaim of documentHeadClaims) {
       for (
@@ -123,9 +123,9 @@ export async function hydrate<Props extends object>(
         node = node.nextSibling
       ) {
         if (!(node instanceof Element)) continue;
-        node.removeAttribute("data-solix-e");
-        for (const element of node.querySelectorAll("[data-solix-e]")) {
-          element.removeAttribute("data-solix-e");
+        node.removeAttribute("data-sol-e");
+        for (const element of node.querySelectorAll("[data-sol-e]")) {
+          element.removeAttribute("data-sol-e");
         }
       }
     }

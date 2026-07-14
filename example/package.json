@@ -1,5 +1,5 @@
 {
-  "name": "@solix/example",
+  "name": "@sol/example",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,13 +13,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "solix": "workspace:*",
+    "sol": "workspace:*",
     "solkit": "workspace:*",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@solix/compiler": "workspace:*",
+    "@sol/compiler": "workspace:*",
     "@tailwindcss/vite": "^4.1.14",
     "tailwindcss": "^4.1.14",
     "vite": "^8.0.10"

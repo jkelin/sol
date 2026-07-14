@@ -1,4 +1,4 @@
-import { $httpRoute, $rpcMutation, $rpcQuery, type HttpRouteInput } from "solix";
+import { $httpRoute, $rpcMutation, $rpcQuery, type HttpRouteInput } from "sol";
 import * as v from "valibot";
 
 const load = $rpcQuery(

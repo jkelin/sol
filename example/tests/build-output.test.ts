@@ -15,7 +15,7 @@ test("the example build keeps compiler output readable", async () => {
         .map((file) => Bun.file(`dist/client/assets/${file}`).text()),
     )
   ).join("\n");
-  expect(output).toContain("__solix_template");
+  expect(output).toContain("__sol_template");
   expect(output).toContain("//#region src/App.tsx");
   expect(output).toContain('path: "/blog/new"');
   expect(output).toContain('path: "/blog/:id?from=:from"');
@@ -34,16 +34,16 @@ test("the example build keeps compiler output readable", async () => {
   expect(clientArtifacts).not.toContain("noteTitleSchema");
   expect(clientArtifacts).not.toContain("noteHttpSchema");
   expect(clientArtifacts).not.toContain("verifyNotesBackendSecret");
-  expect(clientArtifacts).not.toContain("SOLIX_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
-  expect(clientArtifacts).not.toContain("SOLIX_BACKEND_SECRET_DO_NOT_SHIP");
+  expect(clientArtifacts).not.toContain("SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
+  expect(clientArtifacts).not.toContain("SOL_BACKEND_SECRET_DO_NOT_SHIP");
   expect(output).toContain("function runTransitions(");
   expect(output).toContain("element.getAnimations(");
-  expect(output).not.toContain("solix_get_diagnostics");
-  expect(output).not.toContain("solix-devtools");
+  expect(output).not.toContain("sol_get_diagnostics");
+  expect(output).not.toContain("sol-devtools");
   expect(await Bun.file("dist/server/app.mjs").exists()).toBe(true);
   expect(await Bun.file("dist/server/index.mjs").exists()).toBe(true);
   const serverOutput = await Bun.file("dist/server/app.mjs").text();
   expect(serverOutput).toContain("notes-backend");
-  expect(serverOutput).toContain("SOLIX_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
-  expect(serverOutput).toContain("SOLIX_BACKEND_SECRET_DO_NOT_SHIP");
+  expect(serverOutput).toContain("SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
+  expect(serverOutput).toContain("SOL_BACKEND_SECRET_DO_NOT_SHIP");
 });

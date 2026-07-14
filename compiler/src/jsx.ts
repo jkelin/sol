@@ -41,14 +41,14 @@ export function compileBinding(
     const reference = expressionCode(expression, scope);
     return {
       read: reference,
-      write: `${reference} = ${property === "checked" ? "Boolean(__solix_value)" : 'String(__solix_value ?? "")'}`,
+      write: `${reference} = ${property === "checked" ? "Boolean(__sol_value)" : 'String(__sol_value ?? "")'}`,
     };
   }
   if (t.isMemberExpression(expression) && !expression.optional) {
     const root = bindingRoot(expression);
     const scopedRoot = root ? scope.get(root) : undefined;
     const isKeyedRowValue =
-      scopedRoot !== undefined && /^__solix_(?:item|index)_\d+\.value$/.test(scopedRoot);
+      scopedRoot !== undefined && /^__sol_(?:item|index)_\d+\.value$/.test(scopedRoot);
     if (
       !isKeyedRowValue &&
       root === compiler.propsName &&
@@ -71,7 +71,7 @@ export function compileBinding(
     const target = expressionCode(expression, scope);
     return {
       read: target,
-      write: `${target} = ${property === "checked" ? "Boolean(__solix_value)" : 'String(__solix_value ?? "")'}`,
+      write: `${target} = ${property === "checked" ? "Boolean(__sol_value)" : 'String(__sol_value ?? "")'}`,
     };
   }
   return codeFrame(
@@ -128,7 +128,7 @@ export function blockFactory(
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
 ): string {
-  return `(__solix_frame) => { ${compileBlockBody(compiler, root, bindings, scope)} }`;
+  return `(__sol_frame) => { ${compileBlockBody(compiler, root, bindings, scope)} }`;
 }
 
 export function jsxFactoryFromAttribute(
@@ -194,7 +194,7 @@ export function optionalErrorFactory(
 ): string {
   const attribute = namedAttribute(compiler, node, "error");
   if (!attribute) return "undefined";
-  return `(__solix_error, __solix_frame) => (${renderFunctionFactory(compiler, jsxAttributeExpression(compiler, attribute), bindings, scope, "__solix_error")})(__solix_frame)`;
+  return `(__sol_error, __sol_frame) => (${renderFunctionFactory(compiler, jsxAttributeExpression(compiler, attribute), bindings, scope, "__sol_error")})(__sol_frame)`;
 }
 
 export function validateBuiltinAttributes(
@@ -241,7 +241,7 @@ export function compileBuiltinElement(
       mappedCode(
         compiler,
         node,
-        `__solix_head(${blockFactory(compiler, childrenRoot(node), bindings, scope)}, __solix_cleanups, __solix_frame);`,
+        `__sol_head(${blockFactory(compiler, childrenRoot(node), bindings, scope)}, __sol_cleanups, __sol_frame);`,
       ),
     );
     return;
@@ -256,7 +256,7 @@ export function compileBuiltinElement(
         mappedCode(
           compiler,
           node,
-          `__solix_global_portal(${render}, __solix_cleanups, __solix_lifecycle, __solix_frame);`,
+          `__sol_global_portal(${render}, __sol_cleanups, __sol_lifecycle, __sol_frame);`,
         ),
       );
       return;
@@ -272,7 +272,7 @@ export function compileBuiltinElement(
       mappedCode(
         compiler,
         node,
-        `__solix_portal(() => (${expressionCode(target, scope)}), ${render}, __solix_cleanups, __solix_lifecycle, __solix_frame);`,
+        `__sol_portal(() => (${expressionCode(target, scope)}), ${render}, __sol_cleanups, __sol_lifecycle, __sol_frame);`,
       ),
     );
     return;
@@ -289,7 +289,7 @@ export function compileBuiltinElement(
       mappedCode(
         compiler,
         node,
-        `__solix_suspense(__solix_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, ${fallback}, ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${suspenseTimeoutCode(compiler, node, scope)});`,
+        `__sol_suspense(__sol_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, ${fallback}, ${optionalErrorFactory(compiler, node, bindings, scope)}, __sol_cleanups, __sol_frame, ${suspenseTimeoutCode(compiler, node, scope)});`,
       ),
     );
     return;
@@ -302,13 +302,13 @@ export function compileBuiltinElement(
       jsxAttributeExpression(compiler, fallbackAttribute),
       bindings,
       scope,
-      "__solix_error",
+      "__sol_error",
     );
     context.operations.push(
       mappedCode(
         compiler,
         node,
-        `__solix_error_boundary(__solix_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, (__solix_error, __solix_frame) => (${fallback})(__solix_frame), __solix_cleanups, __solix_frame);`,
+        `__sol_error_boundary(__sol_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, (__sol_error, __sol_frame) => (${fallback})(__sol_frame), __sol_cleanups, __sol_frame);`,
       ),
     );
     return;
@@ -341,13 +341,13 @@ export function compileBuiltinElement(
     children[0].expression,
     bindings,
     scope,
-    "__solix_value",
+    "__sol_value",
   );
   context.operations.push(
     mappedCode(
       compiler,
       node,
-      `__solix_await(__solix_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__solix_value, __solix_frame) => (${renderer})(__solix_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${JSON.stringify(nextAsyncSite(compiler))});`,
+      `__sol_await(__sol_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__sol_value, __sol_frame) => (${renderer})(__sol_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __sol_cleanups, __sol_frame, ${JSON.stringify(nextAsyncSite(compiler))});`,
     ),
   );
 }
@@ -422,7 +422,7 @@ export function compileProviderElement(
     mappedCode(
       compiler,
       node,
-      `__solix_context_provider(__solix_view.regions[${index}], ${contextName}, () => (${expressionCode(data, scope)}), ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, __solix_cleanups, __solix_frame);`,
+      `__sol_context_provider(__sol_view.regions[${index}], ${contextName}, () => (${expressionCode(data, scope)}), ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, __sol_cleanups, __sol_frame);`,
     ),
   );
   return true;
@@ -468,7 +468,7 @@ export function compileComponentElement(
     mappedCode(
       compiler,
       node,
-      `__solix_child(__solix_view.regions[${index}], ${componentName}, { ${props.join(", ")} }, __solix_cleanups, __solix_frame);`,
+      `__sol_child(__sol_view.regions[${index}], ${componentName}, { ${props.join(", ")} }, __sol_cleanups, __sol_frame);`,
     ),
   );
 }
@@ -537,18 +537,18 @@ export function compileIntrinsicElement(
       codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
     const sourceName = getAttributeName(compiler, attribute.name);
     if (sourceName === "key") continue;
-    if (sourceName === "data-solix-e") {
-      codeFrame(compiler, attribute, "data-solix-e is reserved for hydration metadata");
+    if (sourceName === "data-sol-e") {
+      codeFrame(compiler, attribute, "data-sol-e is reserved for hydration metadata");
     }
     if (sourceName === "$form") {
       const controller = expressionCode(expressionAttribute(compiler, attribute), scope);
       deferredOperations.push(
         (element) =>
-          `__solix_event(__solix_view.elements[${element}], "submit", () => ((${controller}).submit), __solix_cleanups);`,
+          `__sol_event(__sol_view.elements[${element}], "submit", () => ((${controller}).submit), __sol_cleanups);`,
         (element) =>
-          `__solix_event(__solix_view.elements[${element}], "input", () => ((${controller}).handleInput), __solix_cleanups);`,
+          `__sol_event(__sol_view.elements[${element}], "input", () => ((${controller}).handleInput), __sol_cleanups);`,
         (element) =>
-          `__solix_event(__solix_view.elements[${element}], "focusout", () => ((${controller}).handleBlur), __solix_cleanups);`,
+          `__sol_event(__sol_view.elements[${element}], "focusout", () => ((${controller}).handleBlur), __sol_cleanups);`,
       );
       continue;
     }
@@ -578,7 +578,7 @@ export function compileIntrinsicElement(
         mappedCode(
           compiler,
           attribute,
-          `__solix_bind(__solix_view.elements[${element}], ${JSON.stringify(property)}, () => (${binding.read}), (__solix_value: unknown) => { ${binding.write}; }, __solix_cleanups);`,
+          `__sol_bind(__sol_view.elements[${element}], ${JSON.stringify(property)}, () => (${binding.read}), (__sol_value: unknown) => { ${binding.write}; }, __sol_cleanups);`,
         ),
       );
       continue;
@@ -589,7 +589,7 @@ export function compileIntrinsicElement(
         mappedCode(
           compiler,
           attribute,
-          `__solix_transition(__solix_view.elements[${element}], () => (${value}));`,
+          `__sol_transition(__sol_view.elements[${element}], () => (${value}));`,
         ),
       );
       continue;
@@ -600,7 +600,7 @@ export function compileIntrinsicElement(
         mappedCode(
           compiler,
           attribute,
-          `__solix_ref(__solix_view.elements[${element}], () => (${value}), __solix_cleanups, __solix_lifecycle);`,
+          `__sol_ref(__sol_view.elements[${element}], () => (${value}), __sol_cleanups, __sol_lifecycle);`,
         ),
       );
       continue;
@@ -622,7 +622,7 @@ export function compileIntrinsicElement(
         mappedCode(
           compiler,
           attribute,
-          `__solix_event(__solix_view.elements[${element}], ${JSON.stringify(eventName)}, () => (${handler}), __solix_cleanups);`,
+          `__sol_event(__sol_view.elements[${element}], ${JSON.stringify(eventName)}, () => (${handler}), __sol_cleanups);`,
         ),
       );
       continue;
@@ -642,7 +642,7 @@ export function compileIntrinsicElement(
         mappedCode(
           compiler,
           attribute,
-          `__solix_attribute(__solix_view.elements[${element}], ${JSON.stringify(name)}, () => (${value}), __solix_cleanups);`,
+          `__sol_attribute(__sol_view.elements[${element}], ${JSON.stringify(name)}, () => (${value}), __sol_cleanups);`,
         ),
       );
     }
@@ -653,7 +653,7 @@ export function compileIntrinsicElement(
     if (values.length > 0) {
       deferredOperations.push(
         (element) =>
-          `__solix_raw_text(__solix_view.elements[${element}], () => [${values.join(", ")}], __solix_cleanups);`,
+          `__sol_raw_text(__sol_view.elements[${element}], () => [${values.join(", ")}], __sol_cleanups);`,
       );
     }
   }
@@ -662,7 +662,7 @@ export function compileIntrinsicElement(
   if (deferredOperations.length > 0) {
     const index = elementId(context, node.openingElement);
     context.elementTags[index] = tag;
-    attributes.push(`data-solix-e="${index}"`);
+    attributes.push(`data-sol-e="${index}"`);
     context.operations.push(...deferredOperations.map((operation) => operation(index)));
   }
   context.html.push(`<${tag}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}>`);
@@ -728,7 +728,7 @@ export function compileLinkElement(
     : "false";
   compileIntrinsicElement(compiler, anchor, context, bindings, scope, [
     (element) =>
-      `__solix_link(__solix_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => Boolean(${replace}), __solix_cleanups);`,
+      `__sol_link(__sol_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => Boolean(${replace}), __sol_cleanups);`,
   ]);
 }
 
@@ -798,12 +798,12 @@ export function compileRenderableFactory(
   scope: Scope,
 ): string {
   if (t.isJSXElement(expression) || t.isJSXFragment(expression)) {
-    return `(__solix_frame) => { ${compileBlockBody(compiler, expression, bindings, scope)} }`;
+    return `(__sol_frame) => { ${compileBlockBody(compiler, expression, bindings, scope)} }`;
   }
   if (t.isNullLiteral(expression) || t.isBooleanLiteral(expression, { value: false })) {
-    return "(__solix_frame) => __solix_empty_block(__solix_frame)";
+    return "(__sol_frame) => __sol_empty_block(__sol_frame)";
   }
-  return `(__solix_frame) => __solix_value_block(() => (${expressionCode(expression, scope)}), __solix_frame)`;
+  return `(__sol_frame) => __sol_value_block(() => (${expressionCode(expression, scope)}), __sol_frame)`;
 }
 
 export function compileExpressionChild(
@@ -817,14 +817,14 @@ export function compileExpressionChild(
   if (map) {
     const listId = compiler.nextListId;
     compiler.nextListId += 1;
-    const itemReference = `__solix_item_${listId}`;
-    const indexReference = `__solix_index_${listId}`;
+    const itemReference = `__sol_item_${listId}`;
+    const indexReference = `__sol_index_${listId}`;
     const rowScope = new Map(scope);
     rowScope.set(map.itemName, `${itemReference}.value`);
     if (map.indexName) rowScope.set(map.indexName, `${indexReference}.value`);
     const keyScope = new Map(scope);
-    keyScope.set(map.itemName, "__solix_value");
-    if (map.indexName) keyScope.set(map.indexName, "__solix_position");
+    keyScope.set(map.itemName, "__sol_value");
+    if (map.indexName) keyScope.set(map.indexName, "__sol_position");
     const key = keyCode(compiler, getKeyAttribute(compiler, map.body), keyScope);
     const factory = compileRenderableFactory(compiler, map.body, bindings, rowScope);
     const index = region(context);
@@ -832,7 +832,7 @@ export function compileExpressionChild(
       mappedCode(
         compiler,
         expression,
-        `__solix_list(__solix_view.regions[${index}], () => (${expressionCode(map.collection, scope)}), (__solix_value, __solix_position) => (${key}), (${itemReference}, ${indexReference}, __solix_frame) => (${factory})(__solix_frame), __solix_cleanups, __solix_frame);`,
+        `__sol_list(__sol_view.regions[${index}], () => (${expressionCode(map.collection, scope)}), (__sol_value, __sol_position) => (${key}), (${itemReference}, ${indexReference}, __sol_frame) => (${factory})(__sol_frame), __sol_cleanups, __sol_frame);`,
       ),
     );
     return;
@@ -844,7 +844,7 @@ export function compileExpressionChild(
       mappedCode(
         compiler,
         expression,
-        `__solix_when(__solix_view.regions[${index}], () => (${expressionCode(expression.test, scope)}), ${compileRenderableFactory(compiler, expression.consequent, bindings, scope)}, ${compileRenderableFactory(compiler, expression.alternate, bindings, scope)}, __solix_cleanups, __solix_frame);`,
+        `__sol_when(__sol_view.regions[${index}], () => (${expressionCode(expression.test, scope)}), ${compileRenderableFactory(compiler, expression.consequent, bindings, scope)}, ${compileRenderableFactory(compiler, expression.alternate, bindings, scope)}, __sol_cleanups, __sol_frame);`,
       ),
     );
     return;
@@ -856,7 +856,7 @@ export function compileExpressionChild(
       mappedCode(
         compiler,
         expression,
-        `__solix_when(__solix_view.regions[${index}], () => (${expressionCode(expression.left, scope)}), ${compileRenderableFactory(compiler, expression.right, bindings, scope)}, (__solix_frame) => __solix_empty_block(__solix_frame), __solix_cleanups, __solix_frame);`,
+        `__sol_when(__sol_view.regions[${index}], () => (${expressionCode(expression.left, scope)}), ${compileRenderableFactory(compiler, expression.right, bindings, scope)}, (__sol_frame) => __sol_empty_block(__sol_frame), __sol_cleanups, __sol_frame);`,
       ),
     );
     return;
@@ -867,7 +867,7 @@ export function compileExpressionChild(
     mappedCode(
       compiler,
       expression,
-      `__solix_text(__solix_view.regions[${index}], () => (${expressionCode(expression, scope)}), __solix_cleanups);`,
+      `__sol_text(__sol_view.regions[${index}], () => (${expressionCode(expression, scope)}), __sol_cleanups);`,
     ),
   );
 }
@@ -944,15 +944,15 @@ export function compileBlockBody(
       operations: context.operations,
     }) - 1;
   return `
-    const __solix_view = __solix_instantiate(__solix_template_${templateIndex}, __solix_frame);
-    const __solix_cleanups: Array<() => void> = [];
-    const __solix_lifecycle = __solix_block_lifecycle(__solix_frame);
+    const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);
+    const __sol_cleanups: Array<() => void> = [];
+    const __sol_lifecycle = __sol_block_lifecycle(__sol_frame);
     try {
       ${context.operations.join("\n")}
-      return __solix_block(__solix_view.fragment, __solix_cleanups, __solix_lifecycle);
-    } catch (__solix_render_error) {
-      for (const __solix_cleanup of __solix_cleanups.toReversed()) __solix_cleanup();
-      throw __solix_render_error;
+      return __sol_block(__sol_view.fragment, __sol_cleanups, __sol_lifecycle);
+    } catch (__sol_render_error) {
+      for (const __sol_cleanup of __sol_cleanups.toReversed()) __sol_cleanup();
+      throw __sol_render_error;
     }
   `;
 }

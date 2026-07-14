@@ -109,7 +109,7 @@ export function rawText(
   if (!element || element.nodeType !== Node.ELEMENT_NODE || !RAW_TEXT_TAGS.has(element.tagName)) {
     throw new TypeError("rawText() expects a script, style, textarea, or title element");
   }
-  let hydrating = element.hasAttribute("data-solix-e");
+  let hydrating = element.hasAttribute("data-sol-e");
   cleanups.push(
     runtimeEffect(() => {
       const values = getValues();
@@ -242,7 +242,7 @@ export function attribute(
     );
     return;
   }
-  let hydrating = element.hasAttribute("data-solix-e");
+  let hydrating = element.hasAttribute("data-sol-e");
   cleanups.push(
     runtimeEffect(() => {
       const property = isClass ? "class" : name;
@@ -313,7 +313,7 @@ export function link<Path extends string, Values extends RouteValues>(
     setServerAttribute(element, "href", href());
     return;
   }
-  let hydrating = element.hasAttribute("data-solix-e");
+  let hydrating = element.hasAttribute("data-sol-e");
   cleanups.push(
     runtimeEffect(() => {
       const value = href();
@@ -365,7 +365,7 @@ export function bindValue(
   }
   const eventName =
     property === "checked" || element instanceof HTMLSelectElement ? "change" : "input";
-  let hydrating = element.hasAttribute("data-solix-e");
+  let hydrating = element.hasAttribute("data-sol-e");
   const stopEffect = runtimeEffect(() => {
     const next = getValue();
     const expected = property === "checked" ? Boolean(next) : displayValue(next);

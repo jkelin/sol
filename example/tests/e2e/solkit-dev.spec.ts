@@ -1,4 +1,4 @@
-// oxlint-disable eslint/no-underscore-dangle -- __solix is the documented development global.
+// oxlint-disable eslint/no-underscore-dangle -- __sol is the documented development global.
 import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
@@ -29,8 +29,8 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   if (!sourceContents) throw new Error("Vite did not retain client source-map content");
   const clientSources = sourceContents.join("\n");
   const clientArtifacts = `${clientCode}\n${clientSources}`;
-  expect(clientCode).toContain('__solix_rpc_query_client("notes")');
-  expect(clientCode).toContain('__solix_rpc_mutation_client("create-note")');
+  expect(clientCode).toContain('__sol_rpc_query_client("notes")');
+  expect(clientCode).toContain('__sol_rpc_mutation_client("create-note")');
   expect(clientSources).toContain("interface Note");
   expect(clientArtifacts).not.toContain("notes-backend");
   expect(clientArtifacts).not.toContain("notesPageSchema");
@@ -38,13 +38,13 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   expect(clientArtifacts).not.toContain("noteHttpSchema");
   expect(clientArtifacts).not.toContain("verifyNotesBackendSecret");
   expect(clientArtifacts).not.toContain("Cache one request across observers");
-  expect(clientArtifacts).not.toContain("SOLIX_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
-  expect(clientArtifacts).not.toContain("SOLIX_BACKEND_SECRET_DO_NOT_SHIP");
+  expect(clientArtifacts).not.toContain("SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
+  expect(clientArtifacts).not.toContain("SOL_BACKEND_SECRET_DO_NOT_SHIP");
   const response = await fetch("http://127.0.0.1:4175/blog/1?from=dev");
   const document = await response.text();
   expect(response.status).toBe(200);
   expect(document).toContain("The compiler keeps the map");
-  expect(document).toContain("data-solix-hydration");
+  expect(document).toContain("data-sol-hydration");
   expect(document).toContain('rel="stylesheet" href="/src/styles.css" data-solkit-dev-style');
   expect(document).toContain('rel="stylesheet" href="/src/Shell.css" data-solkit-dev-style');
   const childStyles = await fetch("http://127.0.0.1:4175/src/Shell.css", {
@@ -58,8 +58,8 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   expect(asyncDocument).toContain("Timed work is still pending.");
   expect(asyncDocument).not.toContain("Global portal mounted");
   const rootDocument = await fetch("http://127.0.0.1:4175/").then((result) => result.text());
-  expect(rootDocument).toContain('<title data-solix-e="0">Margin — 2 tasks left</title>');
-  expect(rootDocument).toContain("2 unfinished notes in the Solix compiler example.");
+  expect(rootDocument).toContain('<title data-sol-e="0">Margin — 2 tasks left</title>');
+  expect(rootDocument).toContain("2 unfinished notes in the Sol compiler example.");
 
   await page.goto("http://127.0.0.1:4175/blog/1?from=dev");
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
@@ -79,7 +79,7 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   expect(noteResponse.status).toBe(200);
   expect(await noteResponse.json()).toMatchObject({ id: 1 });
   const requestNames = await page.evaluate(() =>
-    globalThis.__solix?.requests.map((request) => request.name).filter(Boolean),
+    globalThis.__sol?.requests.map((request) => request.name).filter(Boolean),
   );
   expect(requestNames).toContain("notes");
   expect(requestNames).toContain("create-note");

@@ -5,7 +5,7 @@ section: Core
 order: 2
 ---
 
-Solix separates **setup** from **updates**. The component function is setup: it declares state, derived values, helpers, and a JSX template. The compiler converts that template into browser instructions before the application runs.
+Sol separates **setup** from **updates**. The component function is setup: it declares state, derived values, helpers, and a JSX template. The compiler converts that template into browser instructions before the application runs.
 
 ## The three-block assembly
 

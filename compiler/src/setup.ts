@@ -22,7 +22,7 @@ import { compileBlockBody } from "./jsx.ts";
 
 export function reactiveCallCode(
   call: t.CallExpression,
-  runtimeName: "__solix_signal" | "__solix_computed",
+  runtimeName: "__sol_signal" | "__sol_computed",
   scope: Scope,
   extraArgument?: string,
 ): string {
@@ -308,7 +308,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(initializer, "__solix_signal", scope)};`,
+            `const ${identifier.name} = ${reactiveCallCode(initializer, "__sol_signal", scope)};`,
           ),
         );
       } else if (kind === "computed" && isHelperCall(initializer, "$computed")) {
@@ -316,7 +316,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(initializer, "__solix_computed", scope, "__solix_frame")};`,
+            `const ${identifier.name} = ${reactiveCallCode(initializer, "__sol_computed", scope, "__sol_frame")};`,
           ),
         );
       } else if (kind === "computed") {
@@ -324,7 +324,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = __solix_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}), __solix_frame);`,
+            `const ${identifier.name} = __sol_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}), __sol_frame);`,
           ),
         );
       } else {
@@ -332,7 +332,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = __solix_signal${typeParameterCode(identifier)}(${expressionCode(initializer, scope)});`,
+            `const ${identifier.name} = __sol_signal${typeParameterCode(identifier)}(${expressionCode(initializer, scope)});`,
           ),
         );
       }
@@ -411,13 +411,13 @@ export function compileFunction(
     }
   }
   const compiledSetup = compileSetup(compiler, setup, parameter?.name);
-  const parameterCode = parameter ? generate(parameter).code : "__solix_props";
+  const parameterCode = parameter ? generate(parameter).code : "__sol_props";
   const previousPropsName = compiler.propsName;
   compiler.propsName = parameter?.name;
   const body = compileBlockBody(compiler, returned, compiledSetup.bindings, compiledSetup.scope);
   compiler.propsName = previousPropsName;
   return {
-    code: `${exported ? "export " : ""}const ${name} = __solix_component(${declaration.async ? "async " : ""}(${parameterCode}, __solix_frame) => {
+    code: `${exported ? "export " : ""}const ${name} = __sol_component(${declaration.async ? "async " : ""}(${parameterCode}, __sol_frame) => {
       ${compiledSetup.code}
       ${body}
     }, { name: ${JSON.stringify(name)}, file: ${JSON.stringify(compiler.filename)}, line: ${declaration.loc?.start.line ?? 0} });`,
@@ -442,7 +442,7 @@ function instrumentRequestSources(
       }
       const config = call.arguments[0];
       if (!config || !t.isExpression(config)) return;
-      call.arguments[0] = t.callExpression(t.identifier("__solix_request_source"), [
+      call.arguments[0] = t.callExpression(t.identifier("__sol_request_source"), [
         config,
         t.objectExpression([
           t.objectProperty(t.identifier("file"), t.stringLiteral(compiler.filename)),
@@ -629,8 +629,8 @@ function instrumentAwaitExpressions(
           : undefined;
         if (!(helper && reachable.has(helper) && hasCapturedAwait(helper))) {
           if (!capturedInitializers.has(initializer)) {
-            initializer.init = t.callExpression(t.identifier("__solix_async_value"), [
-              t.identifier("__solix_frame"),
+            initializer.init = t.callExpression(t.identifier("__sol_async_value"), [
+              t.identifier("__sol_frame"),
               t.stringLiteral(nextAsyncSite(compiler)),
               t.arrowFunctionExpression([], initializer.init),
             ]);
@@ -642,15 +642,15 @@ function instrumentAwaitExpressions(
       const helper = directlyAwaitedHelper(argument);
       if (helper && reachable.has(helper) && hasCapturedAwait(helper)) return;
       if (capturedHelperAggregate(argument)) return;
-      const captured = t.callExpression(t.identifier("__solix_async_value"), [
-        t.identifier("__solix_frame"),
+      const captured = t.callExpression(t.identifier("__sol_async_value"), [
+        t.identifier("__sol_frame"),
         t.stringLiteral(nextAsyncSite(compiler)),
         t.arrowFunctionExpression([], argument),
       ]);
       path.node.argument =
         owner === declaration
           ? captured
-          : t.conditionalExpression(t.identifier("__solix_capture_enabled"), captured, argument);
+          : t.conditionalExpression(t.identifier("__sol_capture_enabled"), captured, argument);
       path.skip();
     },
   });
@@ -664,8 +664,8 @@ function instrumentAwaitExpressions(
     helper.body.body.unshift(
       t.variableDeclaration("const", [
         t.variableDeclarator(
-          t.identifier("__solix_capture_enabled"),
-          t.callExpression(t.identifier("__solix_async_capture_active"), []),
+          t.identifier("__sol_capture_enabled"),
+          t.callExpression(t.identifier("__sol_async_capture_active"), []),
         ),
       ]),
     );
@@ -699,11 +699,11 @@ function instrumentAwaitExpressions(
       );
       const captureExpression =
         capture && owner !== declaration && reachable.has(owner as LocalFunction)
-          ? t.identifier("__solix_capture_enabled")
+          ? t.identifier("__sol_capture_enabled")
           : t.booleanLiteral(capture);
       const call = path.node;
       path.replaceWith(
-        t.callExpression(t.identifier("__solix_async_capture_call"), [
+        t.callExpression(t.identifier("__sol_async_capture_call"), [
           t.arrowFunctionExpression([], call),
           captureExpression,
         ]),
@@ -725,9 +725,9 @@ function instrumentAwaitExpressions(
         return;
       }
       path.replaceWith(
-        t.callExpression(t.identifier("__solix_context_use"), [
+        t.callExpression(t.identifier("__sol_context_use"), [
           path.node.callee.object as t.Expression,
-          t.identifier("__solix_frame"),
+          t.identifier("__sol_frame"),
           t.booleanLiteral(path.node.callee.property.name === "useOptional"),
         ]),
       );

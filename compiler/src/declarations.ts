@@ -157,7 +157,7 @@ export function compileRouteDeclarations(state: CompilationState): void {
     edits.push({
       start: statement.start!,
       end: statement.end!,
-      code: `${exported ? "export " : ""}const ${variable.id.name} = __solix_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
+      code: `${exported ? "export " : ""}const ${variable.id.name} = __sol_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
     });
     routeCallRanges.add(`${call.start}:${call.end}`);
   }
@@ -307,15 +307,15 @@ export function compileServerDeclarations(state: CompilationState): void {
     const runtime =
       helper === "$rpcQuery"
         ? compiler.target === "server"
-          ? "__solix_rpc_query_server"
-          : "__solix_rpc_query_client"
+          ? "__sol_rpc_query_server"
+          : "__sol_rpc_query_client"
         : helper === "$rpcMutation"
           ? compiler.target === "server"
-            ? "__solix_rpc_mutation_server"
-            : "__solix_rpc_mutation_client"
+            ? "__sol_rpc_mutation_server"
+            : "__sol_rpc_mutation_client"
           : compiler.target === "server"
-            ? "__solix_http_route_server"
-            : "__solix_http_route_client";
+            ? "__sol_http_route_server"
+            : "__sol_http_route_client";
     const emittedArguments = call.arguments.map((argument) => argument as t.Node);
     if (helper === "$httpRoute") {
       const emittedConfig = t.cloneNode(config, true);

@@ -6,7 +6,7 @@ import {
   type Ref,
   type RefCallback,
   type RefObject,
-} from "solix";
+} from "sol";
 
 const buttonRef = createRef<HTMLButtonElement>();
 const structuralRef: RefObject<HTMLInputElement> = { current: null };

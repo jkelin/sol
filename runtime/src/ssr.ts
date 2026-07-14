@@ -32,7 +32,7 @@ function finalTemplateOrder(markup: string): string[] {
       const closing = markup.indexOf("-->", opening + 4);
       if (closing < 0) break;
       const comment = markup.slice(opening + 4, closing);
-      const match = /^solix:block:start:(t[a-z0-9]+)$/.exec(comment);
+      const match = /^sol:block:start:(t[a-z0-9]+)$/.exec(comment);
       if (match) signatures.push(match[1]!);
       offset = closing + 3;
       continue;
@@ -126,7 +126,7 @@ export async function renderToStringAsync<Props extends object>(
     await session.wait(timeoutMs);
     const html = root.blocks
       .map((block) => {
-        if (!isServerBlock(block)) throw new Error("Invalid Solix server root block");
+        if (!isServerBlock(block)) throw new Error("Invalid Sol server root block");
         return block.serverHtml();
       })
       .join("");
@@ -148,7 +148,7 @@ export async function renderToStringAsync<Props extends object>(
       }
     }
     const payload = serializeGraph(session.payload());
-    return `${html}<script type="application/json" data-solix-hydration>${payload}</script>`;
+    return `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
   } finally {
     rendered?.dispose();
   }

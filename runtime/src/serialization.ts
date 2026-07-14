@@ -181,7 +181,7 @@ export function serializeGraph(value: unknown): string {
 }
 
 function invalidPayload(detail: string): never {
-  throw new TypeError(`Invalid Solix hydration payload: ${detail}`);
+  throw new TypeError(`Invalid Sol hydration payload: ${detail}`);
 }
 
 function payloadRecord(value: unknown, path: string): Record<string, unknown> {
@@ -352,10 +352,10 @@ export function deserializeGraph(serialized: string): unknown {
   try {
     graph = JSON.parse(serialized) as EncodedGraph;
   } catch {
-    throw new TypeError("Invalid Solix hydration payload JSON");
+    throw new TypeError("Invalid Sol hydration payload JSON");
   }
   if (!graph || typeof graph !== "object" || !Array.isArray(graph.objects) || !("root" in graph)) {
-    throw new TypeError("Invalid Solix hydration payload graph");
+    throw new TypeError("Invalid Sol hydration payload graph");
   }
   validateKeys(graph as unknown as Record<string, unknown>, ["root", "objects"], "graph");
 
@@ -368,7 +368,7 @@ export function deserializeGraph(serialized: string): unknown {
   for (let index = 0; index < graph.objects.length; index += 1) {
     const object = graph.objects[index];
     if (!object || typeof object !== "object" || typeof object.type !== "string") {
-      throw new TypeError(`Invalid Solix hydration object ${index}`);
+      throw new TypeError(`Invalid Sol hydration object ${index}`);
     }
     switch (object.type) {
       case "array":
@@ -403,13 +403,13 @@ export function deserializeGraph(serialized: string): unknown {
         break;
       }
       default:
-        throw new TypeError(`Invalid Solix hydration object type at ${index}`);
+        throw new TypeError(`Invalid Sol hydration object type at ${index}`);
     }
   }
 
   const decode = (value: EncodedValue): unknown => {
     if (value === null || typeof value !== "object") return value;
-    if (typeof value.$ !== "string") throw new TypeError("Invalid Solix hydration value");
+    if (typeof value.$ !== "string") throw new TypeError("Invalid Sol hydration value");
     switch (value.$) {
       case "undefined":
         return undefined;
@@ -426,12 +426,12 @@ export function deserializeGraph(serialized: string): unknown {
       case "ref": {
         const index = Number(value.v);
         if (!Number.isInteger(index) || index < 0 || index >= decoded.length) {
-          throw new TypeError("Invalid Solix hydration reference");
+          throw new TypeError("Invalid Sol hydration reference");
         }
         return decoded[index];
       }
       default:
-        throw new TypeError(`Invalid Solix hydration value tag ${value.$}`);
+        throw new TypeError(`Invalid Sol hydration value tag ${value.$}`);
     }
   };
 

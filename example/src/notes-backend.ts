@@ -1,8 +1,8 @@
-import type { HttpRouteInput } from "solix";
+import type { HttpRouteInput } from "sol";
 import * as v from "valibot";
 
-const schemaImplementationMarker = "SOLIX_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP";
-const backendSecret = "SOLIX_BACKEND_SECRET_DO_NOT_SHIP";
+const schemaImplementationMarker = "SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP";
+const backendSecret = "SOL_BACKEND_SECRET_DO_NOT_SHIP";
 
 const pageTuple = v.tuple([v.pipe(v.number(), v.integer(), v.minValue(1))]);
 const titleTuple = v.tuple([v.pipe(v.string(), v.trim(), v.minLength(1))]);

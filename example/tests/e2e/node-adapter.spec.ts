@@ -47,10 +47,10 @@ test("Node serves SSR output and hydrates routes, queries, async content, and He
     response.text(),
   );
   expect(routeDocument).toContain("The compiler keeps the map");
-  expect(routeDocument).toContain("data-solix-hydration");
+  expect(routeDocument).toContain("data-sol-hydration");
   const rootDocument = await fetch(origin).then((response) => response.text());
-  expect(rootDocument).toContain('<title data-solix-e="0">Margin — 2 tasks left</title>');
-  expect(rootDocument).toContain("2 unfinished notes in the Solix compiler example.");
+  expect(rootDocument).toContain('<title data-sol-e="0">Margin — 2 tasks left</title>');
+  expect(rootDocument).toContain("2 unfinished notes in the Sol compiler example.");
   await page.goto(`${origin}/blog/1?from=node`);
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page.getByTestId("route-query-source")).toHaveText("Opened from node");
@@ -93,7 +93,7 @@ test("Node serves SSR output and hydrates routes, queries, async content, and He
   await expect(page).toHaveTitle("Margin — 2 tasks left");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    "2 unfinished notes in the Solix compiler example.",
+    "2 unfinished notes in the Sol compiler example.",
   );
   expect(errors).toEqual([]);
 });

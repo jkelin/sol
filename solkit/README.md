@@ -1,6 +1,6 @@
 # Solkit
 
-`solkit` is the backend runtime and Vite integration for full-stack Solix applications. It renders
+`solkit` is the backend runtime and Vite integration for full-stack Sol applications. It renders
 the same compiled root component on the server, injects managed `Head` output into the document,
 and hydrates the server tree in the browser. Development requests run through Vite middleware;
 production builds emit separate client and SSR bundles plus a Bun or Node.js launcher. The same
@@ -33,13 +33,13 @@ export { Shell as App } from "./Shell.tsx";
 Then add both Vite plugins and choose a deployment adapter:
 
 ```ts
-import { solix } from "@solix/compiler/vite";
+import { sol } from "@sol/compiler/vite";
 import { bunAdapter } from "solkit/adapters/bun";
 import { solkit } from "solkit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [solix(), solkit({ entry: "/src/entry.tsx", adapter: bunAdapter() })],
+  plugins: [sol(), solkit({ entry: "/src/entry.tsx", adapter: bunAdapter() })],
 });
 ```
 
@@ -66,7 +66,7 @@ absent or wildcard `Accept` header also count as document requests. Missing endp
 non-document assets return 404; method mismatches on a known HTTP path return 405 with an `Allow`
 header. Route state and query caches are isolated by request. Settled query data, async
 components, `Await`, Suspense state, managed head nodes, and hydration metadata cross the server to
-the browser through the Solix hydration protocol.
+the browser through the Sol hydration protocol.
 
 ### Custom adapters
 
@@ -84,7 +84,7 @@ the generated server manifest, and `options.maxBodyBytes` overrides the 1 MiB bo
 accepts a standard `Request` plus a `RenderContext` containing the full
 HTML `template`; it dispatches endpoints, handles GET and HEAD document requests, and returns a standard `Response`.
 Templates must contain exactly one `<!--solkit-head-->` outlet and one `<!--solkit-body-->` outlet.
-The handler forwards the request URL into the Solix renderer, replaces both outlets, and preserves
+The handler forwards the request URL into the Sol renderer, replaces both outlets, and preserves
 the resulting hydration payload for the browser entry.
 
 ```ts

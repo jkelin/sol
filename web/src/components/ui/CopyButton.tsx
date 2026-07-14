@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 import { buttonClass } from "./Button.tsx";
 
 export interface CopyButtonProps {

@@ -1,14 +1,6 @@
-import {
-  $component,
-  $form,
-  $httpRoute,
-  $query,
-  $route,
-  $rpcQuery,
-  type HttpRouteInput,
-} from "solix";
+import { $component, $form, $httpRoute, $query, $route, $rpcQuery, type HttpRouteInput } from "sol";
 import * as v from "valibot";
-import { counterLines, formLines, listLines } from "virtual:solix-code-tokens";
+import { counterLines, formLines, listLines } from "virtual:sol-code-tokens";
 import { counterSource, formSource, listSource } from "./code-samples.ts";
 import {
   Badge,
@@ -19,7 +11,7 @@ import {
 } from "./components/ui/index.ts";
 
 export const websiteMessage = $rpcQuery("website-message", { schema: v.tuple([]) }, async () => ({
-  message: "Validated on the Solix server.",
+  message: "Validated on the Sol server.",
 }));
 
 export const websiteHealth = $httpRoute(
@@ -28,7 +20,7 @@ export const websiteHealth = $httpRoute(
     path: "/api/health",
     schema: (input: HttpRouteInput) => input,
   },
-  async () => Response.json({ ok: true, framework: "solix" }),
+  async () => Response.json({ ok: true, framework: "sol" }),
 );
 
 const CounterExample = $component(function CounterExample() {
@@ -252,7 +244,7 @@ const LandingPage = $component(function LandingPage() {
           <div class="mt-10 grid items-start gap-8 lg:grid-cols-[1fr_26rem]">
             <div>
               <p class="max-w-2xl text-xl font-medium leading-snug sm:text-2xl">
-                Solix compiles familiar JSX into static HTML templates and fine-grained DOM
+                Sol compiles familiar JSX into static HTML templates and fine-grained DOM
                 operations. Setup runs once. Updates land exactly where data changed.
               </p>
               <div class="mt-8 flex flex-wrap gap-4">
@@ -270,11 +262,11 @@ const LandingPage = $component(function LandingPage() {
                 </a>
               </div>
               <div class="mt-8 flex max-w-lg items-center justify-between gap-4 border-[3px] border-ink bg-ink p-3 text-white shadow-block-sm">
-                <code class="overflow-x-auto font-mono text-sm text-solar">bun add solix</code>
+                <code class="overflow-x-auto font-mono text-sm text-solar">bun add sol</code>
                 <button
                   type="button"
                   class="border-2 border-cream px-3 py-2 font-mono text-[0.6875rem] font-bold uppercase hover:bg-cream hover:text-ink"
-                  onClick={() => navigator.clipboard.writeText("bun add solix")}
+                  onClick={() => navigator.clipboard.writeText("bun add sol")}
                 >
                   Copy
                 </button>
@@ -296,7 +288,7 @@ const LandingPage = $component(function LandingPage() {
         </div>
         <div
           class="relative mx-auto mt-20 h-[460px] w-full max-w-[620px] 2xl:absolute 2xl:right-0 2xl:top-32 2xl:mt-0 2xl:h-[620px]"
-          aria-label="Solix blocks assembling around a precise DOM output"
+          aria-label="Sol blocks assembling around a precise DOM output"
         >
           <div class="absolute left-1/2 top-1/2 size-[22rem] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-dashed border-ink sm:size-[30rem]"></div>
           <div class="absolute left-1/2 top-1/2 grid size-40 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] border-ink bg-solar shadow-block sm:size-52">
@@ -414,7 +406,7 @@ const LandingPage = $component(function LandingPage() {
             </h2>
           </div>
           <p class="max-w-md text-lg font-medium">
-            Switch between code, preview, or both. Every preview is compiled by Solix and keeps its
+            Switch between code, preview, or both. Every preview is compiled by Sol and keeps its
             state while the panels move.
           </p>
         </div>

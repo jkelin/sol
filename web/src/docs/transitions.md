@@ -7,8 +7,8 @@ order: 9
 
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string.
 
-```solix live preview=TransitionDemo title="Conditional enter and leave"
-import { $component, type Transition } from "solix";
+```sol live preview=TransitionDemo title="Conditional enter and leave"
+import { $component, type Transition } from "sol";
 
 const fade: Transition = {
   enter: "example-enter",
@@ -41,4 +41,4 @@ Reduced-motion preferences and browsers without `Element.getAnimations()` fall b
 }
 ```
 
-The application owns the visual CSS; Solix owns lifecycle timing and cancellation.
+The application owns the visual CSS; Sol owns lifecycle timing and cancellation.

@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 
 export interface InputProps {
   readonly id: string;

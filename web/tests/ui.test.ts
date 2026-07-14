@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 
-await mock.module("virtual:solix/routes", () => ({ default: [] }));
-await mock.module("solix", () => ({ $component: (setup: unknown) => setup }));
+await mock.module("virtual:sol/routes", () => ({ default: [] }));
+await mock.module("sol", () => ({ $component: (setup: unknown) => setup }));
 
 const { badgeClass } = await import("../src/components/ui/Badge.tsx");
 const { buttonClass } = await import("../src/components/ui/Button.tsx");

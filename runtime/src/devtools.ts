@@ -1,4 +1,4 @@
-// oxlint-disable eslint/no-underscore-dangle -- __solix is the documented development global.
+// oxlint-disable eslint/no-underscore-dangle -- __sol is the documented development global.
 import {
   DEVTOOLS_HOOK,
   type ComponentMetadata,
@@ -9,14 +9,14 @@ import {
 
 type Status = "idle" | "pending" | "success" | "error" | "cancelled";
 
-export interface SolixComponentSnapshot extends ComponentMetadata {
+export interface SolComponentSnapshot extends ComponentMetadata {
   readonly id: number;
   readonly parentId?: number;
   readonly props: unknown;
   readonly elements: readonly string[];
 }
 
-export interface SolixRequestSnapshot {
+export interface SolRequestSnapshot {
   readonly id: number;
   readonly kind: "loader" | "query" | "mutation";
   readonly key?: string;
@@ -29,7 +29,7 @@ export interface SolixRequestSnapshot {
   readonly source?: SourceMetadata;
 }
 
-export interface SolixFormSnapshot {
+export interface SolFormSnapshot {
   readonly id: number;
   readonly strategy: string;
   readonly values: unknown;
@@ -38,21 +38,21 @@ export interface SolixFormSnapshot {
   readonly isSubmitting: boolean;
 }
 
-export interface SolixSnapshot {
-  readonly components: readonly SolixComponentSnapshot[];
-  readonly requests: readonly SolixRequestSnapshot[];
+export interface SolSnapshot {
+  readonly components: readonly SolComponentSnapshot[];
+  readonly requests: readonly SolRequestSnapshot[];
   readonly router: Readonly<Record<string, unknown>>;
-  readonly forms: readonly SolixFormSnapshot[];
+  readonly forms: readonly SolFormSnapshot[];
 }
 
-export interface SolixDevtools {
+export interface SolDevtools {
   readonly version: "0.1";
-  readonly components: readonly SolixComponentSnapshot[];
-  readonly requests: readonly SolixRequestSnapshot[];
+  readonly components: readonly SolComponentSnapshot[];
+  readonly requests: readonly SolRequestSnapshot[];
   readonly router: Readonly<Record<string, unknown>>;
-  readonly forms: readonly SolixFormSnapshot[];
-  getSnapshot(area?: DevtoolsArea): SolixSnapshot | SolixSnapshot[DevtoolsArea];
-  inspectElement(target: Element | string): SolixComponentSnapshot | null;
+  readonly forms: readonly SolFormSnapshot[];
+  getSnapshot(area?: DevtoolsArea): SolSnapshot | SolSnapshot[DevtoolsArea];
+  inspectElement(target: Element | string): SolComponentSnapshot | null;
   open(tab?: DevtoolsArea): void;
   close(): void;
   startElementPicker(): void;
@@ -73,7 +73,7 @@ interface WebMcpContext {
 }
 
 declare global {
-  var __solix: SolixDevtools | undefined;
+  var __sol: SolDevtools | undefined;
 
   interface Document {
     readonly modelContext?: WebMcpContext;
@@ -85,11 +85,11 @@ declare global {
 }
 
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
-type ComponentRecord = Mutable<SolixComponentSnapshot> & {
+type ComponentRecord = Mutable<SolComponentSnapshot> & {
   getNodes: () => readonly Node[];
   rawProps: object;
 };
-type RequestRecord = Mutable<SolixRequestSnapshot> & { startedAt?: number };
+type RequestRecord = Mutable<SolRequestSnapshot> & { startedAt?: number };
 type PanelLayout = {
   left: number;
   top: number;
@@ -195,14 +195,13 @@ function displayValue(value: unknown, indentation = 0): string {
 class DevtoolsRegistry implements DevtoolsHook {
   readonly components = new Map<number, ComponentRecord>();
   readonly requests = new Map<number, RequestRecord>();
-  readonly forms = new Map<number, SolixFormSnapshot>();
+  readonly forms = new Map<number, SolFormSnapshot>();
   router: Record<string, unknown> = {};
   private nextId = 1;
   private readonly listeners = new Set<() => void>();
 
   subscribe(listener: () => void): () => void {
-    if (typeof listener !== "function")
-      throw new TypeError("__solix.subscribe() expects a function");
+    if (typeof listener !== "function") throw new TypeError("__sol.subscribe() expects a function");
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
@@ -371,7 +370,7 @@ class DevtoolsRegistry implements DevtoolsHook {
     id: number,
     strategy: string,
     state: Record<string, unknown>,
-  ): SolixFormSnapshot {
+  ): SolFormSnapshot {
     return {
       id,
       strategy,
@@ -389,7 +388,7 @@ class DevtoolsRegistry implements DevtoolsHook {
     this.changed();
   }
 
-  snapshot(): SolixSnapshot {
+  snapshot(): SolSnapshot {
     return {
       components: [...this.components.values()].map((record) => this.componentSnapshot(record)),
       requests: [...this.requests.values()].map(({ startedAt: _startedAt, ...item }) => item),
@@ -398,7 +397,7 @@ class DevtoolsRegistry implements DevtoolsHook {
     };
   }
 
-  inspect(target: Element): SolixComponentSnapshot | null {
+  inspect(target: Element): SolComponentSnapshot | null {
     const candidates = [...this.components.values()].filter((record) =>
       record
         .getNodes()
@@ -409,7 +408,7 @@ class DevtoolsRegistry implements DevtoolsHook {
     return this.componentSnapshot(record);
   }
 
-  private componentSnapshot(record: ComponentRecord): SolixComponentSnapshot {
+  private componentSnapshot(record: ComponentRecord): SolComponentSnapshot {
     const { getNodes, rawProps: _props, elements: _elements, ...snapshot } = record;
     return { ...snapshot, elements: componentElements(getNodes()) };
   }
@@ -429,29 +428,29 @@ class DevtoolsPanel {
   private pickerCleanup?: () => void;
 
   constructor(private readonly registry: DevtoolsRegistry) {
-    this.host = document.createElement("solix-devtools");
-    this.host.dataset.solixDevtools = "";
+    this.host = document.createElement("sol-devtools");
+    this.host.dataset.solDevtools = "";
     const root = this.host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${styles}</style>`;
     const launcher = createText("button", "launcher", "S");
-    launcher.setAttribute("aria-label", "Open Solix devtools");
+    launcher.setAttribute("aria-label", "Open Sol devtools");
     launcher.addEventListener("click", () => (this.panel.hidden ? this.open() : this.close()));
     this.panel = document.createElement("section");
     this.panel.className = "panel";
-    this.panel.id = "solix-devtools-panel";
+    this.panel.id = "sol-devtools-panel";
     this.panel.hidden = true;
     this.panel.setAttribute("role", "dialog");
-    this.panel.setAttribute("aria-label", "Solix developer tools");
+    this.panel.setAttribute("aria-label", "Sol developer tools");
     launcher.setAttribute("aria-controls", this.panel.id);
     launcher.setAttribute("aria-expanded", "false");
-    this.panel.innerHTML = `<header><div class="brand"><span class="pulse"></span><strong>SOLIX</strong></div><div class="actions"></div></header>`;
+    this.panel.innerHTML = `<header><div class="brand"><span class="pulse"></span><strong>SOL</strong></div><div class="actions"></div></header>`;
     const header = this.panel.querySelector("header")!;
     header.addEventListener("mousedown", (event) => this.startPanelDrag(event));
     const actions = this.panel.querySelector(".actions")!;
     const picker = createText("button", "tool", "⌖ Pick");
     picker.addEventListener("click", () => this.startPicker());
     const close = createText("button", "tool close", "×");
-    close.setAttribute("aria-label", "Close Solix devtools");
+    close.setAttribute("aria-label", "Close Sol devtools");
     close.addEventListener("click", () => this.close());
     actions.append(picker, close);
     const nav = document.createElement("nav");
@@ -482,12 +481,12 @@ class DevtoolsPanel {
   }
 
   open(area: DevtoolsArea = this.active): void {
-    if (!isArea(area)) throw new TypeError("__solix.open() expects a valid devtools tab");
+    if (!isArea(area)) throw new TypeError("__sol.open() expects a valid devtools tab");
     this.active = area;
     this.panel.hidden = false;
     const launcher = this.host.shadowRoot?.querySelector(".launcher");
     launcher?.setAttribute("aria-expanded", "true");
-    launcher?.setAttribute("aria-label", "Close Solix devtools");
+    launcher?.setAttribute("aria-label", "Close Sol devtools");
     this.render();
   }
 
@@ -496,7 +495,7 @@ class DevtoolsPanel {
     this.panel.hidden = true;
     const launcher = this.host.shadowRoot?.querySelector(".launcher");
     launcher?.setAttribute("aria-expanded", "false");
-    launcher?.setAttribute("aria-label", "Open Solix devtools");
+    launcher?.setAttribute("aria-label", "Open Sol devtools");
   }
 
   private render(): void {
@@ -515,13 +514,13 @@ class DevtoolsPanel {
     this.body.append(createText("p", "empty", message));
   }
 
-  private renderComponents(items: readonly SolixComponentSnapshot[]): void {
+  private renderComponents(items: readonly SolComponentSnapshot[]): void {
     if (items.length === 0) return this.empty("No mounted components observed yet.");
     const ids = new Set(items.map((component) => component.id));
     if (!this.selectedComponent || !ids.has(this.selectedComponent)) {
       this.selectedComponent = items[0]!.id;
     }
-    const children = new Map<number | undefined, SolixComponentSnapshot[]>();
+    const children = new Map<number | undefined, SolComponentSnapshot[]>();
     for (const component of items) {
       const parent =
         component.parentId && ids.has(component.parentId) ? component.parentId : undefined;
@@ -536,7 +535,7 @@ class DevtoolsPanel {
     tree.className = "component-tree";
     tree.setAttribute("role", "tree");
     tree.setAttribute("aria-label", "Mounted component tree");
-    const renderBranch = (component: SolixComponentSnapshot, depth: number): void => {
+    const renderBranch = (component: SolComponentSnapshot, depth: number): void => {
       const descendants = children.get(component.id) ?? [];
       const branch = document.createElement("div");
       branch.className = "tree-branch";
@@ -601,7 +600,7 @@ class DevtoolsPanel {
     this.body.append(explorer);
   }
 
-  private renderRequests(items: readonly SolixRequestSnapshot[]): void {
+  private renderRequests(items: readonly SolRequestSnapshot[]): void {
     if (items.length === 0) return this.empty("No loaders, queries, or mutations observed yet.");
     const ordered = items.toReversed();
     const ids = new Set(ordered.map((request) => request.id));
@@ -746,7 +745,7 @@ class DevtoolsPanel {
     this.body.append(explorer);
   }
 
-  private renderForms(items: readonly SolixFormSnapshot[]): void {
+  private renderForms(items: readonly SolFormSnapshot[]): void {
     if (items.length === 0) return this.empty("No form controllers observed yet.");
     for (const form of items) {
       const row = document.createElement("article");
@@ -840,7 +839,7 @@ class DevtoolsPanel {
 
   private restorePanelLayout(): void {
     try {
-      const stored = window.localStorage.getItem("solix.devtools.layout");
+      const stored = window.localStorage.getItem("sol.devtools.layout");
       if (!stored) return;
       const layout = JSON.parse(stored) as Partial<PanelLayout>;
       if (
@@ -886,7 +885,7 @@ class DevtoolsPanel {
         height: rect.height,
         listWidth: Number.isFinite(listWidth) ? listWidth : rect.width * 0.38,
       };
-      window.localStorage.setItem("solix.devtools.layout", JSON.stringify(layout));
+      window.localStorage.setItem("sol.devtools.layout", JSON.stringify(layout));
     } catch {
       // Storage can be unavailable in sandboxed development frames.
     }
@@ -904,7 +903,7 @@ class DevtoolsPanel {
     const right = Math.max(...rects.map((rect) => rect.right));
     const bottom = Math.max(...rects.map((rect) => rect.bottom));
     const overlay = document.createElement("div");
-    overlay.dataset.solixHighlight = "";
+    overlay.dataset.solHighlight = "";
     Object.assign(overlay.style, {
       position: "fixed",
       zIndex: "2147483646",
@@ -931,7 +930,7 @@ class DevtoolsPanel {
     const restorePanel = !this.panel.hidden;
     this.close();
     const overlay = document.createElement("div");
-    overlay.dataset.solixPicker = "";
+    overlay.dataset.solPicker = "";
     Object.assign(overlay.style, {
       position: "fixed",
       zIndex: "2147483646",
@@ -1012,14 +1011,14 @@ main { overflow:auto; padding:8px; background:var(--canvas); scrollbar-color:var
 @media (prefers-reduced-motion:reduce) { * { animation-duration:.01ms!important; } }
 `;
 
-function installWebMcp(api: SolixDevtools): void {
+function installWebMcp(api: SolDevtools): void {
   const context = document.modelContext ?? navigator.modelContext;
   if (!context) return;
   const controller = new AbortController();
   context.registerTool(
     {
-      name: "solix_get_diagnostics",
-      description: "Returns live Solix component, request, router, or form diagnostics.",
+      name: "sol_get_diagnostics",
+      description: "Returns live Sol component, request, router, or form diagnostics.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -1030,7 +1029,7 @@ function installWebMcp(api: SolixDevtools): void {
         validateToolInput(input, ["area"]);
         const area = input.area;
         if (area !== undefined && !isArea(area))
-          throw new TypeError("area must be a Solix devtools area");
+          throw new TypeError("area must be a Sol devtools area");
         return api.getSnapshot(area);
       },
     },
@@ -1038,8 +1037,8 @@ function installWebMcp(api: SolixDevtools): void {
   );
   context.registerTool(
     {
-      name: "solix_inspect_element",
-      description: "Returns the mounted Solix component responsible for a CSS-selected element.",
+      name: "sol_inspect_element",
+      description: "Returns the mounted Sol component responsible for a CSS-selected element.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -1074,12 +1073,12 @@ function validateToolInput(
   if (unexpected) throw new TypeError(`Unexpected WebMCP input property ${unexpected}`);
 }
 
-export function installDevtools(): SolixDevtools | undefined {
+export function installDevtools(): SolDevtools | undefined {
   if (typeof document === "undefined" || typeof navigator === "undefined") return undefined;
-  if (globalThis.__solix) return globalThis.__solix;
+  if (globalThis.__sol) return globalThis.__sol;
   const registry = new DevtoolsRegistry();
   const panel = new DevtoolsPanel(registry);
-  const api: SolixDevtools = Object.freeze({
+  const api: SolDevtools = Object.freeze({
     version: "0.1" as const,
     get components() {
       return registry.snapshot().components;
@@ -1095,7 +1094,7 @@ export function installDevtools(): SolixDevtools | undefined {
     },
     getSnapshot(area?: DevtoolsArea) {
       if (area !== undefined && !isArea(area))
-        throw new TypeError("__solix.getSnapshot() expects a valid area");
+        throw new TypeError("__sol.getSnapshot() expects a valid area");
       const snapshot = registry.snapshot();
       return area ? snapshot[area] : snapshot;
     },
@@ -1103,7 +1102,7 @@ export function installDevtools(): SolixDevtools | undefined {
       const element = typeof target === "string" ? document.querySelector(target) : target;
       if (!(element instanceof Element)) {
         if (typeof target === "string") return null;
-        throw new TypeError("__solix.inspectElement() expects an Element or CSS selector");
+        throw new TypeError("__sol.inspectElement() expects an Element or CSS selector");
       }
       return registry.inspect(element);
     },
@@ -1112,7 +1111,7 @@ export function installDevtools(): SolixDevtools | undefined {
     startElementPicker: () => panel.startPicker(),
     subscribe: (listener: () => void) => registry.subscribe(listener),
   });
-  globalThis.__solix = api;
+  globalThis.__sol = api;
   (globalThis as { [DEVTOOLS_HOOK]?: DevtoolsHook })[DEVTOOLS_HOOK] = registry;
   installWebMcp(api);
   return api;

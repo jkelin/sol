@@ -1,4 +1,4 @@
-import { $component, $form, Head, type FormController } from "solix";
+import { $component, $form, Head, type FormController } from "sol";
 import * as v from "valibot";
 import { pageTransition, todoTransition } from "./transitions.ts";
 
@@ -231,9 +231,9 @@ export const App = $component(function App() {
         <title>{`Margin — ${remaining} ${remaining === 1 ? "task" : "tasks"} left`}</title>
         <meta
           name="description"
-          content={`${remaining} unfinished notes in the Solix compiler example.`}
+          content={`${remaining} unfinished notes in the Sol compiler example.`}
         />
-        <style data-solix-head-example>{`:root { --remaining-notes: ${remaining}; }`}</style>
+        <style data-sol-head-example>{`:root { --remaining-notes: ${remaining}; }`}</style>
       </Head>
       <div
         class="completion-margin absolute inset-y-0 left-0 z-1 flex w-11 flex-col items-center border-r border-correction/35 pt-7 text-correction sm:w-21 sm:pt-11"
@@ -247,7 +247,7 @@ export const App = $component(function App() {
       </div>
 
       <header class="ml-11 border-b border-rule-strong px-5 pt-7 pb-6 sm:ml-21 sm:px-11 sm:pt-10">
-        <p class="mb-5 font-mono text-[0.6875rem] tracking-[0.11em] text-faint">SOLIX / ROUTE 01</p>
+        <p class="mb-5 font-mono text-[0.6875rem] tracking-[0.11em] text-faint">SOL / ROUTE 01</p>
         <div class="flex items-end justify-between gap-8 max-sm:block">
           <div>
             <h1

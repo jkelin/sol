@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 
 export type ExampleMode = "code" | "preview" | "both";
 

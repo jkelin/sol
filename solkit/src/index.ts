@@ -1,5 +1,5 @@
-import { renderToStringAsync } from "solix";
-import { dispatchServerEndpoint } from "solix/compiler-runtime";
+import { renderToStringAsync } from "sol";
+import { dispatchServerEndpoint } from "sol/compiler-runtime";
 import type {
   RequestHandler,
   RequestHandlerOptions,

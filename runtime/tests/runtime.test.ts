@@ -51,7 +51,7 @@ beforeEach(() => {
 
 describe("DOM refs", () => {
   test("attaches after insertion, switches reactively, and clears on disposal", () => {
-    const definition = template('<button data-solix-e="0">Focus</button>');
+    const definition = template('<button data-sol-e="0">Focus</button>');
     const view = instantiate(definition);
     const cleanups: (() => void)[] = [];
     const lifecycle = blockLifecycle();
@@ -469,7 +469,7 @@ describe("transitions", () => {
     const animations = installAnimations();
     const source = $signal("first");
     let reads = 0;
-    const definition = template('<p data-solix-e="0"><!--solix:s:0--><!--solix:e:0--></p>');
+    const definition = template('<p data-sol-e="0"><!--sol:s:0--><!--sol:e:0--></p>');
     const Page = component(() => {
       const view = instantiate(definition);
       const cleanups: Array<() => void> = [];
@@ -1042,7 +1042,7 @@ describe("compiled DOM runtime", () => {
   test("mounts once and patches text without rerunning setup", () => {
     const count = $signal(0);
     let setups = 0;
-    const definition = template("<p><!--solix:s:0--><!--solix:e:0--></p>");
+    const definition = template("<p><!--sol:s:0--><!--sol:e:0--></p>");
     const Counter = component(() => {
       setups += 1;
       const view = instantiate(definition);
@@ -1131,7 +1131,7 @@ describe("compiled DOM runtime", () => {
 
   test("synchronizes form bindings in both directions", () => {
     const draft = $signal("first");
-    const definition = template('<input data-solix-e="0">');
+    const definition = template('<input data-sol-e="0">');
     const view = instantiate(definition);
     const cleanups: (() => void)[] = [];
     const input = view.elements[0] as HTMLInputElement;
@@ -1159,7 +1159,7 @@ describe("compiled DOM runtime", () => {
 
   test("synchronizes inferred checked bindings in both directions", () => {
     const completed = $signal(false);
-    const definition = template('<input type="checkbox" data-solix-e="0">');
+    const definition = template('<input type="checkbox" data-sol-e="0">');
     const view = instantiate(definition);
     const cleanups: (() => void)[] = [];
     const input = view.elements[0] as HTMLInputElement;
@@ -1186,7 +1186,7 @@ describe("compiled DOM runtime", () => {
     const visible = $signal(true);
     const branchValue = $signal("first");
     let branchReads = 0;
-    const parentTemplate = template("<div><!--solix:s:0--><!--solix:e:0--></div>");
+    const parentTemplate = template("<div><!--sol:s:0--><!--sol:e:0--></div>");
     const Parent = component(() => {
       const view = instantiate(parentTemplate);
       const cleanups: (() => void)[] = [];
@@ -1221,7 +1221,7 @@ describe("compiled DOM runtime", () => {
   test("disposes setup-owned computed effects", () => {
     const source = $signal(1);
     let derivations = 0;
-    const definition = template("<p><!--solix:s:0--><!--solix:e:0--></p>");
+    const definition = template("<p><!--sol:s:0--><!--sol:e:0--></p>");
     const Derived = component(() => {
       const value = $computed(() => {
         derivations += 1;
@@ -1271,7 +1271,7 @@ describe("compiled DOM runtime", () => {
     const label = $signal("First");
     let childSetups = 0;
     let childReads = 0;
-    const childTemplate = template("<span><!--solix:s:0--><!--solix:e:0--></span>");
+    const childTemplate = template("<span><!--sol:s:0--><!--sol:e:0--></span>");
     const Child = component((props: Readonly<{ label: string }>) => {
       childSetups += 1;
       const view = instantiate(childTemplate);
@@ -1286,7 +1286,7 @@ describe("compiled DOM runtime", () => {
       );
       return block(view.fragment, cleanups);
     });
-    const parentTemplate = template("<div><!--solix:s:0--><!--solix:e:0--></div>");
+    const parentTemplate = template("<div><!--sol:s:0--><!--sol:e:0--></div>");
     const Parent = component(() => {
       const view = instantiate(parentTemplate);
       const cleanups: (() => void)[] = [];
@@ -1310,8 +1310,8 @@ describe("compiled DOM runtime", () => {
       { id: 1, label: "One" },
       { id: 2, label: "Two" },
     ]);
-    const definition = template("<ol><!--solix:s:0--><!--solix:e:0--></ol>");
-    const rowDefinition = template("<li><!--solix:s:0--><!--solix:e:0--></li>");
+    const definition = template("<ol><!--sol:s:0--><!--sol:e:0--></ol>");
+    const rowDefinition = template("<li><!--sol:s:0--><!--sol:e:0--></li>");
     const List = component(() => {
       const view = instantiate(definition);
       const cleanups: (() => void)[] = [];
@@ -1346,7 +1346,7 @@ describe("compiled DOM runtime", () => {
     const items = $signal([{ id: 1, value: "first" }]);
     const removed = items.value[0]!;
     let rowReads = 0;
-    const definition = template("<div><!--solix:s:0--><!--solix:e:0--></div>");
+    const definition = template("<div><!--sol:s:0--><!--sol:e:0--></div>");
     const List = component(() => {
       const view = instantiate(definition);
       const cleanups: (() => void)[] = [];

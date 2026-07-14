@@ -1,4 +1,4 @@
-import { $component, Route } from "solix";
+import { $component, Route } from "sol";
 import "./Shell.css";
 import { blogDetailRoute } from "./blog-detail.sol.tsx";
 import { asyncContextRoute } from "./async-context.sol.tsx";

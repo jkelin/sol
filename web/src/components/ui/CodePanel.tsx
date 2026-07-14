@@ -1,4 +1,4 @@
-import { $component } from "solix";
+import { $component } from "sol";
 import { CopyButton } from "./CopyButton.tsx";
 
 export interface CodeToken {

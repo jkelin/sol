@@ -8,16 +8,16 @@ import { traverse } from "./ast.ts";
 import { compile } from "./compile.ts";
 import { canonicalHttpRoutePath } from "./http-path.ts";
 
-const virtualRoutes = "virtual:solix/routes";
+const virtualRoutes = "virtual:sol/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
-const virtualEndpoints = "virtual:solix/server-endpoints";
+const virtualEndpoints = "virtual:sol/server-endpoints";
 const resolvedVirtualEndpoints = `\0${virtualEndpoints}`;
-const devtoolsBuildEntry = "/@solix/devtools";
-const resolvedDevtoolsBuildEntry = "\0solix:devtools-entry";
+const devtoolsBuildEntry = "/@sol/devtools";
+const resolvedDevtoolsBuildEntry = "\0sol:devtools-entry";
 const componentFile = /\.tsx(?:\?.*)?$/;
 const solFile = /\.sol\.tsx?(?:\?.*)?$/i;
 
-export interface SolixPluginOptions {
+export interface SolPluginOptions {
   /** Inject the in-app diagnostics panel and global API. Defaults to true for Vite dev servers. */
   readonly devtools?: boolean;
 }
@@ -49,25 +49,25 @@ async function discoverRoutes(root: string): Promise<string[]> {
 function routeManifest(files: readonly string[]): string {
   const imports = files.map((file, index) => {
     const specifier = `/@fs/${normalizePath(file)}`;
-    return `import * as __solix_route_module_${index} from ${JSON.stringify(specifier)};`;
+    return `import * as __sol_route_module_${index} from ${JSON.stringify(specifier)};`;
   });
-  const modules = files.map((_, index) => `__solix_route_module_${index}`).join(", ");
+  const modules = files.map((_, index) => `__sol_route_module_${index}`).join(", ");
   return `${imports.join("\n")}
-import { isRouteDefinition as __solix_is_route } from "solix/compiler-runtime";
-const __solix_modules = [${modules}];
-export default __solix_modules.flatMap(module => Object.values(module).filter(__solix_is_route));`;
+import { isRouteDefinition as __sol_is_route } from "sol/compiler-runtime";
+const __sol_modules = [${modules}];
+export default __sol_modules.flatMap(module => Object.values(module).filter(__sol_is_route));`;
 }
 
 function endpointManifest(files: readonly string[]): string {
   const imports = files.map((file, index) => {
     const specifier = `/@fs/${normalizePath(file)}`;
-    return `import * as __solix_endpoint_module_${index} from ${JSON.stringify(specifier)};`;
+    return `import * as __sol_endpoint_module_${index} from ${JSON.stringify(specifier)};`;
   });
-  const modules = files.map((_, index) => `__solix_endpoint_module_${index}`).join(", ");
+  const modules = files.map((_, index) => `__sol_endpoint_module_${index}`).join(", ");
   return `${imports.join("\n")}
-import { isServerEndpoint as __solix_is_endpoint } from "solix/compiler-runtime";
-const __solix_modules = [${modules}];
-export default __solix_modules.flatMap(module => Object.values(module).filter(__solix_is_endpoint));`;
+import { isServerEndpoint as __sol_is_endpoint } from "sol/compiler-runtime";
+const __sol_modules = [${modules}];
+export default __sol_modules.flatMap(module => Object.values(module).filter(__sol_is_endpoint));`;
 }
 
 type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
@@ -80,7 +80,7 @@ function declarationHelperBindings(ast: t.File): {
   const names = new Map<string, DeclarationHelper>();
   const namespaces = new Set<string>();
   for (const statement of ast.program.body) {
-    if (!t.isImportDeclaration(statement) || statement.source.value !== "solix") continue;
+    if (!t.isImportDeclaration(statement) || statement.source.value !== "sol") continue;
     for (const specifier of statement.specifiers) {
       if (t.isImportNamespaceSpecifier(specifier)) {
         namespaces.add(specifier.local.name);
@@ -288,12 +288,12 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
   }
 }
 
-export function solix(options: SolixPluginOptions = {}): Plugin {
+export function sol(options: SolPluginOptions = {}): Plugin {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
-    throw new TypeError("solix() options must be an object");
+    throw new TypeError("sol() options must be an object");
   }
   if (options.devtools !== undefined && typeof options.devtools !== "boolean") {
-    throw new TypeError("solix() devtools must be a boolean");
+    throw new TypeError("sol() devtools must be a boolean");
   }
   let config: ResolvedConfig;
   let devtoolsEnabled = false;
@@ -307,7 +307,7 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
   };
 
   return {
-    name: "solix",
+    name: "sol",
     enforce: "pre",
     configResolved(resolved) {
       config = resolved;
@@ -322,8 +322,8 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
             tag: "script",
             attrs: {
               type: "module",
-              src: config.command === "serve" ? "/@id/solix/devtools" : devtoolsBuildEntry,
-              "data-solix-devtools": "",
+              src: config.command === "serve" ? "/@id/sol/devtools" : devtoolsBuildEntry,
+              "data-sol-devtools": "",
             },
             injectTo: "head-prepend",
           },
@@ -336,7 +336,7 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
       return id === devtoolsBuildEntry ? resolvedDevtoolsBuildEntry : null;
     },
     async load(id) {
-      if (id === resolvedDevtoolsBuildEntry) return 'import "solix/devtools";';
+      if (id === resolvedDevtoolsBuildEntry) return 'import "sol/devtools";';
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
       const files = await discoverRoutes(config.root);
       await validateRouteCollisions(files);

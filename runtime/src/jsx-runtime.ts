@@ -4,7 +4,7 @@ import type { Transition } from "./transitions.ts";
 
 export namespace JSX {
   export interface Element {
-    readonly __solixElement: unique symbol;
+    readonly __solElement: unique symbol;
   }
 
   export type Child = Element | string | number | bigint | boolean | null | undefined;
@@ -45,10 +45,10 @@ export namespace JSX {
 }
 
 function missingCompiler(): never {
-  throw new Error("JSX reached solix/jsx-runtime. Add solix() to the Vite plugins array.");
+  throw new Error("JSX reached sol/jsx-runtime. Add sol() to the Vite plugins array.");
 }
 
-export const Fragment = Symbol("solix.Fragment");
+export const Fragment = Symbol("sol.Fragment");
 export const jsx = missingCompiler;
 export const jsxs = missingCompiler;
 export const jsxDEV = missingCompiler;

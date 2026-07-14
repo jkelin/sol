@@ -9,7 +9,7 @@ import {
   renderToStringAsync,
   type Context,
   type RenderToStringOptions,
-} from "solix";
+} from "sol";
 
 interface SharedData {
   count: number;

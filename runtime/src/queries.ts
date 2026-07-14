@@ -351,7 +351,7 @@ function requestQuery<Data, Args extends unknown[]>(
     state.isFailed = false;
   });
   devtoolsQueryUpdated(devtoolsId, { ...state, args });
-  const site = `solix:query:${entry.key}`;
+  const site = `sol:query:${entry.key}`;
   const invoke = () => invokeAsync("$query()", operation, args);
   const replay =
     frame.hydration && !frame.hydration.committed

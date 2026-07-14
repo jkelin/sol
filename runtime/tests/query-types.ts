@@ -1,4 +1,4 @@
-import { $mutation, $query, type QueryKey } from "solix";
+import { $mutation, $query, type QueryKey } from "sol";
 
 const typedKey: QueryKey = ["post", { id: 1, published: true }, null];
 void typedKey;

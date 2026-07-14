@@ -70,9 +70,9 @@ export {
 export type { Transition } from "./transitions.ts";
 export type { Parser, StandardSchema } from "./validation.ts";
 export type {
-  SolixComponentSnapshot,
-  SolixDevtools,
-  SolixFormSnapshot,
-  SolixRequestSnapshot,
-  SolixSnapshot,
+  SolComponentSnapshot,
+  SolDevtools,
+  SolFormSnapshot,
+  SolRequestSnapshot,
+  SolSnapshot,
 } from "./devtools.ts";

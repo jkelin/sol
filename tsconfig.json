@@ -5,7 +5,7 @@
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
-    "jsxImportSource": "solix",
+    "jsxImportSource": "sol",
     "allowJs": true,
     "types": ["bun"],
     "moduleResolution": "bundler",

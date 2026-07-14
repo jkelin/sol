@@ -1,16 +1,16 @@
-# Solix
+# Sol
 
 An experimental JSX framework that compiles components into static HTML templates and fine-grained DOM operations. Component setup runs once per mounted instance; reactive changes patch only the DOM that depends on them.
 
 ## Install
 
 ```bash
-bun add solix
+bun add sol
 bun add solkit
-bun add --dev @solix/compiler vite
+bun add --dev @sol/compiler vite
 ```
 
-Configure the compiler through the Vite plugin shown below, then set TypeScript's `jsxImportSource` to `solix`.
+Configure the compiler through the Vite plugin shown below, then set TypeScript's `jsxImportSource` to `sol`.
 
 ## Run the example
 
@@ -34,14 +34,14 @@ bun run build:web
 bun run test:web
 ```
 
-`web/` is the Sunblock-styled landing page and documentation workspace. Its docs are authored in Markdown, while validated `solix live` fences compile into interactive Code/Preview/Both examples during the Vite build. See `web/README.md` for the authoring contract and `web/DESIGN_SYSTEM.md` for the visual system.
+`web/` is the Sunblock-styled landing page and documentation workspace. Its docs are authored in Markdown, while validated `sol live` fences compile into interactive Code/Preview/Both examples during the Vite build. See `web/README.md` for the authoring contract and `web/DESIGN_SYSTEM.md` for the visual system.
 
 The original six standalone Tailwind Play CDN studies remain in `web/designs/` for comparison. They cover the solar-manifesto, Helios-lab, eclipse-console, sunblock-kit, cyanotype-solar, and atomic-sun directions.
 
 ## Authoring model
 
 ```tsx
-import { $component, mount } from "solix";
+import { $component, mount } from "sol";
 
 const Counter = $component(function Counter() {
   let count = 0;
@@ -68,7 +68,7 @@ Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `check
 Intrinsic elements accept callback refs and mutable object refs. `createRef<T>()` returns a typed, non-reactive `{ current: T | null }` object; refs attach after DOM insertion and clear during disposal.
 
 ```tsx
-import { $component, createRef, GlobalPortal, Portal } from "solix";
+import { $component, createRef, GlobalPortal, Portal } from "sol";
 
 const Overlay = $component(function Overlay() {
   const target = createRef<HTMLDivElement>();
@@ -100,7 +100,7 @@ SSR omits portal children because their targets are browser-owned. During hydrat
 `$form()` owns a form's values, validation errors, and submission state. It accepts a callable parser or a schema with `parse()` or `parseAsync()`, so Valibot and Zod can share the same controller API.
 
 ```tsx
-import { $component, $form } from "solix";
+import { $component, $form } from "sol";
 import * as v from "valibot";
 
 const TodoSchema = v.object({
@@ -143,7 +143,7 @@ Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()`
 `$query()` caches an asynchronous function by a JSON key and exposes reactive request state. It runs once when its component mounts unless `enabled` is false or the cache is still fresh. `$mutation()` wraps imperative asynchronous work without running it automatically.
 
 ```tsx
-import { $component, $mutation, $query, Suspense } from "solix";
+import { $component, $mutation, $query, Suspense } from "sol";
 
 const Posts = $component(function Posts() {
   const posts = $query(
@@ -200,7 +200,7 @@ Query keys accept only JSON values and use their exact `JSON.stringify()` result
 Use the compiler-managed `Head` component to add reactive content to `document.head` without rendering a body wrapper:
 
 ```tsx
-import { $component, Head } from "solix";
+import { $component, Head } from "sol";
 
 const Article = $component(function Article(props: { title: string; description: string }) {
   return (
@@ -228,7 +228,7 @@ During server rendering, pass `onHead` to collect the serialized managed head se
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string, so the application can define animation details with Tailwind, another CSS framework, or its own stylesheet. Transitions run only for updates after the initial render:
 
 ```tsx
-import { $component, type Transition } from "solix";
+import { $component, type Transition } from "sol";
 
 const fade: Transition = {
   enter: "animate-in fade-in duration-150",
@@ -255,25 +255,25 @@ Enable compilation in Vite:
 
 ```ts
 import { defineConfig } from "vite";
-import { solix } from "@solix/compiler/vite";
+import { sol } from "@sol/compiler/vite";
 
-export default defineConfig({ plugins: [solix()] });
+export default defineConfig({ plugins: [sol()] });
 ```
 
-During `vite serve`, the plugin injects Solix devtools by default. A circular `S` launcher in the
+During `vite serve`, the plugin injects Sol devtools by default. A circular `S` launcher in the
 bottom-right toggles a movable, resizable panel for component, loader/query/mutation, route-manifest,
 and form diagnostics, including an element picker. Component, request, and route views use a
 resizable master-detail layout, and the panel geometry persists locally. The same live metadata is
-available at `globalThis.__solix`; browsers implementing WebMCP
-also receive the read-only `solix_get_diagnostics` and `solix_inspect_element` tools. Production
+available at `globalThis.__sol`; browsers implementing WebMCP
+also receive the read-only `sol_get_diagnostics` and `sol_inspect_element` tools. Production
 builds do not include the entry or define the global unless explicitly enabled:
 
 ```ts
-solix({ devtools: false }); // opt out during development
-solix({ devtools: true }); // explicitly include it in any Vite command
+sol({ devtools: false }); // opt out during development
+sol({ devtools: true }); // explicitly include it in any Vite command
 ```
 
-`__solix.getSnapshot()` returns all diagnostic areas, while `getSnapshot("components")` and the
+`__sol.getSnapshot()` returns all diagnostic areas, while `getSnapshot("components")` and the
 `components`, `requests`, `router`, and `forms` getters return individual areas. Components include
 ownership through `parentId`; compiled queries and mutations include authored `source` file/line
 metadata; router diagnostics include every compiled route definition. Use
@@ -344,7 +344,7 @@ components and `Await` blocks, serializes their results into the returned markup
 markers used by `hydrate()`:
 
 ```tsx
-import { hydrate, renderToStringAsync } from "solix";
+import { hydrate, renderToStringAsync } from "sol";
 
 let head = "";
 const html = await renderToStringAsync(
@@ -391,7 +391,7 @@ schemas validate the complete argument tuple on the server; their compiled value
 callable during SSR and become Fetch-backed clients in the browser:
 
 ```tsx
-import { $rpcMutation, $rpcQuery } from "solix";
+import { $rpcMutation, $rpcQuery } from "sol";
 import * as v from "valibot";
 
 export const loadPost = $rpcQuery("load-post", { schema: v.tuple([v.number()]) }, async (id) =>
@@ -429,7 +429,7 @@ Routes are discovered automatically below the Vite project root. Define each rou
 top-level constant in a `.sol.ts` or `.sol.tsx` file:
 
 ```tsx
-import { $component, $route } from "solix";
+import { $component, $route } from "sol";
 import * as v from "valibot";
 
 const BlogDetail = $component(function BlogDetail() {
@@ -466,7 +466,7 @@ Routes without a schema retain inferred string values for path parameters and op
 Use `Link` when the destination is represented by a route handle. It requires exactly one anchor child, supplies that anchor's `href`, and intercepts eligible same-tab clicks without adding a wrapper element:
 
 ```tsx
-import { Link } from "solix";
+import { Link } from "sol";
 
 <Link route={blogDetailRoute} params={{ id: 42, page: 2 }}>
   <a class="entry-link">Open entry</a>
@@ -478,7 +478,7 @@ The route handle determines every required value in its single `params` prop. Au
 Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
 
 ```tsx
-import { $component, Route, router } from "solix";
+import { $component, Route, router } from "sol";
 
 const LoadingRoute = $component(function LoadingRoute() {
   return <p>Loading…</p>;

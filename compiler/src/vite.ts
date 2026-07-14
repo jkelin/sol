@@ -113,13 +113,17 @@ function manifestCallHelper(
   if (t.isIdentifier(callee)) return bindings.names.get(callee.name);
   if (
     t.isMemberExpression(callee) &&
-    !callee.computed &&
     t.isIdentifier(callee.object) &&
-    t.isIdentifier(callee.property) &&
     bindings.namespaces.has(callee.object.name)
   ) {
-    return ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(callee.property.name)
-      ? (callee.property.name as DeclarationHelper)
+    const property =
+      !callee.computed && t.isIdentifier(callee.property)
+        ? callee.property.name
+        : callee.computed && t.isStringLiteral(callee.property)
+          ? callee.property.value
+          : undefined;
+    return property && ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(property)
+      ? (property as DeclarationHelper)
       : undefined;
   }
   return undefined;

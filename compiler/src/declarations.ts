@@ -16,13 +16,17 @@ export function declarationCallHelper(
   if (t.isIdentifier(callee)) return compiler.declarationHelperNames.get(callee.name);
   if (
     t.isMemberExpression(callee) &&
-    !callee.computed &&
     t.isIdentifier(callee.object) &&
-    t.isIdentifier(callee.property) &&
     compiler.declarationHelperNamespaces.has(callee.object.name)
   ) {
-    return ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(callee.property.name)
-      ? (callee.property.name as DeclarationHelper)
+    const property =
+      !callee.computed && t.isIdentifier(callee.property)
+        ? callee.property.name
+        : callee.computed && t.isStringLiteral(callee.property)
+          ? callee.property.value
+          : undefined;
+    return property && ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(property)
+      ? (property as DeclarationHelper)
       : undefined;
   }
   return undefined;
@@ -346,6 +350,7 @@ export function compileServerDeclarations(state: CompilationState): void {
 
 function pruneClientServerDependencies(state: CompilationState): void {
   const { ast, edits, serverCallRanges } = state;
+  const exportedNames = exportedLocalNames(ast);
   const removedRanges = [...serverCallRanges].map((range) => range.split(":").map(Number));
   const removed = (node: t.Node): boolean =>
     removedRanges.some(([start, end]) => node.start! >= start! && node.end! <= end!);
@@ -384,6 +389,29 @@ function pruneClientServerDependencies(state: CompilationState): void {
           for (const reference of references) {
             const statement = effectFor(reference.node);
             if (!statement || removedStatements.has(statement)) continue;
+            const statementReferences = Object.values(path.scope.bindings).filter((candidate) =>
+              candidate.referencePaths.some(
+                (candidateReference) =>
+                  candidateReference.node.start! >= statement.start! &&
+                  candidateReference.node.end! <= statement.end!,
+              ),
+            );
+            const retainedBinding = statementReferences.find((candidate) => {
+              if (exportedNames.has(candidate.identifier.name)) return true;
+              return candidate.referencePaths.some(
+                (candidateReference) =>
+                  !removed(candidateReference.node) &&
+                  (candidateReference.node.start! < statement.start! ||
+                    candidateReference.node.end! > statement.end!),
+              );
+            });
+            if (retainedBinding) {
+              codeFrame(
+                state.compiler,
+                statement,
+                `Ambiguous top-level server dependency effect uses retained binding ${retainedBinding.identifier.name}`,
+              );
+            }
             const expression = statement.expression;
             const call =
               t.isCallExpression(expression) || t.isNewExpression(expression)

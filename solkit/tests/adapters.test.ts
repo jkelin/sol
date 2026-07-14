@@ -76,6 +76,18 @@ for (const [name, adapter, command] of [
       join(serverDirectory, "app.mjs"),
       `export async function handle(request) {
         const pathname = new URL(request.url).pathname;
+        if (pathname === "/early") {
+          await request.body?.cancel();
+          return new Response("limited", { status: 413 });
+        }
+        if (pathname === "/stream-error") {
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("partial"));
+              setTimeout(() => controller.error(new Error("stream failed")), 10);
+            },
+          }));
+        }
         return pathname.endsWith(".js")
           ? new Response("Not Found", { status: 404 })
           : new Response(\`SSR:\${pathname}\`);
@@ -110,6 +122,21 @@ for (const [name, adapter, command] of [
     const post = await fetch(`http://127.0.0.1:${port}/route`, { method: "POST" });
     expect(post.status).toBe(200);
     expect(await post.text()).toBe("SSR:/route");
+    if (name === "node") {
+      const early = await fetch(`http://127.0.0.1:${port}/early`, {
+        method: "POST",
+        body: "request body",
+      });
+      expect(early.status).toBe(413);
+      expect(await early.text()).toBe("limited");
+      const followup = await fetch(`http://127.0.0.1:${port}/after-early`);
+      expect(await followup.text()).toBe("SSR:/after-early");
+
+      const streamFailure = await fetch(`http://127.0.0.1:${port}/stream-error`)
+        .then(async (response) => await response.text())
+        .catch((error: unknown) => error);
+      expect(streamFailure).toBeInstanceOf(Error);
+    }
 
     process.kill();
     await process.exited;

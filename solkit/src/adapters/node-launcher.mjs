@@ -22,6 +22,25 @@ const contentTypes = new Map([
   [".svg", "image/svg+xml"],
 ]);
 
+function requestBody(incoming) {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = incoming.iterator({ destroyOnReturn: false });
+      return {
+        next: () => iterator.next(),
+        async return() {
+          try {
+            await iterator.return?.();
+            return { done: true, value: undefined };
+          } finally {
+            if (!incoming.readableEnded) incoming.resume();
+          }
+        },
+      };
+    },
+  };
+}
+
 const server = createServer((incoming, outgoing) => {
   void (async () => {
     try {
@@ -62,7 +81,7 @@ const server = createServer((incoming, outgoing) => {
       const request = new Request(url, {
         method: incoming.method,
         headers,
-        body: isRead ? undefined : incoming,
+        body: isRead ? undefined : requestBody(incoming),
         duplex: isRead ? undefined : "half",
       });
       const response = await handle(request, { template });
@@ -76,8 +95,11 @@ const server = createServer((incoming, outgoing) => {
       outgoing.end();
     } catch (error) {
       console.error(error);
-      if (!outgoing.headersSent) outgoing.writeHead(500);
-      outgoing.end("Internal Server Error");
+      if (outgoing.headersSent) {
+        outgoing.destroy(error instanceof Error ? error : undefined);
+      } else {
+        outgoing.writeHead(500).end("Internal Server Error");
+      }
     }
   })();
 });

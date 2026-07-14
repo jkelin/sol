@@ -49,6 +49,25 @@ function validateOptions(options: unknown): asserts options is SolkitOptions {
   }
 }
 
+function requestBodyFromNode(request: IncomingMessage): AsyncIterable<Uint8Array> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = request.iterator({ destroyOnReturn: false });
+      return {
+        next: () => iterator.next(),
+        async return() {
+          try {
+            await iterator.return?.();
+            return { done: true as const, value: undefined };
+          } finally {
+            if (!request.readableEnded) request.resume();
+          }
+        },
+      };
+    },
+  };
+}
+
 function requestFromNode(request: IncomingMessage): Request {
   const host = request.headers.host ?? "localhost";
   const headers = new Headers();
@@ -61,7 +80,7 @@ function requestFromNode(request: IncomingMessage): Request {
   const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
-    body: isRead ? undefined : (request as unknown as BodyInit),
+    body: isRead ? undefined : (requestBodyFromNode(request) as unknown as BodyInit),
     duplex: isRead ? undefined : "half",
   };
   return new Request(new URL(request.url ?? "/", `http://${host}`), init);

@@ -87,7 +87,11 @@ function validateRpcName(name: unknown): asserts name is string {
 }
 
 function validationError(error: unknown): error is { readonly issues: readonly unknown[] } {
-  return isObject(error) && Array.isArray((error as { issues?: unknown }).issues);
+  try {
+    return isObject(error) && Array.isArray((error as { issues?: unknown }).issues);
+  } catch {
+    return false;
+  }
 }
 
 function requestError(message: string, status: 400 | 413 | 415): TypeError {
@@ -95,9 +99,13 @@ function requestError(message: string, status: 400 | 413 | 415): TypeError {
 }
 
 function requestErrorStatus(error: unknown): 400 | 413 | 415 | undefined {
-  if (!isObject(error)) return undefined;
-  const status = (error as { [REQUEST_ERROR_STATUS]?: unknown })[REQUEST_ERROR_STATUS];
-  return status === 400 || status === 413 || status === 415 ? status : undefined;
+  try {
+    if (!isObject(error)) return undefined;
+    const status = (error as { [REQUEST_ERROR_STATUS]?: unknown })[REQUEST_ERROR_STATUS];
+    return status === 400 || status === 413 || status === 415 ? status : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function serializeJson(value: unknown, label: string): string {
@@ -506,25 +514,34 @@ async function decodedBody(
 }
 
 function errorDetail(error: unknown, development: boolean): Record<string, unknown> {
-  if (validationError(error))
-    return {
-      name: "ValidationError",
-      message: "Input validation failed",
-      issues: jsonErrorValue(error.issues),
-    };
-  if (!development) return { name: "Error", message: "Internal Server Error" };
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      ...(error.stack ? { stack: error.stack } : {}),
-      ...(Object.prototype.hasOwnProperty.call(error, "cause")
-        ? { cause: jsonErrorValue(error.cause) }
-        : {}),
-      ...(isObject(error) && "issues" in error ? { issues: jsonErrorValue(error.issues) } : {}),
-    };
+  if (validationError(error)) {
+    try {
+      return {
+        name: "ValidationError",
+        message: "Input validation failed",
+        issues: jsonErrorValue(error.issues),
+      };
+    } catch {
+      return { name: "ValidationError", message: "Input validation failed" };
+    }
   }
-  return { name: "Error", message: String(error) };
+  if (!development) return { name: "Error", message: "Internal Server Error" };
+  try {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        ...(error.stack ? { stack: error.stack } : {}),
+        ...(Object.prototype.hasOwnProperty.call(error, "cause")
+          ? { cause: jsonErrorValue(error.cause) }
+          : {}),
+        ...(isObject(error) && "issues" in error ? { issues: jsonErrorValue(error.issues) } : {}),
+      };
+    }
+    return { name: "Error", message: String(error) };
+  } catch {
+    return { name: "Error", message: "Uninspectable thrown value" };
+  }
 }
 
 function rpcResponse(value: unknown, status = 200): Response {

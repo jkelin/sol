@@ -135,12 +135,14 @@ describe("compiler", () => {
     const namespace = compile(
       `import * as solix from "solix";
        const load = solix.$rpcQuery("load", { schema: x => x }, async () => 1);
-       export { load as query };`,
+       const save = solix["$rpcMutation"]("save", { schema: x => x }, async () => 1);
+       export { load as query, save };`,
       "namespace.sol.ts",
       { target: "client" },
     );
     expect(namespace.code).toContain('const load = __solix_rpc_query_client("load")');
-    expect(namespace.code).toContain("export { load as query }");
+    expect(namespace.code).toContain('const save = __solix_rpc_mutation_client("save")');
+    expect(namespace.code).toContain("export { load as query, save }");
   });
 
   test("removes imports referenced only by stripped browser handlers", () => {
@@ -284,6 +286,16 @@ describe("compiler", () => {
         { target: "client" },
       ),
     ).toThrow("Ambiguous top-level server dependency effect");
+    expect(() =>
+      compile(
+        `function configure(schema, state) { state.ready = true; }
+         export const frontendState = { ready: false }; const schema = {};
+         configure(schema, frontendState);
+         export const load = $rpcQuery("load", { schema }, async () => 1);`,
+        "retained-effect.sol.ts",
+        { target: "client" },
+      ),
+    ).toThrow("uses retained binding frontendState");
   });
 
   test("removes comments attached to stripped server dependencies", () => {
@@ -1603,7 +1615,7 @@ test("the endpoint manifest respects helper bindings and canonical HTTP paths", 
   try {
     await writeFile(
       join(root, "real.sol.ts"),
-      `import * as solix from "solix"; const load = solix.$rpcQuery("load", { schema: x => x }, async () => 1); export { load as query };`,
+      `import * as solix from "solix"; const load = solix["$rpcQuery"]("load", { schema: x => x }, async () => 1); export { load as query };`,
     );
     await writeFile(
       join(root, "shadow.sol.ts"),

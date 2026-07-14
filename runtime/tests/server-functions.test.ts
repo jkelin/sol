@@ -447,6 +447,56 @@ describe("server declarations", () => {
     expect(await development!.json()).toMatchObject({
       error: { message: "failed", cause: "Unserializable error details" },
     });
+
+    const hostileProxy = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("getter failed");
+        },
+      },
+    );
+    const proxyFailure = rpcQueryServer(
+      "hostile-proxy",
+      { schema: (args: readonly []) => args as [] },
+      async () => {
+        throw hostileProxy;
+      },
+    ) as unknown as ServerEndpoint;
+    const proxyResponse = await dispatchServerEndpoint(
+      [proxyFailure],
+      rpcRequest("hostile-proxy", []),
+      { development: true },
+    );
+    expect(proxyResponse?.status).toBe(500);
+    expect(await proxyResponse!.json()).toMatchObject({
+      error: { name: "Error", message: "Uninspectable thrown value" },
+    });
+
+    const hostileValue = {
+      [Symbol.toPrimitive]() {
+        throw new Error("coercion failed");
+      },
+    };
+    const hostileRoute = httpRouteServer(
+      {
+        method: "GET",
+        path: "/hostile-error",
+        schema: (input: HttpRouteInput) => input,
+      },
+      async () => {
+        throw hostileValue;
+      },
+    ) as unknown as ServerEndpoint;
+    const hostileResponse = await dispatchServerEndpoint(
+      [hostileRoute],
+      new Request("https://example.test/hostile-error"),
+      { development: true },
+    );
+    expect(hostileResponse?.status).toBe(500);
+    expect(await hostileResponse!.json()).toMatchObject({
+      error: { name: "Error", message: "Uninspectable thrown value" },
+    });
   });
 
   test("canonicalizes static HTTP paths and rejects unreachable syntax", async () => {

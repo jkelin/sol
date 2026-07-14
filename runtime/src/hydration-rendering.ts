@@ -233,6 +233,7 @@ export function instantiateHydrated(
 export function hydratedBlock(fragment: HydratedFragment, cleanups: (() => void)[]): Block {
   let disposed = false;
   let mounted = true;
+  let claimedPlacement = true;
   const nodes = (): Node[] => {
     const result: Node[] = [];
     for (let node: Node | null = fragment.start; node; node = node.nextSibling) {
@@ -245,7 +246,10 @@ export function hydratedBlock(fragment: HydratedFragment, cleanups: (() => void)
     for (const registered of cleanups.toReversed()) registered();
   };
   const move = (parent: Node, before: Node | null = null): void => {
-    if (mounted && fragment.start.parentNode === parent) return;
+    if (claimedPlacement) {
+      claimedPlacement = false;
+      if (mounted && fragment.start.parentNode === parent) return;
+    }
     const moving = document.createDocumentFragment();
     for (const node of nodes()) moving.append(node);
     parent.insertBefore(moving, before);

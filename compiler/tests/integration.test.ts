@@ -1129,6 +1129,38 @@ test("hydrates primitive conditional blocks without duplicating their nodes", as
   dispose();
 });
 
+test("reorders and disposes hydrated keyed rows in place", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
+      return <main>
+        <button id="reverse-hydrated" onClick={() => items.reverse()}>Reverse</button>
+        <button id="remove-hydrated" onClick={() => items.splice(1, 1)}>Remove middle</button>
+        <ul>{items.map(item => <li key={item.id} data-id={item.id}>{item.id}</li>)}</ul>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const serverRows = [...target.querySelectorAll("li")];
+
+  const dispose = await hydrate(App, target);
+  expect([...target.querySelectorAll("li")]).toEqual(serverRows);
+  target.querySelector<HTMLButtonElement>("#reverse-hydrated")!.click();
+  expect([...target.querySelectorAll("li")]).toEqual([
+    serverRows[2]!,
+    serverRows[1]!,
+    serverRows[0]!,
+  ]);
+
+  target.querySelector<HTMLButtonElement>("#remove-hydrated")!.click();
+  expect([...target.querySelectorAll("li")]).toEqual([serverRows[2]!, serverRows[0]!]);
+  expect(serverRows[1]!.isConnected).toBe(false);
+  dispose();
+  expect(target.childNodes).toHaveLength(0);
+});
+
 test("hydrates a timed-out fallback and resumes only its pending work", async () => {
   globalThis.integrationSetups.app = 0;
   globalThis.integrationPending = new Promise((resolve) => {

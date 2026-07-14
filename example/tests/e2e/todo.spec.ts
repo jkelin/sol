@@ -19,6 +19,16 @@ test.afterAll(async () => {
 test("runs the to-do workflow with validation and fine-grained updates", async ({ page }) => {
   await page.goto("/");
 
+  await expect(page).toHaveTitle("Margin — 2 tasks left");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "2 unfinished notes in the Solix compiler example.",
+  );
+  await expect(page.locator("style[data-solix-head-example]")).toHaveJSProperty(
+    "textContent",
+    ":root { --remaining-notes: 2; }",
+  );
+
   const originalRow = page.getByTestId("todo-2");
   const originalRowHandle = await originalRow.elementHandle();
   await page.getByRole("button", { name: "Edit Prove nested proxy updates", exact: true }).click();
@@ -105,6 +115,11 @@ test("runs the to-do workflow with validation and fine-grained updates", async (
   await draft.press("Enter");
 
   await expect(page.getByText("Verify fine-grained updates", { exact: true })).toBeVisible();
+  await expect(page).toHaveTitle("Margin — 3 tasks left");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    "3 unfinished notes in the Solix compiler example.",
+  );
   await expect(draft).toHaveValue("");
   await page
     .getByRole("checkbox", {
@@ -113,6 +128,11 @@ test("runs the to-do workflow with validation and fine-grained updates", async (
     })
     .check({ force: true });
 
+  await expect(page).toHaveTitle("Margin — 2 tasks left");
+  await expect(page.locator("style[data-solix-head-example]")).toHaveJSProperty(
+    "textContent",
+    ":root { --remaining-notes: 2; }",
+  );
   await expect(page.locator(".completion-margin strong")).toHaveText("2");
   await expect(page.locator(".remaining-count strong")).toHaveText("2");
   await page.getByRole("button", { name: "Active", exact: true }).click();

@@ -233,6 +233,10 @@ export function compileBuiltinElement(
 ): void {
   if (kind === "Head") {
     validateBuiltinAttributes(compiler, node, new Set());
+    const children = meaningfulChildren(node).filter(
+      (child) => !t.isJSXExpressionContainer(child) || !t.isJSXEmptyExpression(child.expression),
+    );
+    if (children.length === 0) return;
     context.operations.push(
       mappedCode(
         compiler,
@@ -348,6 +352,14 @@ export function compileBuiltinElement(
   );
 }
 
+function containsJsx(node: t.Node): boolean {
+  let found = false;
+  t.traverseFast(node, (child) => {
+    if (t.isJSXElement(child) || t.isJSXFragment(child)) found = true;
+  });
+  return found;
+}
+
 function rawTextValues(
   compiler: CompilerContext,
   node: t.JSXElement,
@@ -367,7 +379,7 @@ function rawTextValues(
     }
     if (t.isJSXExpressionContainer(child)) {
       if (t.isJSXEmptyExpression(child.expression)) continue;
-      if (!t.isExpression(child.expression)) {
+      if (!t.isExpression(child.expression) || containsJsx(child.expression)) {
         codeFrame(compiler, child, "Raw-text element children must be text or expressions");
       }
       values.push(expressionCode(child.expression, scope));
@@ -891,7 +903,7 @@ export function compileNode(
   }
   if (compileProviderElement(compiler, node, context, bindings, scope)) return;
   const name = jsxName(compiler, node.openingElement.name);
-  const builtin = compiler.builtinNames.get(name);
+  const builtin = compiler.builtinElements.get(node);
   if (compiler.linkNames.has(name)) {
     compileLinkElement(compiler, node, context, bindings, scope);
   } else if (builtin) {

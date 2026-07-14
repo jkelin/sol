@@ -112,7 +112,7 @@ export function head(render: RenderFactory, cleanups: Cleanup[], frame: RenderFr
   if (typeof document === "undefined" || !document.head) {
     throw new Error("Head requires a browser document with a head element");
   }
-  const rendered = render(frame);
+  const rendered = render({ ...frame, head: true });
   cleanups.push(() => rendered.dispose());
   rendered.mount(document.head, document.head.firstChild);
 }

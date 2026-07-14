@@ -37,4 +37,4 @@ Compilation parses the source with Babel, then `compile.ts` passes shared state 
 
 Compiler diagnostics are part of the module interface: keep their validation and authored source locations intact when reorganizing internals.
 
-The compiler treats `Head` as a child-bearing builtin with no properties. Its children become an owned block mounted by the runtime into `document.head` before older managed and static content, leaving no body wrapper. `title`, `style`, `script`, and `textarea` use a raw-text operation instead of comment regions so mixed static and reactive content updates through `textContent`.
+The compiler treats a binding-resolved `Head` import as a child-bearing builtin with no properties. Its children become an owned block mounted by the runtime into `document.head` before older managed and static content, leaving no body wrapper. Empty Head blocks emit no operation. `title`, `style`, `script`, and `textarea` use a raw-text operation instead of comment regions so mixed static and reactive content updates through `textContent`; nested JSX is rejected with an authored diagnostic.

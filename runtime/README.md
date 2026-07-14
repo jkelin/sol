@@ -24,7 +24,7 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `forms.ts` implements form controllers, validation normalization, and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, and Suspense participation.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
-- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, and error propagation.
+- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, head-scoped executable script instantiation, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers.
 - `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
@@ -77,4 +77,4 @@ host-specific values, and the embedded JSON escapes script-closing characters.
 
 ## Document head
 
-`Head` accepts JSX children such as `title`, `meta`, `link`, `style`, and `script`, then mounts them directly into `document.head`. Managed blocks precede static head content so their titles take effect, and newer blocks precede older blocks. Each instance owns and cleans up only its nodes without deduplicating overlaps. Reactive title, style, script, and textarea text is assigned through `textContent`. Scripts execute when inserted according to native browser behavior, while later text updates do not rerun an already-connected script.
+`Head` accepts JSX children such as `title`, `meta`, `link`, `style`, and `script`, then mounts them directly into `document.head`. Managed blocks precede static head content so their titles take effect, and newer blocks precede older blocks. Each instance owns and cleans up only its nodes without deduplicating overlaps. Reactive title, style, script, and textarea text is assigned through `textContent`. The render frame marks Head descendants so only their template scripts are recreated as executable elements; scripts elsewhere retain ordinary inert template-clone behavior. Scripts execute when inserted according to native browser behavior, while later text updates do not rerun an already-connected script.

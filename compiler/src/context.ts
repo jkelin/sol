@@ -2,6 +2,13 @@ import type * as t from "@babel/types";
 
 export type Expression = t.Expression | t.JSXElement | t.JSXFragment;
 export type Scope = ReadonlyMap<string, string>;
+export type BuiltinKind =
+  | "Suspense"
+  | "Await"
+  | "ErrorBoundary"
+  | "Portal"
+  | "GlobalPortal"
+  | "Head";
 
 export interface Edit {
   start: number;
@@ -35,10 +42,8 @@ export interface CompilerContext {
   source: string;
   templates: CompiledTemplate[];
   componentNames: Set<string>;
-  builtinNames: Map<
-    string,
-    "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal" | "Head"
-  >;
+  builtinImports: Map<t.Identifier, BuiltinKind>;
+  builtinElements: WeakMap<t.JSXElement, BuiltinKind>;
   linkNames: Set<string>;
   refCreatorNames: Set<string>;
   propsName?: string;

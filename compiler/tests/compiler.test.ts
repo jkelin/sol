@@ -649,6 +649,44 @@ describe("compiler", () => {
     }
   });
 
+  test("treats empty Head blocks as no-ops and respects lexical shadowing", () => {
+    const empty = compile(
+      `import { $component, Head } from "solix"; const App = $component(function App() { return <Head />; });`,
+      "EmptyHead.tsx",
+    );
+    expect(empty.code.match(/__solix_head\(/g) ?? []).toHaveLength(0);
+
+    expect(() =>
+      compile(
+        `
+        import { $component, Head as DocumentHead } from "solix";
+        const Local = $component(function Local() { return <p>Local</p>; });
+        const App = $component(function App() {
+          const DocumentHead = Local;
+          return <DocumentHead title="Not a builtin" />;
+        });
+      `,
+        "ShadowedHead.tsx",
+      ),
+    ).toThrow("JSX component DocumentHead must be declared with $component() or imported");
+  });
+
+  test("rejects JSX nested anywhere inside raw-text expressions", () => {
+    const expressions = [
+      `ready ? "Ready" : <span>Pending</span>`,
+      `ready && <span>Ready</span>`,
+      `["Ready", <span>Pending</span>]`,
+    ];
+    for (const expression of expressions) {
+      expect(() =>
+        compile(
+          `import { $component } from "solix"; const App = $component(function App() { const ready = true; return <title>{${expression}}</title>; });`,
+          "RawText.tsx",
+        ),
+      ).toThrow("Raw-text element children must be text or expressions");
+    }
+  });
+
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {

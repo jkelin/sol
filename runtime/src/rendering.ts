@@ -111,6 +111,7 @@ export interface RenderFrame {
   readonly owner: Cleanup[];
   readonly contexts: ReadonlyMap<symbol, () => object>;
   readonly mounts: MountCoordinator;
+  readonly head?: boolean;
   readonly suspense?: SuspenseController;
   readonly handleError?: (error: unknown) => void;
   readonly mode?: "server" | "hydrate" | "resume";
@@ -159,13 +160,15 @@ export function instantiate(definition: TemplateDefinition, frame?: RenderFrame)
   definition.element ??= document.createElement("template");
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
   const fragment = definition.element.content.cloneNode(true) as DocumentFragment;
-  for (const inertScript of fragment.querySelectorAll("script")) {
-    const executableScript = document.createElement("script");
-    for (const attribute of inertScript.attributes) {
-      executableScript.setAttribute(attribute.name, attribute.value);
+  if (frame?.head) {
+    for (const inertScript of fragment.querySelectorAll("script")) {
+      const executableScript = document.createElement("script");
+      for (const attribute of inertScript.attributes) {
+        executableScript.setAttribute(attribute.name, attribute.value);
+      }
+      executableScript.textContent = inertScript.textContent;
+      inertScript.replaceWith(executableScript);
     }
-    executableScript.textContent = inertScript.textContent;
-    inertScript.replaceWith(executableScript);
   }
   const elements: Element[] = [];
   for (const element of fragment.querySelectorAll<HTMLElement>("[data-solix-e]")) {

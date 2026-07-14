@@ -21,6 +21,7 @@ import {
   instantiate,
   list,
   link,
+  rawText,
   isRouteDefinition,
   route,
   renderComponent,
@@ -1071,6 +1072,17 @@ describe("compiled DOM runtime", () => {
 
   test("rejects calling the compiler-specialized Head handle directly", () => {
     expect(() => Head({})).toThrow("Head must be rendered as JSX inside a compiled component");
+  });
+
+  test("validates raw-text runtime operations", () => {
+    const cleanups: Array<() => void> = [];
+    expect(() => rawText(document.createElement("div"), () => [], cleanups)).toThrow(
+      "expects a script, style, textarea, or title element",
+    );
+    expect(() =>
+      rawText(document.createElement("title"), () => "not an array" as never, cleanups),
+    ).toThrow("values must be an array");
+    expect(cleanups).toHaveLength(0);
   });
 
   test("rejects every reflective mutation of readonly component props", () => {

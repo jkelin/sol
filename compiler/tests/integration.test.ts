@@ -239,15 +239,113 @@ test("Head mounts reactive owned content into document.head", async () => {
   expect(document.head.querySelector("script")).toBeNull();
 });
 
+test("Head keeps reactive script bindings on the executable replacement", async () => {
+  window.happyDOM.settings.enableJavaScriptEvaluation = true;
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App() {
+      let body = "globalThis.dynamicHeadScripts = (globalThis.dynamicHeadScripts ?? 0) + 1;";
+      let nonce = "first";
+      let source = "/first.json";
+      return <main>
+        <Head>
+          <script nonce={nonce} data-version={nonce}>{body}</script>
+          <script type="application/json" src={source}></script>
+        </Head>
+        <button onClick={() => {
+          body = "globalThis.dynamicHeadScripts = (globalThis.dynamicHeadScripts ?? 0) + 10;";
+          nonce = "second";
+          source = "/second.json";
+        }}>Update scripts</button>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  const executable = document.head.querySelector<HTMLScriptElement>("script:not([src])")!;
+  const dataScript = document.head.querySelector<HTMLScriptElement>("script[src]")!;
+
+  expect((window as unknown as { dynamicHeadScripts?: number }).dynamicHeadScripts).toBe(1);
+  expect(executable.getAttribute("nonce")).toBe("first");
+  expect(executable.dataset.version).toBe("first");
+  expect(dataScript.getAttribute("src")).toBe("/first.json");
+
+  target.querySelector("button")!.click();
+  expect(document.head.querySelector("script:not([src])")).toBe(executable);
+  expect(document.head.querySelector("script[src]")).toBe(dataScript);
+  expect(executable.textContent).toContain("+ 10");
+  expect(executable.getAttribute("nonce")).toBe("second");
+  expect(executable.dataset.version).toBe("second");
+  expect(dataScript.getAttribute("src")).toBe("/second.json");
+  expect((window as unknown as { dynamicHeadScripts?: number }).dynamicHeadScripts).toBe(1);
+
+  dispose();
+  expect(document.head.querySelector("script")).toBeNull();
+  expect((window as unknown as { dynamicHeadScripts?: number }).dynamicHeadScripts).toBe(1);
+});
+
+test("empty Head is inert and scripts outside Head stay inert", async () => {
+  window.happyDOM.settings.enableJavaScriptEvaluation = true;
+  const before = [...document.head.childNodes];
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App() {
+      return <main>
+        <Head />
+        <script>{"globalThis.bodyScriptRan = true;"}</script>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect([...document.head.childNodes]).toEqual(before);
+  expect((window as unknown as { bodyScriptRan?: boolean }).bodyScriptRan).toBeUndefined();
+  expect(target.querySelector("script")).not.toBeNull();
+  dispose();
+  expect([...document.head.childNodes]).toEqual(before);
+});
+
+test("raw-text elements render mixed values and update without marker text", async () => {
+  const module = await loadCompiled(`
+    import { $component } from "solix";
+    export const App = $component(function App() {
+      let count = 1;
+      const missing = null;
+      const disabled = false;
+      return <main>
+        <textarea>Count {count}; missing {missing}; disabled {disabled}</textarea>
+        <style>{"\\n.rule {\\n  order: " + count + ";\\n}\\n"}</style>
+        <button onClick={() => count = 2}>Update raw text</button>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(target.querySelector("textarea")?.textContent).toBe("Count 1; missing ; disabled ");
+  expect(target.querySelector("style")?.textContent).toBe("\n.rule {\n  order: 1;\n}\n");
+  expect(target.textContent).not.toContain("solix:");
+  target.querySelector("button")!.click();
+  expect(target.querySelector("textarea")?.textContent).toBe("Count 2; missing ; disabled ");
+  expect(target.querySelector("style")?.textContent).toBe("\n.rule {\n  order: 2;\n}\n");
+  dispose();
+});
+
 test("conditional and sibling Head blocks retain independent ownership", async () => {
+  const staticTitle = document.createElement("title");
+  staticTitle.textContent = "Static";
+  document.head.append(staticTitle);
   const module = await loadCompiled(`
     import { $component, Head } from "solix";
     export const App = $component(function App() {
       let showOptional = true;
+      let olderTitle = "Older";
       return <main>
-        <Head><meta name="shared" content="always" /></Head>
-        {showOptional && <Head><meta name="shared" content="optional" /></Head>}
-        <button onClick={() => showOptional = false}>Hide</button>
+        <Head><title>{olderTitle}</title><meta name="shared" content="always" /></Head>
+        {showOptional && <Head><title>Newer</title><meta name="shared" content="optional" /></Head>}
+        <button id="update-older" onClick={() => olderTitle = "Older updated"}>Update older</button>
+        <button id="hide-newer" onClick={() => showOptional = false}>Hide newer</button>
       </main>;
     });
   `);
@@ -259,14 +357,19 @@ test("conditional and sibling Head blocks retain independent ownership", async (
       meta.getAttribute("content"),
     ),
   ).toEqual(["optional", "always"]);
-  target.querySelector("button")!.click();
+  expect(document.title).toBe("Newer");
+  target.querySelector<HTMLButtonElement>("#update-older")!.click();
+  expect(document.title).toBe("Newer");
+  target.querySelector<HTMLButtonElement>("#hide-newer")!.click();
   expect(
     [...document.head.querySelectorAll('meta[name="shared"]')].map((meta) =>
       meta.getAttribute("content"),
     ),
   ).toEqual(["always"]);
+  expect(document.title).toBe("Older updated");
 
   dispose();
+  expect(document.title).toBe("Static");
   expect(document.head.querySelector('meta[name="shared"]')).toBeNull();
 });
 

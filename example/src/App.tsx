@@ -1,4 +1,4 @@
-import { $component, $form, type FormController } from "solix";
+import { $component, $form, Head, type FormController } from "solix";
 import * as v from "valibot";
 import { pageTransition, todoTransition } from "./transitions.ts";
 
@@ -227,6 +227,14 @@ export const App = $component(function App() {
       $transition={pageTransition}
       aria-labelledby="page-title"
     >
+      <Head>
+        <title>{`Margin — ${remaining} ${remaining === 1 ? "task" : "tasks"} left`}</title>
+        <meta
+          name="description"
+          content={`${remaining} unfinished notes in the Solix compiler example.`}
+        />
+        <style data-solix-head-example>{`:root { --remaining-notes: ${remaining}; }`}</style>
+      </Head>
       <div
         class="completion-margin absolute inset-y-0 left-0 z-1 flex w-11 flex-col items-center border-r border-correction/35 pt-7 text-correction sm:w-21 sm:pt-11"
         aria-hidden="true"

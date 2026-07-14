@@ -53,7 +53,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             specifier.imported.name === "GlobalPortal" ||
             specifier.imported.name === "Head"
           ) {
-            compiler.builtinNames.set(specifier.local.name, specifier.imported.name);
+            compiler.builtinImports.set(specifier.local, specifier.imported.name);
           }
           if (t.isIdentifier(specifier.imported, { name: "Link" })) {
             compiler.linkNames.add(specifier.local.name);
@@ -76,4 +76,15 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
       }
     }
   }
+
+  traverse(ast, {
+    JSXElement(path) {
+      const name = path.node.openingElement.name;
+      if (!t.isJSXIdentifier(name)) return;
+      const binding = path.scope.getBinding(name.name);
+      if (!binding) return;
+      const kind = compiler.builtinImports.get(binding.identifier);
+      if (kind) compiler.builtinElements.set(path.node, kind);
+    },
+  });
 }

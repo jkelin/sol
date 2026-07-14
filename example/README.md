@@ -1,6 +1,6 @@
 # Solix example
 
-This private workspace package is a notebook-style Solix application. It demonstrates reactive component state, forms with Valibot validation, bindings, keyed lists, transitions, contexts, Suspense and Await, cached queries, polling, mutations, compile-time routes, typed parameters, and browser navigation. The `/queries` route shows an initial Suspense fetch, two observers sharing a JSON-keyed cache, argument-changing refetches, and a mutation followed by an explicit refresh.
+This private workspace package is a notebook-style Solix application. It demonstrates reactive component state and document-head content, forms with Valibot validation, bindings, keyed lists, transitions, contexts, Suspense and Await, cached queries, polling, mutations, compile-time routes, typed parameters, and browser navigation. The `/queries` route shows an initial Suspense fetch, two observers sharing a JSON-keyed cache, argument-changing refetches, and a mutation followed by an explicit refresh.
 
 From the repository root:
 

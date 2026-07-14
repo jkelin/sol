@@ -64,7 +64,7 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await counter.getByRole("button", { name: "both", exact: true }).click();
   await expect(counter.locator("output")).toHaveText("1");
   await counter.getByRole("button", { name: "Call named RPC" }).click();
-  await expect(counter.getByText("Validated on the Solix server.")).toBeVisible();
+  await expect(counter.getByText("Validated on the Solix server.", { exact: true })).toBeVisible();
 
   const list = page.getByTestId("list-example");
   const template = list.getByRole("button", { name: /Static template/ });

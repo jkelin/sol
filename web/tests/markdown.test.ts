@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { markdownModule, parseDocument, type DocMetadata } from "../src/markdown/compile.ts";
 import { registrySource, validateDocuments } from "../src/markdown/registry.ts";
+import { compileModule } from "../src/markdown/vite.ts";
 
 const file = "C:/project/web/src/docs/example.md";
 const frontmatter = `---
@@ -107,5 +108,15 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
     expect(source).toContain('"slug":"getting-started"');
     expect(source).toContain('"slug":"api-reference"');
     expect(source.indexOf('"getting-started"')).toBeLessThan(source.indexOf('"api-reference"'));
+  });
+
+  test("emits browser-valid JavaScript for virtual development modules", async () => {
+    const source = `import { $component } from "solix";
+const values = [1] as const;
+export const Demo = $component(function Demo() { return <p>{values[0]}</p>; });`;
+    const generated = await compileModule(source, "virtual-development-module.tsx");
+    expect(generated.moduleType).toBe("js");
+    expect(generated.code).not.toContain(" as const");
+    expect(generated.code).not.toContain("Array<");
   });
 });

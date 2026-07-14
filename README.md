@@ -288,6 +288,9 @@ creates client and server bundles plus the selected launcher.
 The generated launcher prints its bound HTTP address once it starts listening.
 See `solkit/README.md` for the document outlets and complete configuration.
 
+Use `bun run build:example` and `bun run start:example` for the SSR example. Use
+`bun run build:web` and `bun run start:web` for the documentation site.
+
 ## Context and async rendering
 
 Create a shared object context with `$context<T>()`. A provider accepts the object through its

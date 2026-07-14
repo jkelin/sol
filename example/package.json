@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "solkit build && bun test tests/build-output.test.ts",
     "build:inspect": "vite build --minify=false --outDir out/inspect",
+    "start": "bun dist/server/index.mjs",
     "test": "bun test tests/build-output.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"

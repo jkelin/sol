@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "vite preview",
     "test": "bun test tests/markdown.test.ts tests/ui.test.ts",
     "test:e2e": "bun run build && playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"

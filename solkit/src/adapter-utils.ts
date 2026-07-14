@@ -1,6 +1,14 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SolkitAdapterContext } from "./types.ts";
+
+export async function loadLauncher(url: URL): Promise<string> {
+  let source: unknown;
+  if (typeof Bun === "undefined") source = await readFile(url, "utf8");
+  else source = (await import(url.href, { with: { type: "text" } })).default;
+  if (typeof source !== "string") throw new TypeError("Launcher source must be text");
+  return source;
+}
 
 export async function writeLauncher(context: SolkitAdapterContext, source: string): Promise<void> {
   if (!context || typeof context !== "object") {

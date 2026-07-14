@@ -16,6 +16,8 @@
     "build:example": "bun run --cwd example build",
     "build:example:inspect": "bun run --cwd example build:inspect",
     "build:web": "bun run --cwd web build",
+    "start:example": "bun run --cwd example start",
+    "start:web": "bun run --cwd web start",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "lint": "bun run lint:oxc && bun run lint:types",

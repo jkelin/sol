@@ -7,6 +7,7 @@ From the repository root:
 ```bash
 bun run dev
 bun run build
+bun run start
 bun run test:e2e
 ```
 

@@ -7,6 +7,7 @@ The `web` workspace is the Sunblock-styled public website and documentation appl
 ```bash
 bun run dev:web
 bun run build:web
+bun run start:web
 bun run test:web
 bun run --cwd web test:e2e
 ```

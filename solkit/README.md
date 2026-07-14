@@ -96,8 +96,11 @@ const response = await handle(request, { template });
 - `vite.ts` provides virtual browser/server entries, Vite development middleware, build targets,
   hydration readiness, and adapter handoff.
 - `cli.ts` runs the paired Vite client and SSR production builds on Bun or Node.js.
-- `adapter-utils.ts` validates adapter output paths and writes launchers.
+- `adapter-utils.ts` loads launcher source through Bun's text loader or Node's file API, validates
+  adapter output paths, and writes launchers.
 - `adapters/bun.ts` emits the Bun static-file and Fetch-handler host.
 - `adapters/node.ts` emits the Node.js HTTP/static-file host and bridges Web responses.
+- `adapters/bun-launcher.mjs` is the formatted launcher source loaded as text by the Bun adapter.
+- `adapters/node-launcher.mjs` is the formatted launcher source loaded as text by the Node adapter.
 
 All public configuration and request boundaries validate their inputs before rendering or writing.

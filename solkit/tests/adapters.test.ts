@@ -34,9 +34,29 @@ for (const [name, adapter] of [
     expect(launcher).toContain('import { handle } from "./app.mjs"');
     expect(launcher).toContain("../client");
     expect(launcher).toContain("PORT must be a valid TCP port");
-    if (name === "node") {
+    if (name === "bun") {
+      await writeFile(join(serverDirectory, "app.mjs"), "export function handle() {}");
+      const checked = await Bun.build({
+        entrypoints: [join(serverDirectory, "index.mjs")],
+        target: "bun",
+      });
+      expect(checked.success).toBe(true);
+    } else {
       const checked = Bun.spawnSync(["node", "--check", join(serverDirectory, "index.mjs")]);
       expect(checked.exitCode).toBe(0);
+    }
+    if (name === "node") {
+      const nodeServerDirectory = join(directory, "node-server");
+      const script = `
+        import { nodeAdapter } from ${JSON.stringify(new URL("../src/adapters/node.ts", import.meta.url).href)};
+        await nodeAdapter().write({
+          serverDirectory: ${JSON.stringify(nodeServerDirectory)},
+          clientDirectory: ${JSON.stringify(join(directory, "node-client"))},
+        });
+      `;
+      const loadedByNode = Bun.spawnSync(["node", "--input-type=module", "--eval", script]);
+      expect(loadedByNode.exitCode).toBe(0);
+      expect(await readFile(join(nodeServerDirectory, "index.mjs"), "utf8")).toBe(launcher);
     }
   });
 }

@@ -22,6 +22,18 @@ The Tailwind-powered notebook example demonstrates compiler-managed state, keyed
 
 `bun run build` (or `bun run build:example`) creates an unminified production example in `example/dist/`. Use `bun run build:example:inspect` to create a separate readable build in `example/out/inspect/`.
 
+## Run the website
+
+```bash
+bun run dev:web
+bun run build:web
+bun run test:web
+```
+
+`web/` is the Sunblock-styled landing page and documentation workspace. Its docs are authored in Markdown, while validated `solix live` fences compile into interactive Editor/Preview/Both examples during the Vite build. See `web/README.md` for the authoring contract and `web/DESIGN_SYSTEM.md` for the visual system.
+
+The original six standalone Tailwind Play CDN studies remain in `web/designs/` for comparison. They cover the solar-manifesto, Helios-lab, eclipse-console, sunblock-kit, cyanotype-solar, and atomic-sun directions.
+
 ## Authoring model
 
 ```tsx

@@ -1,0 +1,35 @@
+{
+  "name": "@solix/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "bun test tests/markdown.test.ts",
+    "test:e2e": "bun run build && playwright test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "solix": "workspace:*",
+    "valibot": "^1.4.2"
+  },
+  "devDependencies": {
+    "@babel/parser": "^7.28.4",
+    "@babel/types": "^7.28.4",
+    "@fontsource/archivo-black": "^5.2.6",
+    "@fontsource/chivo-mono": "^5.2.6",
+    "@fontsource/familjen-grotesk": "^5.2.6",
+    "@playwright/test": "^1.61.1",
+    "@solix/compiler": "workspace:*",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/mdast": "^4.0.4",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "shiki": "^3.22.0",
+    "tailwindcss": "^4.1.14",
+    "unified": "^11.0.5",
+    "vite": "^8.0.10",
+    "yaml": "^2.8.2"
+  }
+}

@@ -27,6 +27,8 @@
     "compiler/**/*.ts",
     "compiler/**/*.tsx",
     "example/**/*.ts",
-    "example/**/*.tsx"
+    "example/**/*.tsx",
+    "web/**/*.ts",
+    "web/**/*.tsx"
   ]
 }

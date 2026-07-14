@@ -4,14 +4,17 @@
   "workspaces": [
     "runtime",
     "compiler",
-    "example"
+    "example",
+    "web"
   ],
   "type": "module",
   "scripts": {
     "dev": "bun run --cwd example dev",
+    "dev:web": "bun run --cwd web dev",
     "build": "bun run --cwd example build",
     "build:example": "bun run --cwd example build",
     "build:example:inspect": "bun run --cwd example build:inspect",
+    "build:web": "bun run --cwd web build",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "lint": "bun run lint:oxc && bun run lint:types",
@@ -20,8 +23,9 @@
     "lint:types": "oxlint . --type-aware --type-check --deny-warnings",
     "prepare": "husky",
     "typecheck": "tsc --noEmit",
-    "test": "bun run --cwd runtime test && bun run --cwd compiler test",
-    "test:e2e": "bun run build && bun run --cwd example test:e2e",
+    "test": "bun run --cwd runtime test && bun run --cwd compiler test && bun run --cwd web test",
+    "test:web": "bun run --cwd web test",
+    "test:e2e": "bun run build && bun run --cwd example test:e2e && bun run --cwd web test:e2e",
     "verify": "bun run format && bun run lint && bun run test"
   },
   "devDependencies": {

@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Atomic Sun — a retro-futurist design direction for the Solix JSX framework."
+    />
+    <title>Solix — Atomic Sun</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@75..125,400..800&family=DM+Mono:wght@300;400;500&family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              paper: "#F4E8CF",
+              cream: "#FFF7E5",
+              ink: "#153E3D",
+              rust: "#9E3F22",
+              solar: "#F06B32",
+              mustard: "#D4A62A",
+              moss: "#647159",
+            },
+            fontFamily: {
+              display: ["Anybody", "sans-serif"],
+              editorial: ["Newsreader", "serif"],
+              mono: ["DM Mono", "monospace"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      :root {
+        --paper: #f4e8cf;
+        --cream: #fff7e5;
+        --ink: #153e3d;
+        --rust: #9e3f22;
+        --solar: #f06b32;
+        --mustard: #d4a62a;
+        --moss: #647159;
+        --line: rgba(21, 62, 61, 0.28);
+        --hairline: rgba(21, 62, 61, 0.13);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        background-color: var(--paper);
+        color: var(--ink);
+        background-image:
+          linear-gradient(var(--hairline) 1px, transparent 1px),
+          linear-gradient(90deg, var(--hairline) 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0.12;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+      }
+      ::selection {
+        background: var(--mustard);
+        color: var(--ink);
+      }
+      :focus-visible {
+        outline: 3px solid var(--solar);
+        outline-offset: 4px;
+      }
+      .shell {
+        width: min(100% - 2rem, 88rem);
+        margin-inline: auto;
+      }
+      .registration::before,
+      .registration::after {
+        content: "+";
+        position: absolute;
+        color: var(--rust);
+        font:
+          500 1rem/1 "DM Mono",
+          monospace;
+      }
+      .registration::before {
+        left: 0.75rem;
+        top: 0.65rem;
+      }
+      .registration::after {
+        right: 0.75rem;
+        bottom: 0.65rem;
+      }
+      .sunburst {
+        background: repeating-conic-gradient(
+          from 0deg,
+          var(--mustard) 0 8deg,
+          transparent 8deg 17deg
+        );
+        animation: revolve 45s linear infinite;
+      }
+      .orbit {
+        border: 1.5px solid rgba(244, 232, 207, 0.55);
+        border-radius: 50%;
+      }
+      .orbit-dot {
+        animation: orbit 9s linear infinite;
+        transform-origin: 50% 50%;
+      }
+      .orbit-dot-slow {
+        animation: orbit 14s linear infinite reverse;
+        transform-origin: 50% 50%;
+      }
+      .ticker {
+        animation: ticker 26s linear infinite;
+        width: max-content;
+      }
+      .stamp {
+        transform: rotate(-4deg);
+      }
+      .serrated {
+        clip-path: polygon(
+          0 8px,
+          8px 8px,
+          8px 0,
+          calc(100% - 8px) 0,
+          calc(100% - 8px) 8px,
+          100% 8px,
+          100% calc(100% - 8px),
+          calc(100% - 8px) calc(100% - 8px),
+          calc(100% - 8px) 100%,
+          8px 100%,
+          8px calc(100% - 8px),
+          0 calc(100% - 8px)
+        );
+      }
+      .code-line::before {
+        content: attr(data-line);
+        display: inline-block;
+        width: 2.5rem;
+        margin-right: 1rem;
+        color: rgba(244, 232, 207, 0.38);
+        text-align: right;
+        user-select: none;
+      }
+      .mission-rule {
+        background: repeating-linear-gradient(90deg, var(--ink) 0 14px, transparent 14px 20px);
+        height: 3px;
+      }
+      .cut-corners {
+        clip-path: polygon(
+          14px 0,
+          100% 0,
+          100% calc(100% - 14px),
+          calc(100% - 14px) 100%,
+          0 100%,
+          0 14px
+        );
+      }
+      .sun-button {
+        box-shadow: 4px 4px 0 var(--ink);
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .sun-button:hover {
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0 var(--ink);
+      }
+      .sun-button:active {
+        transform: translate(4px, 4px);
+        box-shadow: none;
+      }
+      @keyframes revolve {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes orbit {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes ticker {
+        to {
+          transform: translateX(-50%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="overflow-x-hidden font-editorial antialiased">
+    <a
+      href="#main"
+      class="fixed left-4 top-4 z-[60] -translate-y-24 bg-ink px-4 py-3 font-mono text-xs uppercase tracking-widest text-paper transition-transform focus:translate-y-0"
+      >Skip to transmission</a
+    >
+
+    <header class="border-b border-ink/30 bg-paper/95 backdrop-blur-sm">
+      <div class="shell flex h-20 items-center justify-between gap-5">
+        <a href="#top" class="group flex items-center gap-3" aria-label="Solix home">
+          <span
+            class="relative grid size-11 place-items-center rounded-full border-2 border-ink bg-solar"
+            aria-hidden="true"
+          >
+            <span class="absolute inset-1 rounded-full border border-paper/70"></span>
+            <span class="font-display text-lg font-extrabold text-cream">S</span>
+          </span>
+          <span>
+            <span
+              class="block font-display text-2xl font-extrabold uppercase leading-none tracking-[-.07em]"
+              >Solix</span
+            >
+            <span class="block font-mono text-[9px] uppercase tracking-[.25em] text-rust"
+              >Reactive systems division</span
+            >
+          </span>
+        </a>
+
+        <button
+          id="menuButton"
+          type="button"
+          class="border border-ink/40 bg-cream px-3 py-2 font-mono text-xs font-medium uppercase tracking-widest md:hidden"
+          aria-expanded="false"
+          aria-controls="primaryNav"
+        >
+          Menu
+        </button>
+        <nav
+          id="primaryNav"
+          aria-label="Primary navigation"
+          class="absolute inset-x-4 top-20 z-40 hidden border border-ink bg-cream p-4 md:static md:block md:border-0 md:bg-transparent md:p-0"
+        >
+          <ul
+            class="flex flex-col gap-1 font-mono text-xs font-medium uppercase tracking-[.12em] md:flex-row md:items-center md:gap-7"
+          >
+            <li>
+              <a
+                class="block border-b border-transparent px-2 py-2 hover:border-rust hover:text-rust"
+                href="#trajectory"
+                >Trajectory</a
+              >
+            </li>
+            <li>
+              <a
+                class="block border-b border-transparent px-2 py-2 hover:border-rust hover:text-rust"
+                href="#telemetry"
+                >Telemetry</a
+              >
+            </li>
+            <li>
+              <a
+                class="block border-b border-transparent px-2 py-2 hover:border-rust hover:text-rust"
+                href="#system"
+                >System</a
+              >
+            </li>
+            <li>
+              <a
+                class="sun-button ml-0 mt-3 block border-2 border-ink bg-mustard px-4 py-2 text-center md:ml-2 md:mt-0"
+                href="#launch"
+                >Begin launch</a
+              >
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <div class="overflow-hidden border-b border-ink/30 bg-ink py-2 text-paper" aria-hidden="true">
+      <div class="ticker flex font-mono text-[10px] uppercase tracking-[.22em]">
+        <span class="px-5">Compiler status: nominal</span><span class="text-mustard">✦</span>
+        <span class="px-5">Static templates / exact operations / reactive orbit</span
+        ><span class="text-solar">●</span> <span class="px-5">Compiler status: nominal</span
+        ><span class="text-mustard">✦</span>
+        <span class="px-5">Static templates / exact operations / reactive orbit</span
+        ><span class="text-solar">●</span>
+      </div>
+    </div>
+
+    <main id="main">
+      <section id="top" class="registration relative overflow-hidden border-b border-ink/30">
+        <div class="shell grid min-h-[calc(100vh-7rem)] items-stretch lg:grid-cols-[1.05fr_.95fr]">
+          <div
+            class="flex flex-col justify-center border-ink/30 py-16 lg:border-r lg:py-24 lg:pr-16"
+          >
+            <div
+              class="mb-8 flex items-center gap-3 font-mono text-[10px] font-medium uppercase tracking-[.2em] text-rust"
+            >
+              <span class="h-px w-12 bg-rust"></span>
+              Flight document SX–01 / 2026
+            </div>
+            <h1
+              class="font-display text-[clamp(4.2rem,11vw,9.5rem)] font-extrabold uppercase leading-[.73] tracking-[-.085em]"
+            >
+              Orbit<br /><span class="text-solar">the DOM.</span>
+            </h1>
+            <p class="mt-10 max-w-xl text-xl leading-relaxed md:text-2xl">
+              Solix compiles expressive JSX into static HTML templates and fine-grained DOM
+              operations. Your component runs once. Only the dependent DOM moves.
+            </p>
+            <div class="mt-10 flex flex-wrap items-center gap-5">
+              <a
+                href="#launch"
+                class="sun-button border-2 border-ink bg-solar px-6 py-4 font-mono text-xs font-medium uppercase tracking-[.14em] text-cream"
+                >Initialize Solix ↗</a
+              >
+              <a
+                href="#trajectory"
+                class="border-b-2 border-rust pb-1 font-mono text-xs font-medium uppercase tracking-[.14em] text-rust hover:text-ink"
+                >Inspect the flight plan</a
+              >
+            </div>
+            <div
+              class="mt-16 grid max-w-2xl grid-cols-3 border-y border-ink/30 py-5 font-mono text-[9px] uppercase tracking-[.14em] sm:text-[10px]"
+            >
+              <div class="border-r border-ink/30 pr-4">
+                <span class="block text-2xl font-medium tracking-tight text-ink">01×</span>setup per
+                mount
+              </div>
+              <div class="border-r border-ink/30 px-4">
+                <span class="block text-2xl font-medium tracking-tight text-ink">0</span>.value in
+                components
+              </div>
+              <div class="pl-4">
+                <span class="block text-2xl font-medium tracking-tight text-ink">DOM</span>patched
+                precisely
+              </div>
+            </div>
+          </div>
+
+          <div class="relative flex min-h-[36rem] items-center justify-center py-16 lg:pl-10">
+            <div
+              class="sunburst absolute left-1/2 top-1/2 size-[34rem] max-h-[85vw] max-w-[85vw] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-35"
+            ></div>
+            <div
+              class="relative grid aspect-square w-[min(90%,34rem)] place-items-center rounded-full bg-ink text-paper"
+            >
+              <div class="orbit absolute inset-[8%] rotate-[12deg]"></div>
+              <div class="orbit absolute inset-[20%] -rotate-[24deg]"></div>
+              <div class="absolute inset-[8%] orbit-dot">
+                <span
+                  class="absolute left-1/2 top-[-7px] size-4 -translate-x-1/2 rounded-full border-2 border-paper bg-solar"
+                ></span>
+              </div>
+              <div class="absolute inset-[20%] orbit-dot-slow">
+                <span
+                  class="absolute bottom-[10%] right-[2%] size-3 rounded-full bg-mustard"
+                ></span>
+              </div>
+              <div
+                class="relative z-10 grid size-[42%] place-items-center rounded-full border border-paper/60 bg-solar text-center text-cream"
+              >
+                <div>
+                  <span class="block font-mono text-[9px] uppercase tracking-[.22em]"
+                    >Core signal</span
+                  >
+                  <span
+                    class="block font-display text-6xl font-extrabold tracking-[-.1em] sm:text-7xl"
+                    >$</span
+                  >
+                  <span class="block font-mono text-[9px] uppercase tracking-[.22em]"
+                    >Stable orbit</span
+                  >
+                </div>
+              </div>
+              <span
+                class="absolute left-[4%] top-[24%] font-mono text-[9px] uppercase tracking-widest text-paper/65"
+                >Input / JSX</span
+              >
+              <span
+                class="absolute bottom-[24%] right-[1%] font-mono text-[9px] uppercase tracking-widest text-paper/65"
+                >Output / DOM</span
+              >
+            </div>
+            <div
+              class="stamp absolute bottom-10 right-0 rounded-full border-2 border-rust px-5 py-3 text-center font-mono text-[9px] font-medium uppercase tracking-[.16em] text-rust lg:right-3"
+            >
+              Cleared<br />for launch
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="trajectory" class="border-b border-ink/30 bg-cream">
+        <div class="shell py-20 lg:py-28">
+          <div class="grid gap-10 lg:grid-cols-[.72fr_1.28fr] lg:gap-20">
+            <div>
+              <p class="font-mono text-[10px] font-medium uppercase tracking-[.2em] text-rust">
+                Trajectory 02 / compiler path
+              </p>
+              <h2
+                class="mt-4 font-display text-5xl font-bold uppercase leading-[.85] tracking-[-.065em] sm:text-7xl"
+              >
+                One input.<br />Exact arrival.
+              </h2>
+              <p class="mt-7 max-w-md text-lg leading-relaxed text-ink/75">
+                A compiled component is not a render loop. Solix establishes the template, tracks
+                the reactive coordinates, and applies only the operation that has moved.
+              </p>
+            </div>
+
+            <div class="relative pt-6 lg:pt-0">
+              <div class="absolute bottom-8 left-8 top-8 hidden w-px bg-ink/30 sm:block"></div>
+              <ol class="space-y-4">
+                <li
+                  class="relative grid gap-4 border border-ink/30 bg-paper p-6 sm:grid-cols-[4rem_1fr_auto] sm:items-center sm:gap-6 sm:pl-3"
+                >
+                  <span
+                    class="relative z-10 grid size-10 place-items-center rounded-full border-2 border-ink bg-mustard font-display text-lg font-bold sm:size-14"
+                    >01</span
+                  >
+                  <div>
+                    <h3 class="font-display text-2xl font-bold uppercase tracking-[-.04em]">
+                      Author ordinary JSX
+                    </h3>
+                    <p class="mt-1 text-base text-ink/70">
+                      Direct component variables are reactive. Read and assign them normally.
+                    </p>
+                  </div>
+                  <code class="font-mono text-xs text-rust">count++</code>
+                </li>
+                <li
+                  class="relative grid gap-4 border border-ink/30 bg-paper p-6 sm:grid-cols-[4rem_1fr_auto] sm:items-center sm:gap-6 sm:pl-3"
+                >
+                  <span
+                    class="relative z-10 grid size-10 place-items-center rounded-full border-2 border-ink bg-solar font-display text-lg font-bold text-cream sm:size-14"
+                    >02</span
+                  >
+                  <div>
+                    <h3 class="font-display text-2xl font-bold uppercase tracking-[-.04em]">
+                      Compile the coordinates
+                    </h3>
+                    <p class="mt-1 text-base text-ink/70">
+                      Writable declarations become signals; derived constants become computed
+                      values.
+                    </p>
+                  </div>
+                  <code class="font-mono text-xs text-rust">solix()</code>
+                </li>
+                <li
+                  class="relative grid gap-4 border border-ink/30 bg-paper p-6 sm:grid-cols-[4rem_1fr_auto] sm:items-center sm:gap-6 sm:pl-3"
+                >
+                  <span
+                    class="relative z-10 grid size-10 place-items-center rounded-full border-2 border-ink bg-ink font-display text-lg font-bold text-paper sm:size-14"
+                    >03</span
+                  >
+                  <div>
+                    <h3 class="font-display text-2xl font-bold uppercase tracking-[-.04em]">
+                      Patch the precise node
+                    </h3>
+                    <p class="mt-1 text-base text-ink/70">
+                      Reactive changes update only the DOM that depends on them.
+                    </p>
+                  </div>
+                  <code class="font-mono text-xs text-rust">text.data = …</code>
+                </li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="telemetry" class="border-b border-ink/30 bg-ink text-paper">
+        <div class="shell py-20 lg:py-28">
+          <div class="mb-12 flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
+            <div>
+              <p class="font-mono text-[10px] font-medium uppercase tracking-[.2em] text-mustard">
+                Telemetry 03 / live specimen
+              </p>
+              <h2
+                class="mt-4 font-display text-5xl font-bold uppercase leading-[.85] tracking-[-.065em] sm:text-7xl"
+              >
+                Familiar source.<br />Focused motion.
+              </h2>
+            </div>
+            <span
+              class="self-start border border-paper/35 px-3 py-2 font-mono text-[9px] uppercase tracking-[.18em] text-paper/70 sm:self-end"
+              >No virtual DOM aboard</span
+            >
+          </div>
+
+          <div class="cut-corners border border-paper/25 bg-[#102f2f]">
+            <div
+              class="flex items-center justify-between border-b border-paper/20 px-5 py-3 font-mono text-[10px] uppercase tracking-[.15em] text-paper/60"
+            >
+              <span>counter.tsx</span>
+              <div class="flex items-center gap-2">
+                <span class="size-2 rounded-full bg-mustard"></span>compiler linked
+              </div>
+            </div>
+            <div class="overflow-x-auto py-6 font-mono text-[12px] leading-7 sm:text-sm">
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="01">
+                <span class="text-mustard">import</span> {
+                <span class="text-solar">$component</span>, mount }
+                <span class="text-mustard">from</span> <span class="text-[#f3b992]">"solix"</span>;
+              </div>
+              <div class="code-line whitespace-pre px-3" data-line="02"></div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="03">
+                <span class="text-mustard">const</span> Counter =
+                <span class="text-solar">$component</span>(<span class="text-mustard"
+                  >function</span
+                >
+                Counter() {
+              </div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="04">
+                <span class="text-mustard">let</span> count = <span class="text-[#f3b992]">0</span>;
+              </div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="05">
+                <span class="text-mustard">const</span> doubled = count *
+                <span class="text-[#f3b992]">2</span>;
+              </div>
+              <div class="code-line whitespace-pre px-3" data-line="06"></div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="07">
+                <span class="text-mustard">return</span> (
+              </div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="08">
+                &lt;<span class="text-solar">button</span>
+                <span class="text-mustard">onClick</span>={() =&gt; count++}&gt;
+              </div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="09">
+                {count} / {doubled}
+              </div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="10">
+                &lt;/<span class="text-solar">button</span>&gt;
+              </div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="11">);</div>
+              <div class="code-line whitespace-pre px-3 text-paper/85" data-line="12">});</div>
+            </div>
+            <div
+              class="flex flex-col gap-4 border-t border-paper/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <p class="font-mono text-[10px] uppercase tracking-[.14em] text-paper/55">
+                Writable → signal &nbsp; / &nbsp; derived → computed
+              </p>
+              <button
+                id="copyButton"
+                type="button"
+                class="border border-paper/40 px-4 py-2 font-mono text-[10px] uppercase tracking-[.14em] hover:bg-paper hover:text-ink"
+                data-copy="bun add solix"
+              >
+                Copy install command
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="border-b border-ink/30 bg-mustard">
+        <div class="shell grid md:grid-cols-3">
+          <article class="border-ink/30 px-6 py-12 md:border-r lg:px-10">
+            <span class="font-mono text-[10px] uppercase tracking-[.2em] text-rust">Module A</span>
+            <h3 class="mt-8 font-display text-3xl font-bold uppercase tracking-[-.05em]">
+              Deep reactivity
+            </h3>
+            <p class="mt-4 leading-relaxed text-ink/75">
+              Signal arrays and plain objects are deep proxies, so nested assignments and mutating
+              array methods stay reactive.
+            </p>
+          </article>
+          <article class="border-t border-ink/30 px-6 py-12 md:border-r md:border-t-0 lg:px-10">
+            <span class="font-mono text-[10px] uppercase tracking-[.2em] text-rust">Module B</span>
+            <h3 class="mt-8 font-display text-3xl font-bold uppercase tracking-[-.05em]">
+              Typed routes
+            </h3>
+            <p class="mt-4 leading-relaxed text-ink/75">
+              Compile-time route discovery, typed handles, path and query parameters, browser
+              history, and async schema validation.
+            </p>
+          </article>
+          <article class="border-t border-ink/30 px-6 py-12 md:border-t-0 lg:px-10">
+            <span class="font-mono text-[10px] uppercase tracking-[.2em] text-rust">Module C</span>
+            <h3 class="mt-8 font-display text-3xl font-bold uppercase tracking-[-.05em]">
+              Async boundaries
+            </h3>
+            <p class="mt-4 leading-relaxed text-ink/75">
+              Suspense, Await, ErrorBoundary, and reactive context coordinate asynchronous work
+              without obscuring the DOM.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="system" class="border-b border-ink/30">
+        <div class="shell py-20 lg:py-28">
+          <div class="grid gap-12 lg:grid-cols-[18rem_1fr] lg:gap-20">
+            <aside>
+              <div class="lg:sticky lg:top-8">
+                <p class="font-mono text-[10px] font-medium uppercase tracking-[.2em] text-rust">
+                  System 04 / specimen kit
+                </p>
+                <h2
+                  class="mt-4 font-display text-5xl font-bold uppercase leading-[.85] tracking-[-.065em]"
+                >
+                  Atomic<br />Sun.
+                </h2>
+                <p class="mt-6 leading-relaxed text-ink/70">
+                  Optimistic technical ephemera for people building precise interfaces. Rounded
+                  orbital geometry meets orderly mission documentation.
+                </p>
+                <div class="mission-rule mt-8 w-28"></div>
+              </div>
+            </aside>
+
+            <div class="space-y-16">
+              <section aria-labelledby="color-title">
+                <div class="mb-6 flex items-baseline justify-between border-b border-ink/30 pb-3">
+                  <h3
+                    id="color-title"
+                    class="font-display text-2xl font-bold uppercase tracking-[-.04em]"
+                  >
+                    01 / Color payload
+                  </h3>
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-ink/55"
+                    >Six calibrated pigments</span
+                  >
+                </div>
+                <div
+                  class="grid grid-cols-2 gap-px overflow-hidden border border-ink bg-ink sm:grid-cols-3"
+                >
+                  <div class="min-h-36 bg-paper p-4">
+                    <span class="font-mono text-[9px] uppercase tracking-wider"
+                      >Parchment<br />#F4E8CF</span
+                    >
+                  </div>
+                  <div class="min-h-36 bg-cream p-4">
+                    <span class="font-mono text-[9px] uppercase tracking-wider"
+                      >Capsule<br />#FFF7E5</span
+                    >
+                  </div>
+                  <div class="min-h-36 bg-solar p-4 text-cream">
+                    <span class="font-mono text-[9px] uppercase tracking-wider"
+                      >Persimmon<br />#F06B32</span
+                    >
+                  </div>
+                  <div class="min-h-36 bg-mustard p-4">
+                    <span class="font-mono text-[9px] uppercase tracking-wider"
+                      >Signal<br />#D4A62A</span
+                    >
+                  </div>
+                  <div class="min-h-36 bg-rust p-4 text-cream">
+                    <span class="font-mono text-[9px] uppercase tracking-wider"
+                      >Re-entry<br />#9E3F22</span
+                    >
+                  </div>
+                  <div class="min-h-36 bg-ink p-4 text-paper">
+                    <span class="font-mono text-[9px] uppercase tracking-wider"
+                      >Deep teal<br />#153E3D</span
+                    >
+                  </div>
+                </div>
+              </section>
+
+              <section aria-labelledby="type-title">
+                <div class="mb-7 flex items-baseline justify-between border-b border-ink/30 pb-3">
+                  <h3
+                    id="type-title"
+                    class="font-display text-2xl font-bold uppercase tracking-[-.04em]"
+                  >
+                    02 / Type telemetry
+                  </h3>
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-ink/55"
+                    >Anybody + Newsreader + DM Mono</span
+                  >
+                </div>
+                <div class="space-y-8">
+                  <div class="grid gap-4 sm:grid-cols-[8rem_1fr]">
+                    <span class="font-mono text-[9px] uppercase tracking-widest text-rust"
+                      >Display / 800</span
+                    >
+                    <p
+                      class="font-display text-5xl font-extrabold uppercase leading-none tracking-[-.07em] sm:text-7xl"
+                    >
+                      Solar precision
+                    </p>
+                  </div>
+                  <div class="grid gap-4 border-y border-ink/20 py-8 sm:grid-cols-[8rem_1fr]">
+                    <span class="font-mono text-[9px] uppercase tracking-widest text-rust"
+                      >Editorial / 400</span
+                    >
+                    <p class="max-w-2xl text-2xl leading-snug">
+                      Build in ordinary JSX. Let the compiler plot the shortest path between
+                      changing state and the exact node that depends on it.
+                    </p>
+                  </div>
+                  <div class="grid gap-4 sm:grid-cols-[8rem_1fr]">
+                    <span class="font-mono text-[9px] uppercase tracking-widest text-rust"
+                      >Telemetry / 500</span
+                    >
+                    <p class="font-mono text-xs font-medium uppercase tracking-[.16em]">
+                      SX-01 / status nominal / 48.2082° N
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section aria-labelledby="control-title">
+                <div class="mb-7 flex items-baseline justify-between border-b border-ink/30 pb-3">
+                  <h3
+                    id="control-title"
+                    class="font-display text-2xl font-bold uppercase tracking-[-.04em]"
+                  >
+                    03 / Flight controls
+                  </h3>
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-ink/55"
+                    >Default / hover / focus / disabled</span
+                  >
+                </div>
+                <div class="flex flex-wrap items-center gap-5 bg-cream p-7">
+                  <button
+                    type="button"
+                    class="sun-button border-2 border-ink bg-solar px-5 py-3 font-mono text-xs font-medium uppercase tracking-[.14em] text-cream"
+                  >
+                    Launch primary
+                  </button>
+                  <button
+                    type="button"
+                    class="border-2 border-ink bg-transparent px-5 py-3 font-mono text-xs font-medium uppercase tracking-[.14em] hover:bg-ink hover:text-paper"
+                  >
+                    Plot secondary
+                  </button>
+                  <button
+                    type="button"
+                    class="border-b-2 border-rust px-1 py-2 font-mono text-xs font-medium uppercase tracking-[.14em] text-rust hover:border-ink hover:text-ink"
+                  >
+                    Read manifest →
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    class="cursor-not-allowed border border-ink/20 bg-ink/5 px-5 py-3 font-mono text-xs font-medium uppercase tracking-[.14em] text-ink/35"
+                  >
+                    Signal lost
+                  </button>
+                </div>
+              </section>
+
+              <section aria-labelledby="card-title">
+                <div class="mb-7 flex items-baseline justify-between border-b border-ink/30 pb-3">
+                  <h3
+                    id="card-title"
+                    class="font-display text-2xl font-bold uppercase tracking-[-.04em]"
+                  >
+                    04 / Data capsule
+                  </h3>
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-ink/55"
+                    >Technical card / bordered</span
+                  >
+                </div>
+                <article
+                  class="serrated grid overflow-hidden border border-ink/40 bg-cream sm:grid-cols-[1fr_12rem]"
+                >
+                  <div class="p-7 sm:p-9">
+                    <div
+                      class="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[.17em] text-rust"
+                    >
+                      <span class="size-2 rounded-full bg-solar"></span>Reactive coordinate
+                    </div>
+                    <h4 class="mt-5 font-display text-4xl font-bold uppercase tracking-[-.055em]">
+                      State stays readable.
+                    </h4>
+                    <p class="mt-4 max-w-xl text-lg leading-relaxed text-ink/70">
+                      Inside compiled components, normal variable reads and assignments are the
+                      authoring model. Manual signals outside components retain their explicit
+                      <code class="font-mono text-sm text-rust">.value</code> API.
+                    </p>
+                  </div>
+                  <div
+                    class="grid place-items-center border-t border-ink/30 bg-mustard p-8 sm:border-l sm:border-t-0"
+                  >
+                    <div
+                      class="relative grid size-28 place-items-center rounded-full border-2 border-ink"
+                    >
+                      <span class="absolute -inset-3 rounded-[50%] border border-ink/40"></span>
+                      <span class="font-display text-4xl font-extrabold">$</span>
+                    </div>
+                  </div>
+                </article>
+              </section>
+
+              <section aria-labelledby="code-title">
+                <div class="mb-7 flex items-baseline justify-between border-b border-ink/30 pb-3">
+                  <h3
+                    id="code-title"
+                    class="font-display text-2xl font-bold uppercase tracking-[-.04em]"
+                  >
+                    05 / Code material
+                  </h3>
+                  <span class="font-mono text-[9px] uppercase tracking-widest text-ink/55"
+                    >DM Mono / deep teal</span
+                  >
+                </div>
+                <pre
+                  class="overflow-x-auto bg-ink p-6 font-mono text-sm leading-7 text-paper"
+                ><code><span class="text-mustard">import</span> { defineConfig } <span class="text-mustard">from</span> <span class="text-[#f3b992]">"vite"</span>;
+<span class="text-mustard">import</span> { <span class="text-solar">solix</span> } <span class="text-mustard">from</span> <span class="text-[#f3b992]">"@solix/compiler/vite"</span>;
+
+<span class="text-mustard">export default</span> defineConfig({ plugins: [<span class="text-solar">solix</span>()] });</code></pre>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="launch" class="relative overflow-hidden bg-solar text-cream">
+        <div
+          class="absolute -right-32 -top-32 size-[34rem] rounded-full border-[5rem] border-mustard/70"
+          aria-hidden="true"
+        ></div>
+        <div class="shell relative z-10 py-24 lg:py-32">
+          <p class="font-mono text-[10px] font-medium uppercase tracking-[.22em]">
+            Launch window / open
+          </p>
+          <div class="mt-5 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-end">
+            <h2
+              class="max-w-4xl font-display text-[clamp(4rem,9vw,8rem)] font-extrabold uppercase leading-[.76] tracking-[-.085em]"
+            >
+              Send less.<br />Move precisely.
+            </h2>
+            <div class="max-w-sm">
+              <div class="flex bg-cream p-1 text-ink">
+                <code class="flex-1 px-4 py-3 font-mono text-xs">bun add solix</code>
+                <button
+                  type="button"
+                  class="bg-ink px-4 font-mono text-[10px] uppercase tracking-widest text-paper hover:bg-rust"
+                  data-copy="bun add solix"
+                  aria-label="Copy bun install command"
+                >
+                  Copy
+                </button>
+              </div>
+              <p class="mt-4 font-mono text-[9px] uppercase tracking-[.17em] text-cream/75">
+                Then add @solix/compiler and connect the Vite plugin.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bg-ink text-paper">
+      <div
+        class="shell flex flex-col gap-6 py-8 font-mono text-[9px] uppercase tracking-[.16em] sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="flex items-center gap-3">
+          <span
+            class="grid size-7 place-items-center rounded-full bg-solar font-display text-sm font-bold text-cream"
+            >S</span
+          >
+          Solix / experimental JSX framework
+        </div>
+        <p class="text-paper/50">Atomic Sun design study / transmission complete</p>
+        <a href="#top" class="border-b border-paper/50 pb-1 hover:border-solar hover:text-solar"
+          >Return to orbit ↑</a
+        >
+      </div>
+    </footer>
+
+    <script>
+      const menuButton = document.querySelector("#menuButton");
+      const primaryNav = document.querySelector("#primaryNav");
+
+      menuButton?.addEventListener("click", () => {
+        const isOpen = menuButton.getAttribute("aria-expanded") === "true";
+        menuButton.setAttribute("aria-expanded", String(!isOpen));
+        primaryNav?.classList.toggle("hidden", isOpen);
+      });
+
+      primaryNav?.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => {
+          if (window.innerWidth < 768) {
+            primaryNav.classList.add("hidden");
+            menuButton?.setAttribute("aria-expanded", "false");
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-copy]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const previous = button.textContent;
+          try {
+            await navigator.clipboard.writeText(button.dataset.copy || "");
+            button.textContent = "Copied ✓";
+          } catch {
+            button.textContent = "Copy unavailable";
+          }
+          window.setTimeout(() => {
+            button.textContent = previous;
+          }, 1800);
+        });
+      });
+    </script>
+  </body>
+</html>

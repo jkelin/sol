@@ -511,4 +511,4 @@ bun run verify
 bun run test:e2e
 ```
 
-GitHub Actions runs these commands in separate `Verify` and `End-to-end tests` jobs for every push and pull request. The E2E job installs Chromium before running the browser suites for the example application and website. Successful pushes to `main` also build `web/` and deploy it to GitHub Pages.
+GitHub Actions runs these commands in separate `Verify` and `End-to-end tests` jobs for every push and pull request. The E2E job installs Chromium before running the browser suites for the example application and website. Successful pushes to `master` also build `web/` and deploy it to GitHub Pages.

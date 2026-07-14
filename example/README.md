@@ -10,4 +10,4 @@ bun run build
 bun run test:e2e
 ```
 
-The production build is written to `example/dist`. The build-output test checks that readable compiler output contains Solix templates, routes, reactivity, and transitions. Playwright exercises the complete application through the Vite preview server.
+The production build is written to `example/dist`. The build-output test checks that readable compiler output contains Solix templates, routes, reactivity, and transitions. Playwright exercises the complete application through the Vite preview server and uses a small fixture under `tests/fixtures` to server-render and hydrate an async component tree in a real browser.

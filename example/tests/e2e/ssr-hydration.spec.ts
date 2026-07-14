@@ -1,0 +1,69 @@
+import { expect, test } from "@playwright/test";
+import { createServer, type ViteDevServer } from "vite";
+
+let server: ViteDevServer;
+let serverHtml: () => Promise<string>;
+
+test.beforeAll(async () => {
+  server = await createServer({
+    configFile: "vite.config.ts",
+    server: { host: "127.0.0.1", port: 4174, strictPort: true },
+  });
+  await server.listen();
+  const fixture = (await server.ssrLoadModule("/tests/fixtures/ssr-app.tsx")) as {
+    serverHtml: () => Promise<string>;
+  };
+  serverHtml = () => fixture.serverHtml();
+});
+
+test.afterAll(async () => {
+  await server.close();
+});
+
+test("claims async server HTML and resumes a timed-out boundary", async ({ page }) => {
+  const html = await serverHtml();
+  await page.goto("http://127.0.0.1:4174/");
+  await page.setContent(`
+    <base href="http://127.0.0.1:4174/">
+    <div id="ssr-app">${html}</div>
+    <script type="module">
+      const client = await import("/tests/fixtures/ssr-client.ts");
+      window.solixStartHydration = client.startHydration;
+      window.solixClientLoaded = true;
+    </script>
+  `);
+  await page.waitForFunction(
+    () => (window as typeof window & { solixClientLoaded?: boolean }).solixClientLoaded,
+  );
+
+  const serverButton = await page.locator("#ssr-primary").elementHandle();
+  const timedFallback = await page.locator("#ssr-timed-fallback").elementHandle();
+  await page.evaluate(async () => {
+    const runtime = window as typeof window & { solixStartHydration(): Promise<() => void> };
+    await runtime.solixStartHydration();
+  });
+
+  expect(
+    await page.evaluate((node) => node === document.querySelector("#ssr-primary"), serverButton),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      (node) => node === document.querySelector("#ssr-timed-fallback"),
+      timedFallback,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => (window as typeof window & { solixPrimaryCalls: number }).solixPrimaryCalls,
+    ),
+  ).toBe(0);
+  await page.locator("#ssr-primary").click();
+  await expect(page.locator("#ssr-primary")).toHaveText("server data:1");
+
+  await page.evaluate(() => {
+    const runtime = window as typeof window & { solixResolveTimed(value: string): void };
+    runtime.solixResolveTimed("browser continuation");
+  });
+  await expect(page.locator("#ssr-timed-ready")).toHaveText("browser continuation");
+  await expect(page.locator("#ssr-timed-fallback")).toHaveCount(0);
+});

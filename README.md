@@ -273,6 +273,36 @@ region until it is ready. Rejections are handled by the nearest Await `error` re
 owning Suspense `error` renderer, then ErrorBoundary. ErrorBoundary also catches synchronous
 descendant setup/render failures; event-handler errors are not intercepted.
 
+## Server rendering and hydration
+
+`renderToStringAsync()` renders a compiled component without a browser DOM. It waits for async
+components and `Await` blocks, serializes their results into the returned markup, and emits private
+markers used by `hydrate()`:
+
+```tsx
+import { hydrate, renderToStringAsync } from "solix";
+
+const html = await renderToStringAsync(App, { initialCount: 2 }, { timeoutMs: 5_000 });
+
+// In the browser, after placing `html` inside #app:
+const dispose = await hydrate(App, document.querySelector("#app")!, { initialCount: 2 });
+```
+
+The server and browser must use the same compiled component and equivalent props. Hydration claims
+the existing elements, attaches effects and events, removes the embedded data payload, and rejects
+without replacing the DOM when the markup, compiler signatures, or async call sequence differ.
+
+The render option supplies a five-second default timeout. `Suspense` can override it for one server
+boundary with `timeoutMs`. A timed-out boundary emits its fallback; hydration claims that fallback,
+then reruns only unfinished work in the browser. Async work outside Suspense rejects the server render
+when it exceeds the render timeout.
+
+Captured async data supports primitives, sparse and cyclic graphs, shared references, bigint,
+special numbers, Date, RegExp, URL, Map, Set, Error, and plain or null-prototype objects. Functions,
+symbols, DOM nodes, accessors, typed buffers, and custom-prototype instances are rejected. Awaited
+expressions in compiled components and lazy `<Await $promise={...}>` expressions are captured;
+unawaited work and eagerly created promises outside an Await getter are not replayable.
+
 ## Routing
 
 Routes are discovered automatically below the Vite project root. Define each route as an exported top-level constant in a `*.route.js`, `.jsx`, `.ts`, or `.tsx` file:

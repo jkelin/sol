@@ -21,6 +21,7 @@ export interface Context<TShape extends object> {
 
 export interface SuspenseProps {
   readonly fallback: JSX.Element;
+  readonly timeoutMs?: number;
   readonly error?: (error: unknown) => JSX.Element;
   readonly children?: JSX.Element | readonly JSX.Element[];
 }

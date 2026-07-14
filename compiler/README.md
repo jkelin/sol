@@ -20,7 +20,7 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 - `module-analysis.ts` validates bindings and classifies framework, builtin, Link, and component imports.
 - `declarations.ts` validates and lowers top-level component and route declarations.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
-- `output.ts` applies edits, injects runtime imports and templates, validates generated syntax, and creates the final source map.
+- `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax, and creates the final source map.
 - `diagnostics.ts` creates authored code frames and preserves source-map origins.
 - `route-path.ts` validates route templates and produces compiled matching metadata.
 - `codegen.ts` owns identifier rewriting and reusable Babel-to-code helpers.
@@ -33,6 +33,6 @@ Tooling can call `compile(source, filename)` from `@solix/compiler` directly. It
 
 ## How it works
 
-Compilation parses the source with Babel, then `compile.ts` passes shared state through module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. The output phase applies edits with `magic-string`, injects the generated runtime import and templates, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
+Compilation parses the source with Babel, then `compile.ts` passes shared state through module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. Await expressions are wrapped in lazy, stable replay sites; `Await` receives its own site; and Suspense forwards its server timeout. Generated templates carry deterministic signatures and receive the active render frame so the same compiled operations can target a cloned DOM, server strings, or hydration claims. The output phase applies edits with `magic-string`, injects the generated runtime import and templates, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
 
 Compiler diagnostics are part of the module interface: keep their validation and authored source locations intact when reorganizing internals.

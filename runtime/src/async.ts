@@ -1,4 +1,7 @@
 import { isPromiseLike, runtimeEffect } from "./reactivity.ts";
+import { asyncValue } from "./ssr-session.ts";
+import { isServerRegion, mountServerBlock } from "./server-rendering.ts";
+import { regionHydrationClaim } from "./hydration-rendering.ts";
 import {
   reportError,
   surfaceAsyncError,
@@ -18,7 +21,148 @@ export function suspense(
   renderError: ErrorRenderFactory | undefined,
   cleanups: Cleanup[],
   frame: RenderFrame,
+  timeoutMs?: number,
 ): void {
+  const hydrationClaim = regionHydrationClaim(region);
+  if (frame.mode === "hydrate" && frame.hydration && hydrationClaim && !isServerRegion(region)) {
+    const state = frame.hydration.claimBoundary();
+    const parking = document.createDocumentFragment();
+    const claimFrame: RenderFrame = { ...frame, claim: hydrationClaim };
+    const resumeFrame: RenderFrame = {
+      ...frame,
+      mode: "resume",
+      claim: undefined,
+      waitForResume: state === "error",
+    };
+    let pending = 0;
+    let failed = false;
+    let content: Block | undefined;
+    let visible: Block | undefined;
+    const show = (next: Block): void => {
+      if (visible === next) return;
+      visible?.dispose();
+      visible = next;
+      next.mount(region.end.parentNode!, region.end);
+    };
+    const controller: SuspenseController = {
+      begin() {
+        pending += 1;
+        let finished = false;
+        return () => {
+          if (finished) return;
+          finished = true;
+          pending -= 1;
+          if (pending === 0 && !failed && state === "timeout" && content) show(content);
+        };
+      },
+      reject(error) {
+        if (failed) return;
+        failed = true;
+        content?.dispose();
+        if (renderError) {
+          const errorFrame = state === "error" ? claimFrame : resumeFrame;
+          try {
+            show(renderError(error, errorFrame));
+          } catch (renderFailure) {
+            reportError(frame, renderFailure);
+          }
+        } else if (frame.suspense) frame.suspense.reject(error);
+        else if (frame.handleError) frame.handleError(error);
+        else surfaceAsyncError(error);
+      },
+    };
+    try {
+      if (state === "resolved") {
+        content = render({ ...claimFrame, suspense: controller });
+        visible = content;
+        content.mount(region.end.parentNode!, region.end);
+      } else {
+        content = render({ ...resumeFrame, suspense: controller });
+        content.mount(parking);
+        if (state === "timeout") {
+          visible = renderFallback(claimFrame);
+          visible.mount(region.end.parentNode!, region.end);
+          if (pending === 0) show(content);
+        }
+      }
+    } catch (error) {
+      controller.reject(error);
+    }
+    cleanups.push(() => {
+      visible?.dispose();
+      if (content && content !== visible) content.dispose();
+    });
+    return;
+  }
+  if (isServerRegion(region)) {
+    const serverTimeout = timeoutMs ?? frame.timeoutMs ?? 5_000;
+    if (typeof serverTimeout !== "number" || !Number.isFinite(serverTimeout) || serverTimeout < 0) {
+      throw new TypeError("Suspense timeoutMs must be a finite non-negative number");
+    }
+    let pending = 0;
+    let failed = false;
+    let timedOut = false;
+    let content: Block | undefined;
+    let visible: Block | undefined;
+    const boundary = frame.ssr?.beginBoundary(serverTimeout, () => {
+      timedOut = true;
+      if (!failed) show(renderFallback(frame));
+    });
+    const show = (next: Block): void => {
+      if (visible && visible !== next) visible.dispose();
+      visible = next;
+      mountServerBlock(next, region, true);
+    };
+    const controller: SuspenseController = {
+      begin() {
+        pending += 1;
+        let finished = false;
+        return () => {
+          if (finished) return;
+          finished = true;
+          pending -= 1;
+          if (pending === 0 && !failed && !timedOut && content) {
+            show(content);
+            boundary?.finish();
+          }
+        };
+      },
+      reject(error) {
+        if (failed || timedOut) return;
+        failed = true;
+        if (boundary) frame.ssr?.markBoundaryError(boundary.index);
+        if (renderError) {
+          try {
+            show(renderError(error, frame));
+          } catch (renderFailure) {
+            reportError(frame, renderFailure);
+          }
+        } else if (frame.suspense) frame.suspense.reject(error);
+        else if (frame.handleError) frame.handleError(error);
+        else frame.ssr?.fail(error);
+        boundary?.finish();
+      },
+    };
+    const contentFrame: RenderFrame = { ...frame, suspense: controller };
+    try {
+      content = render(contentFrame);
+      if (pending === 0) {
+        show(content);
+        boundary?.finish();
+      } else {
+        show(renderFallback(frame));
+      }
+    } catch (error) {
+      controller.reject(error);
+    }
+    cleanups.push(() => {
+      visible?.dispose();
+      if (content && content !== visible) content.dispose();
+      boundary?.finish();
+    });
+    return;
+  }
+  if (frame.mode === "resume" && frame.hydration) frame.hydration.claimBoundary();
   let pending = 0;
   let initialized = false;
   let failed = false;
@@ -90,7 +234,59 @@ export function awaitBlock<T>(
   renderError: ErrorRenderFactory | undefined,
   cleanups: Cleanup[],
   frame: RenderFrame,
+  site = "await",
 ): void {
+  if (isServerRegion(region)) {
+    let candidate: PromiseLike<T>;
+    try {
+      candidate = asyncValue(frame, site, getPromise);
+    } catch (error) {
+      reportError(frame, error);
+      return;
+    }
+    if (!isPromiseLike(candidate)) throw new TypeError("Await $promise must be promise-like");
+    const finish = frame.suspense?.begin() ?? frame.ssr?.beginRoot();
+    let current: Block | undefined;
+    let disposed = false;
+    void Promise.resolve(candidate).then(
+      (value) => {
+        if (disposed) return finish?.();
+        try {
+          current = render(value, frame);
+          mountServerBlock(current, region, true);
+        } catch (error) {
+          if (renderError) {
+            try {
+              current = renderError(error, frame);
+              mountServerBlock(current, region, true);
+            } catch (renderFailure) {
+              reportError(frame, renderFailure);
+            }
+          } else reportError(frame, error);
+        }
+        finish?.();
+      },
+      (error) => {
+        if (!disposed) {
+          if (renderError) {
+            try {
+              current = renderError(error, frame);
+              mountServerBlock(current, region, true);
+            } catch (renderFailure) {
+              reportError(frame, renderFailure);
+            }
+          } else reportError(frame, error);
+        }
+        finish?.();
+      },
+    );
+    cleanups.push(() => {
+      disposed = true;
+      current?.dispose();
+      finish?.();
+    });
+    return;
+  }
   let generation = 0;
   let current: Block | undefined;
   let currentFinish: (() => void) | undefined;
@@ -98,14 +294,15 @@ export function awaitBlock<T>(
   const showError = (error: unknown): void => {
     if (!renderError) return reportError(frame, error);
     try {
-      current = renderError(error, frame);
+      const claim = regionHydrationClaim(region);
+      current = renderError(error, claim ? { ...frame, claim } : frame);
       current.mount(region.end.parentNode!, region.end);
     } catch (renderFailure) {
       reportError(frame, renderFailure);
     }
   };
   const stop = runtimeEffect(() => {
-    const promise = getPromise();
+    const promise = frame.hydration ? asyncValue(frame, site, getPromise) : getPromise();
     if (!isPromiseLike(promise)) throw new TypeError("Await $promise must be promise-like");
     const currentGeneration = ++generation;
     currentFinish?.();
@@ -117,7 +314,8 @@ export function awaitBlock<T>(
       (value) => {
         if (disposed || currentGeneration !== generation) return finish?.();
         try {
-          current = render(value, frame);
+          const claim = regionHydrationClaim(region);
+          current = render(value, claim ? { ...frame, claim } : frame);
           current.mount(region.end.parentNode!, region.end);
         } catch (error) {
           showError(error);
@@ -148,6 +346,66 @@ export function errorBoundary(
   cleanups: Cleanup[],
   frame: RenderFrame,
 ): void {
+  const hydrationClaim = regionHydrationClaim(region);
+  if (frame.mode === "hydrate" && frame.hydration && hydrationClaim && !isServerRegion(region)) {
+    const state = frame.hydration.claimBoundary();
+    const claimFrame: RenderFrame = { ...frame, claim: hydrationClaim };
+    const resumeFrame: RenderFrame = {
+      ...frame,
+      mode: "resume",
+      claim: undefined,
+      waitForResume: state === "error",
+    };
+    let current: Block | undefined;
+    let failed = false;
+    const fail = (error: unknown): void => {
+      if (failed) return;
+      failed = true;
+      current?.dispose();
+      try {
+        current = renderFallback(error, state === "error" ? claimFrame : resumeFrame);
+        current.mount(region.end.parentNode!, region.end);
+      } catch (fallbackError) {
+        if (frame.handleError) frame.handleError(fallbackError);
+        else surfaceAsyncError(fallbackError);
+      }
+    };
+    try {
+      current = render({ ...(state === "error" ? resumeFrame : claimFrame), handleError: fail });
+      if (state !== "error") current.mount(region.end.parentNode!, region.end);
+    } catch (error) {
+      fail(error);
+    }
+    cleanups.push(() => current?.dispose());
+    return;
+  }
+  if (isServerRegion(region)) {
+    const boundaryIndex = frame.ssr?.recordBoundary();
+    let current: Block | undefined;
+    let failed = false;
+    const fail = (error: unknown): void => {
+      if (failed) return;
+      failed = true;
+      if (boundaryIndex !== undefined) frame.ssr?.markBoundaryError(boundaryIndex);
+      current?.dispose();
+      try {
+        current = renderFallback(error, frame);
+        mountServerBlock(current, region, true);
+      } catch (fallbackError) {
+        if (frame.handleError) frame.handleError(fallbackError);
+        else frame.ssr?.fail(fallbackError);
+      }
+    };
+    try {
+      current = render({ ...frame, handleError: fail });
+      mountServerBlock(current, region, true);
+    } catch (error) {
+      fail(error);
+    }
+    cleanups.push(() => current?.dispose());
+    return;
+  }
+  if (frame.mode === "resume" && frame.hydration) frame.hydration.claimBoundary();
   let current: Block | undefined;
   let failed = false;
   const fail = (error: unknown): void => {

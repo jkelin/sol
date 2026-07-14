@@ -19,6 +19,7 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     refCreatorNames: new Set(),
     mappingOrigins: [],
     nextListId: 0,
+    nextAsyncId: 0,
   };
   const state: CompilationState = {
     ast: parse(source, {

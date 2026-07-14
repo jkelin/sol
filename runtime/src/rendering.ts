@@ -10,24 +10,48 @@ import {
 import type { RouteRuntimeAdapter } from "./routes.ts";
 import { COMPONENT } from "./symbols.ts";
 import { cancelTransitions, runTransitions } from "./transitions.ts";
+import type { HydrationSession, SsrSession } from "./ssr-session.ts";
+import {
+  instantiateServer,
+  isServerBlock,
+  isServerFragment,
+  isServerRegion,
+  serverBlock,
+  serverValueBlock,
+  type ServerElement,
+  type ServerFragment,
+  type ServerRegion,
+} from "./server-rendering.ts";
+import {
+  hydratedBlock,
+  instantiateHydrated,
+  isHydratedFragment,
+  type HydratedFragment,
+  type HydrationClaim,
+} from "./hydration-rendering.ts";
 
 export type Cleanup = () => void;
 
-export interface Region {
-  start: Comment;
-  end: Comment;
-}
+export type Region = { start: Comment; end: Comment } | ServerRegion;
 
 export interface View {
   fragment: DocumentFragment;
   elements: Element[];
+  regions: { start: Comment; end: Comment }[];
+}
+
+export interface RenderView {
+  fragment: DocumentFragment | ServerFragment | HydratedFragment;
+  elements: (Element | ServerElement)[];
   regions: Region[];
 }
 
+export type RenderParent = Node | ServerRegion;
+
 export interface Block {
   readonly nodes: Node[];
-  mount(parent: Node, before?: Node | null): void;
-  move(parent: Node, before?: Node | null): void;
+  mount(parent: RenderParent, before?: Node | null): void;
+  move(parent: RenderParent, before?: Node | null): void;
   enter(): void;
   leave(): Promise<void> | undefined;
   retire(): Promise<void> | undefined;
@@ -50,6 +74,7 @@ interface MountCoordinator {
 
 export interface TemplateDefinition {
   readonly html: string;
+  readonly signature: string;
   element?: HTMLTemplateElement;
 }
 
@@ -72,6 +97,12 @@ export interface RenderFrame {
   readonly mounts: MountCoordinator;
   readonly suspense?: SuspenseController;
   readonly handleError?: (error: unknown) => void;
+  readonly mode?: "server" | "hydrate" | "resume";
+  readonly ssr?: SsrSession;
+  readonly hydration?: HydrationSession;
+  readonly claim?: HydrationClaim;
+  readonly waitForResume?: boolean;
+  readonly timeoutMs?: number;
 }
 
 export type ComponentFactory<Props extends object> = (
@@ -88,11 +119,19 @@ export function configureRouteRuntime(adapter: RouteRuntimeAdapter): void {
   routeRuntime = adapter;
 }
 
-export function template(html: string): TemplateDefinition {
-  return { html };
+export function template(html: string, signature = html): TemplateDefinition {
+  return { html, signature };
 }
 
-export function instantiate(definition: TemplateDefinition): View {
+export function instantiate(definition: TemplateDefinition): View;
+export function instantiate(definition: TemplateDefinition, frame: RenderFrame): RenderView;
+export function instantiate(definition: TemplateDefinition, frame?: RenderFrame): RenderView {
+  if (frame?.mode === "server") {
+    return instantiateServer(definition, frame.ssr);
+  }
+  if (frame?.mode === "hydrate" && frame.hydration && frame.claim) {
+    return instantiateHydrated(definition, frame.hydration, frame.claim);
+  }
   if (typeof document === "undefined") {
     throw new Error("solix can only instantiate templates in a browser DOM");
   }
@@ -171,10 +210,12 @@ function combinedTransition(
 }
 
 export function block(
-  fragment: DocumentFragment,
+  fragment: DocumentFragment | ServerFragment | HydratedFragment,
   cleanups: Cleanup[] = [],
   lifecycle: BlockLifecycle = blockLifecycle(),
 ): Block {
+  if (isServerFragment(fragment)) return serverBlock(fragment, cleanups);
+  if (isHydratedFragment(fragment)) return hydratedBlock(fragment, cleanups);
   const start = document.createComment("solix:block:start");
   const end = document.createComment("solix:block:end");
   fragment.prepend(start);
@@ -234,8 +275,16 @@ export function block(
     get nodes() {
       return nodes();
     },
-    mount: mountBlock,
-    move,
+    mount(parent, before) {
+      if (isServerRegion(parent))
+        throw new Error("Cannot mount a DOM block during server rendering");
+      mountBlock(parent, before);
+    },
+    move(parent, before) {
+      if (isServerRegion(parent))
+        throw new Error("Cannot move a DOM block during server rendering");
+      move(parent, before);
+    },
     enter() {
       if (disposed) return;
       void runTransitions(nodes(), "enter");
@@ -274,7 +323,8 @@ export function block(
   };
 }
 
-export function emptyBlock(): Block {
+export function emptyBlock(frame?: RenderFrame): Block {
+  if (frame?.mode === "server") return serverValueBlock("");
   return block(document.createDocumentFragment());
 }
 
@@ -282,7 +332,12 @@ function displayValue(value: unknown): string {
   return value == null || typeof value === "boolean" ? "" : String(value);
 }
 
-export function valueBlock(getValue: () => unknown): Block {
+function escapeText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+export function valueBlock(getValue: () => unknown, frame?: RenderFrame): Block {
+  if (frame?.mode === "server") return serverValueBlock(escapeText(displayValue(getValue())));
   const fragment = document.createDocumentFragment();
   const textNode = document.createTextNode("");
   fragment.append(textNode);
@@ -338,7 +393,7 @@ function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
   let disposed = false;
   let retired = false;
   let retirement: Promise<void> | undefined;
-  return {
+  const owned: Block = {
     get nodes() {
       return rendered.nodes;
     },
@@ -367,6 +422,10 @@ function ownedBlock(rendered: Block, owner: Cleanup[]): Block {
       disposeOwner(owner);
     },
   };
+  if (isServerBlock(rendered)) {
+    Object.defineProperty(owned, "serverHtml", { value: () => rendered.serverHtml() });
+  }
+  return owned;
 }
 
 export function getFactory<Props extends object>(
@@ -471,11 +530,99 @@ export function surfaceAsyncError(error: unknown): void {
 export function reportError(frame: RenderFrame, error: unknown): void {
   if (frame.suspense) frame.suspense.reject(error);
   else if (frame.handleError) frame.handleError(error);
+  else if (frame.ssr) frame.ssr.fail(error);
   else surfaceAsyncError(error);
 }
 
 export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block {
   if (!isPromiseLike(candidate)) return candidate;
+  if (frame.mode === "server") {
+    let resolved: Block | undefined;
+    let disposed = false;
+    const finish = frame.suspense?.begin() ?? frame.ssr?.beginRoot();
+    void Promise.resolve(candidate).then(
+      (settled) => {
+        if (disposed) settled.dispose();
+        else resolved = settled;
+        finish?.();
+      },
+      (error) => {
+        if (!disposed) reportError(frame, error);
+        finish?.();
+      },
+    );
+    const pending: Block & { serverHtml(): string } = {
+      nodes: [],
+      mount(parent) {
+        if (!isServerRegion(parent)) throw new Error("Server async blocks require a server region");
+        parent.blocks.push(pending);
+      },
+      move() {},
+      enter() {},
+      leave: () => undefined,
+      retire: () => undefined,
+      dispose() {
+        disposed = true;
+        cancelPendingBlock(candidate);
+        resolved?.dispose();
+        finish?.();
+      },
+      serverHtml: () => (resolved && isServerBlock(resolved) ? resolved.serverHtml() : ""),
+    };
+    return pending;
+  }
+  if (frame.mode === "hydrate" || frame.mode === "resume") {
+    let resolved: Block | undefined;
+    let disposed = false;
+    let parent: Node | undefined;
+    let before: Node | null | undefined;
+    const finish = frame.suspense?.begin();
+    const promise =
+      frame.hydration && (frame.mode === "hydrate" || frame.waitForResume)
+        ? frame.hydration.track(candidate)
+        : Promise.resolve(candidate);
+    void promise.then(
+      (settled) => {
+        if (disposed) settled.dispose();
+        else {
+          resolved = settled;
+          const currentParent = before?.parentNode ?? parent;
+          if (currentParent) settled.mount(currentParent, before);
+        }
+        finish?.();
+      },
+      (error) => {
+        if (!disposed) reportError(frame, error);
+        finish?.();
+      },
+    );
+    return {
+      get nodes() {
+        return resolved?.nodes ?? [];
+      },
+      mount(target, targetBefore) {
+        if (isServerRegion(target)) throw new Error("Cannot hydrate into a server region");
+        parent = target;
+        before = targetBefore;
+        resolved?.mount(target, targetBefore);
+      },
+      move(target, targetBefore) {
+        if (isServerRegion(target)) throw new Error("Cannot hydrate into a server region");
+        parent = target;
+        before = targetBefore;
+        resolved?.move(target, targetBefore);
+      },
+      enter: () => resolved?.enter(),
+      leave: () => resolved?.leave(),
+      retire: () => resolved?.retire(),
+      dispose() {
+        disposed = true;
+        cancelPendingBlock(candidate);
+        resolved?.dispose();
+        finish?.();
+      },
+    };
+  }
   const fragment = document.createDocumentFragment();
   const marker = document.createComment("solix:async");
   fragment.append(marker);

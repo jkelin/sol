@@ -12,7 +12,11 @@ const runningTransitions = new WeakMap<
   { animations: readonly Animation[]; classes: readonly string[] }
 >();
 
-export function transition(element: Element, getTransition: TransitionGetter): void {
+export function transition(
+  element: Element | ServerElement,
+  getTransition: TransitionGetter,
+): void {
+  if (isServerElement(element)) return;
   if (!element || element.nodeType !== Node.ELEMENT_NODE) {
     throw new TypeError("$transition expects a DOM Element");
   }
@@ -108,3 +112,4 @@ export function runTransitions(
   }
   return finished.length > 0 ? Promise.all(finished).then(() => undefined) : undefined;
 }
+import { isServerElement, type ServerElement } from "./server-rendering.ts";

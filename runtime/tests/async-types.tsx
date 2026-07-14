@@ -1,4 +1,14 @@
-import { $component, $context, Await, ErrorBoundary, Suspense, type Context } from "solix";
+import {
+  $component,
+  $context,
+  Await,
+  ErrorBoundary,
+  Suspense,
+  hydrate,
+  renderToStringAsync,
+  type Context,
+  type RenderToStringOptions,
+} from "solix";
 
 interface SharedData {
   count: number;
@@ -21,7 +31,11 @@ const Valid = $component(function Valid() {
   return (
     <shared.Provider data={{ count: 0, label: "provided" }}>
       <ErrorBoundary fallback={(error: unknown) => <p>{String(error)}</p>}>
-        <Suspense fallback={<p>Loading</p>} error={(error: unknown) => <p>{String(error)}</p>}>
+        <Suspense
+          fallback={<p>Loading</p>}
+          error={(error: unknown) => <p>{String(error)}</p>}
+          timeoutMs={100}
+        >
           <AsyncChild />
           <Await $promise={promise}>{(data) => <p>{data.text}</p>}</Await>
         </Suspense>
@@ -31,6 +45,12 @@ const Valid = $component(function Valid() {
 });
 
 void Valid;
+
+const options: RenderToStringOptions = { timeoutMs: 100 };
+const rendered: Promise<string> = renderToStringAsync(Valid, undefined, options);
+const hydrated: Promise<() => void> = hydrate(Valid, document.body);
+void rendered;
+void hydrated;
 
 // @ts-expect-error Provider data must match the context shape.
 const InvalidProvider = <shared.Provider data={{ label: "missing count" }} />;

@@ -1,0 +1,270 @@
+type EncodedPrimitive = null | boolean | string | number;
+
+type EncodedValue = EncodedPrimitive | { readonly $: string; readonly v?: unknown };
+
+interface EncodedGraph {
+  readonly root: EncodedValue;
+  readonly objects: readonly EncodedObject[];
+}
+
+type EncodedObject =
+  | {
+      readonly type: "array";
+      readonly length: number;
+      readonly values: readonly [number, EncodedValue][];
+    }
+  | { readonly type: "object" | "null-object"; readonly values: readonly [string, EncodedValue][] }
+  | { readonly type: "date"; readonly value: EncodedValue }
+  | {
+      readonly type: "regexp";
+      readonly source: string;
+      readonly flags: string;
+      readonly lastIndex: number;
+    }
+  | { readonly type: "url"; readonly value: string }
+  | { readonly type: "map"; readonly values: readonly [EncodedValue, EncodedValue][] }
+  | { readonly type: "set"; readonly values: readonly EncodedValue[] }
+  | {
+      readonly type: "error";
+      readonly name: string;
+      readonly message: string;
+      readonly cause?: EncodedValue;
+    };
+
+function unsupported(value: unknown, detail: string): never {
+  const type = value === null ? "null" : typeof value;
+  throw new TypeError(`Cannot serialize ${detail} (${type})`);
+}
+
+function ownEnumerableEntries(value: object): [string, unknown][] {
+  if (Object.getOwnPropertySymbols(value).length > 0) unsupported(value, "symbol-keyed data");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (descriptor.get || descriptor.set)
+      unsupported(value, `accessor property ${JSON.stringify(key)}`);
+    entries.push([key, descriptor.value]);
+  }
+  return entries;
+}
+
+export function serializeGraph(value: unknown): string {
+  const references = new Map<object, number>();
+  const objects: EncodedObject[] = [];
+  const encode = (candidate: unknown): EncodedValue => {
+    if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") {
+      return candidate;
+    }
+    if (typeof candidate === "number") {
+      if (Number.isNaN(candidate)) return { $: "nan" };
+      if (candidate === Infinity) return { $: "infinity" };
+      if (candidate === -Infinity) return { $: "-infinity" };
+      if (Object.is(candidate, -0)) return { $: "-0" };
+      return candidate;
+    }
+    if (candidate === undefined) return { $: "undefined" };
+    if (typeof candidate === "bigint") return { $: "bigint", v: String(candidate) };
+    if (typeof candidate === "function") return unsupported(candidate, "function data");
+    if (typeof candidate === "symbol") return unsupported(candidate, "symbol data");
+    if (typeof candidate !== "object") return unsupported(candidate, "data");
+
+    const existing = references.get(candidate);
+    if (existing !== undefined) return { $: "ref", v: existing };
+    const index = objects.length;
+    references.set(candidate, index);
+    objects.push(undefined as never);
+
+    if (Array.isArray(candidate)) {
+      const values: [number, EncodedValue][] = [];
+      for (let position = 0; position < candidate.length; position += 1) {
+        if (Object.prototype.hasOwnProperty.call(candidate, position)) {
+          values.push([position, encode(candidate[position])]);
+        }
+      }
+      const extraKeys = Object.keys(candidate).filter((key) => !/^(0|[1-9]\d*)$/.test(key));
+      if (extraKeys.length > 0 || Object.getOwnPropertySymbols(candidate).length > 0) {
+        unsupported(candidate, "array with custom properties");
+      }
+      objects[index] = { type: "array", length: candidate.length, values };
+    } else if (candidate instanceof Date) {
+      objects[index] = { type: "date", value: encode(candidate.getTime()) };
+    } else if (candidate instanceof RegExp) {
+      objects[index] = {
+        type: "regexp",
+        source: candidate.source,
+        flags: candidate.flags,
+        lastIndex: candidate.lastIndex,
+      };
+    } else if (typeof URL !== "undefined" && candidate instanceof URL) {
+      objects[index] = { type: "url", value: candidate.href };
+    } else if (candidate instanceof Map) {
+      objects[index] = {
+        type: "map",
+        values: [...candidate].map(([key, entry]) => [encode(key), encode(entry)]),
+      };
+    } else if (candidate instanceof Set) {
+      objects[index] = { type: "set", values: [...candidate].map(encode) };
+    } else if (candidate instanceof Error) {
+      objects[index] = {
+        type: "error",
+        name: candidate.name,
+        message: candidate.message,
+        ...(Object.prototype.hasOwnProperty.call(candidate, "cause")
+          ? { cause: encode(candidate.cause) }
+          : {}),
+      };
+    } else {
+      if (ArrayBuffer.isView(candidate) || candidate instanceof ArrayBuffer) {
+        return unsupported(candidate, "typed buffer data");
+      }
+      if (typeof Node !== "undefined" && candidate instanceof Node) {
+        return unsupported(candidate, "DOM node data");
+      }
+      const prototype = Object.getPrototypeOf(candidate) as object | null;
+      if (prototype !== Object.prototype && prototype !== null) {
+        return unsupported(candidate, "custom-prototype data");
+      }
+      objects[index] = {
+        type: prototype === null ? "null-object" : "object",
+        values: ownEnumerableEntries(candidate).map(([key, entry]) => [key, encode(entry)]),
+      };
+    }
+    return { $: "ref", v: index };
+  };
+
+  return JSON.stringify({ root: encode(value), objects } satisfies EncodedGraph)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
+}
+
+export function deserializeGraph(serialized: string): unknown {
+  let graph: EncodedGraph;
+  try {
+    graph = JSON.parse(serialized) as EncodedGraph;
+  } catch {
+    throw new TypeError("Invalid Solix hydration payload JSON");
+  }
+  if (!graph || typeof graph !== "object" || !Array.isArray(graph.objects) || !("root" in graph)) {
+    throw new TypeError("Invalid Solix hydration payload graph");
+  }
+
+  const decoded: unknown[] = Array.from({ length: graph.objects.length });
+  for (let index = 0; index < graph.objects.length; index += 1) {
+    const object = graph.objects[index];
+    if (!object || typeof object !== "object" || typeof object.type !== "string") {
+      throw new TypeError(`Invalid Solix hydration object ${index}`);
+    }
+    switch (object.type) {
+      case "array":
+        decoded[index] = [];
+        (decoded[index] as unknown[]).length = object.length;
+        break;
+      case "object":
+        decoded[index] = {};
+        break;
+      case "null-object":
+        decoded[index] = Object.create(null) as object;
+        break;
+      case "date":
+        decoded[index] = new Date(0);
+        break;
+      case "regexp":
+        decoded[index] = new RegExp(object.source, object.flags);
+        break;
+      case "url":
+        decoded[index] = new URL(object.value);
+        break;
+      case "map":
+        decoded[index] = new Map();
+        break;
+      case "set":
+        decoded[index] = new Set();
+        break;
+      case "error": {
+        const error = new Error(object.message);
+        error.name = object.name;
+        decoded[index] = error;
+        break;
+      }
+      default:
+        throw new TypeError(`Invalid Solix hydration object type at ${index}`);
+    }
+  }
+
+  const decode = (value: EncodedValue): unknown => {
+    if (value === null || typeof value !== "object") return value;
+    if (typeof value.$ !== "string") throw new TypeError("Invalid Solix hydration value");
+    switch (value.$) {
+      case "undefined":
+        return undefined;
+      case "nan":
+        return NaN;
+      case "infinity":
+        return Infinity;
+      case "-infinity":
+        return -Infinity;
+      case "-0":
+        return -0;
+      case "bigint":
+        return BigInt(String(value.v));
+      case "ref": {
+        const index = Number(value.v);
+        if (!Number.isInteger(index) || index < 0 || index >= decoded.length) {
+          throw new TypeError("Invalid Solix hydration reference");
+        }
+        return decoded[index];
+      }
+      default:
+        throw new TypeError(`Invalid Solix hydration value tag ${value.$}`);
+    }
+  };
+
+  for (let index = 0; index < graph.objects.length; index += 1) {
+    const source = graph.objects[index]!;
+    const target = decoded[index];
+    switch (source.type) {
+      case "array":
+        for (const [position, value] of source.values)
+          (target as unknown[])[position] = decode(value);
+        break;
+      case "object":
+      case "null-object":
+        for (const [key, value] of source.values) {
+          Object.defineProperty(target, key, {
+            value: decode(value),
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+        }
+        break;
+      case "date":
+        (target as Date).setTime(decode(source.value) as number);
+        break;
+      case "regexp":
+        (target as RegExp).lastIndex = source.lastIndex;
+        break;
+      case "map":
+        for (const [key, value] of source.values)
+          (target as Map<unknown, unknown>).set(decode(key), decode(value));
+        break;
+      case "set":
+        for (const value of source.values) (target as Set<unknown>).add(decode(value));
+        break;
+      case "error":
+        if (source.cause !== undefined) {
+          Object.defineProperty(target, "cause", {
+            value: decode(source.cause),
+            configurable: true,
+          });
+        }
+        break;
+      case "url":
+        break;
+    }
+  }
+  return decode(graph.root);
+}

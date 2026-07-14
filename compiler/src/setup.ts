@@ -249,11 +249,13 @@ export function compileSetup(
         ? "computed"
         : isHelperCall(initializer, "$signal")
           ? "signal"
-          : statement.kind === "const" &&
-              initializer &&
-              referencesReactive(initializer, new Set(bindings.keys()), propsName)
-            ? "computed"
-            : "signal";
+          : t.isAwaitExpression(initializer)
+            ? "signal"
+            : statement.kind === "const" &&
+                initializer &&
+                referencesReactive(initializer, new Set(bindings.keys()), propsName)
+              ? "computed"
+              : "signal";
       declarationKinds.set(declaration, kind);
       bindings.set(declaration.id.name, kind);
       if (kind === "computed" && initializer && !isHelperCall(initializer, "$computed")) {
@@ -352,6 +354,7 @@ export function compileFunction(
   }
   if (declaration.generator)
     codeFrame(compiler, declaration, "Components must not be generator functions");
+  instrumentAwaitExpressions(compiler, declaration);
   if (declaration.params.length > 1)
     codeFrame(compiler, declaration, "Components accept at most one props parameter");
   const parameter = declaration.params[0];
@@ -414,4 +417,21 @@ export function compileFunction(
     });`,
     returned,
   };
+}
+
+function instrumentAwaitExpressions(
+  compiler: CompilerContext,
+  declaration: t.FunctionExpression,
+): void {
+  const file = t.file(t.program([t.expressionStatement(declaration)]));
+  traverse(file, {
+    AwaitExpression(path: NodePath<t.AwaitExpression>) {
+      const argument = path.node.argument;
+      path.node.argument = t.callExpression(t.identifier("__solix_async_value"), [
+        t.identifier("__solix_frame"),
+        t.stringLiteral(`await:${compiler.nextAsyncId++}`),
+        t.arrowFunctionExpression([], argument),
+      ]);
+    },
+  });
 }

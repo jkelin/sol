@@ -33,6 +33,7 @@ export interface CompilerContext {
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;
+  nextAsyncId: number;
 }
 
 export interface CompilationState {

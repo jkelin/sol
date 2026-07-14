@@ -354,8 +354,8 @@ describe("compiler", () => {
 
     expect(result.code).toContain("__solix_item_0.value.name");
     expect(result.code).toContain("__solix_item_1.value.label");
-    expect(result.code).toContain("(__solix_item_0, __solix_index_0)");
-    expect(result.code).toContain("(__solix_item_1, __solix_index_1)");
+    expect(result.code).toContain("(__solix_item_0, __solix_index_0, __solix_frame)");
+    expect(result.code).toContain("(__solix_item_1, __solix_index_1, __solix_frame)");
   });
 
   test("supports explicit reactive overrides and every class alias", () => {
@@ -451,7 +451,7 @@ describe("compiler", () => {
         const promise = Promise.resolve({ text: "awaited" });
         return <messageContext.Provider data={shared}>
           <ErrorBoundary fallback={error => <p>{String(error)}</p>}>
-            <Suspense fallback={<p>Loading</p>} error={error => <p>{String(error)}</p>}>
+            <Suspense fallback={<p>Loading</p>} error={error => <p>{String(error)}</p>} timeoutMs={250}>
               <AsyncChild />
               <Await $promise={promise} error={error => <p>{String(error)}</p>}>
                 {data => <p>{data.text}</p>}
@@ -469,6 +469,9 @@ describe("compiler", () => {
     expect(result.code).toContain("__solix_error_boundary");
     expect(result.code).toContain("__solix_suspense");
     expect(result.code).toContain("__solix_await");
+    expect(result.code).toContain('__solix_async_value(__solix_frame, "await:0"');
+    expect(result.code).toContain("__solix_frame, 250)");
+    expect(result.code).toMatch(/__solix_template\(`[^`]*`, "t[a-z0-9]+"\)/);
   });
 
   test("validates async boundary and context provider JSX contracts", () => {
@@ -492,6 +495,10 @@ describe("compiler", () => {
       {
         source: `import { $component, Await } from "solix"; const App = $component(function App() { return <Await $promise={123}>{value => <p>{value}</p>}</Await>; });`,
         message: "Await $promise must be a promise expression",
+      },
+      {
+        source: `import { $component, Suspense } from "solix"; const App = $component(function App() { return <Suspense fallback={<p>Wait</p>} timeoutMs><p>Child</p></Suspense>; });`,
+        message: "Suspense timeoutMs must be a number expression",
       },
       {
         source: `import { $component, $context } from "solix"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider data={123}><p>Child</p></context.Provider>; });`,

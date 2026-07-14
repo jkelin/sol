@@ -13,6 +13,15 @@ import {
 } from "./rendering.ts";
 import { routeHref, type RouteDefinition, type RouteValues } from "./routes.ts";
 import { CONTEXT, ROUTE } from "./symbols.ts";
+import {
+  isServerElement,
+  isServerRegion,
+  mountServerBlock,
+  setServerAttribute,
+  serverRawValue,
+  type ServerElement,
+} from "./server-rendering.ts";
+import { claimHydratedText, regionHydrationClaim } from "./hydration-rendering.ts";
 
 type ContextRecord = Context<object> & { readonly [CONTEXT]: symbol };
 type RenderFactory = (frame: RenderFrame) => Block;
@@ -53,11 +62,29 @@ export function normalizeClass(value: ClassValue): string {
 }
 
 export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[]): void {
-  const textNode = document.createTextNode("");
-  region.end.parentNode?.insertBefore(textNode, region.end);
+  if (isServerRegion(region)) {
+    const value = displayValue(getValue())
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+    mountServerBlock(serverRawValue(value), region);
+    return;
+  }
+  const claimed = claimHydratedText(region);
+  const textNode = claimed ?? document.createTextNode("");
+  if (!claimed) region.end.parentNode?.insertBefore(textNode, region.end);
+  let hydrating = Boolean(claimed);
   cleanups.push(
     runtimeEffect(() => {
-      textNode.data = displayValue(getValue());
+      const value = displayValue(getValue());
+      if (hydrating) {
+        hydrating = false;
+        if (textNode.data !== value) {
+          throw new Error("Solix hydration mismatch: dynamic text differs");
+        }
+        return;
+      }
+      textNode.data = value;
     }),
   );
 }
@@ -78,30 +105,92 @@ function setDomValue(element: Element, name: string, value: unknown): void {
   }
 }
 
+const BOOLEAN_ATTRIBUTES = new Set([
+  "allowFullScreen",
+  "async",
+  "autofocus",
+  "autoplay",
+  "checked",
+  "controls",
+  "default",
+  "defer",
+  "disabled",
+  "formNoValidate",
+  "hidden",
+  "inert",
+  "loop",
+  "multiple",
+  "muted",
+  "noModule",
+  "noValidate",
+  "open",
+  "playsInline",
+  "readOnly",
+  "required",
+  "reversed",
+  "selected",
+]);
+
+function setServerValue(element: ServerElement, name: string, value: unknown): void {
+  if (name.startsWith("aria-") || name.startsWith("data-")) {
+    setServerAttribute(element, name, value == null ? undefined : String(value));
+  } else if (BOOLEAN_ATTRIBUTES.has(name)) {
+    setServerAttribute(element, name, value ? true : undefined);
+  } else if (value == null || value === false) {
+    setServerAttribute(element, name, undefined);
+  } else {
+    setServerAttribute(element, name, value === true ? "" : String(value));
+  }
+}
+
+function serializedAttribute(name: string, value: unknown): string | null {
+  if (name.startsWith("aria-") || name.startsWith("data-")) {
+    return value == null ? null : String(value);
+  }
+  if (BOOLEAN_ATTRIBUTES.has(name)) return value ? "" : null;
+  if (value == null || value === false) return null;
+  return value === true ? "" : String(value);
+}
+
 export function attribute(
-  element: Element,
+  element: Element | ServerElement,
   name: string,
   getValue: () => unknown,
   cleanups: Cleanup[],
 ): void {
   const isClass = name === "class" || name === "className" || name === "classNames";
+  if (isServerElement(element)) {
+    setServerValue(
+      element,
+      isClass ? "class" : name,
+      isClass ? normalizeClass(getValue() as ClassValue) : getValue(),
+    );
+    return;
+  }
+  let hydrating = element.hasAttribute("data-solix-e");
   cleanups.push(
     runtimeEffect(() => {
-      setDomValue(
-        element,
-        isClass ? "class" : name,
-        isClass ? normalizeClass(getValue() as ClassValue) : getValue(),
-      );
+      const property = isClass ? "class" : name;
+      const value = isClass ? normalizeClass(getValue() as ClassValue) : getValue();
+      if (hydrating) {
+        hydrating = false;
+        if (element.getAttribute(property) !== serializedAttribute(property, value)) {
+          throw new Error(`Solix hydration mismatch: dynamic attribute ${property} differs`);
+        }
+        return;
+      }
+      setDomValue(element, property, value);
     }),
   );
 }
 
 export function event(
-  element: Element,
+  element: Element | ServerElement,
   name: string,
   getHandler: () => unknown,
   cleanups: Cleanup[],
 ): void {
+  if (isServerElement(element)) return;
   const listener = (domEvent: Event): void => {
     const handler = getHandler();
     if (typeof handler !== "function") return;
@@ -112,13 +201,16 @@ export function event(
 }
 
 export function link<Path extends string, Values extends RouteValues>(
-  element: HTMLAnchorElement,
+  element: HTMLAnchorElement | ServerElement,
   getRoute: () => RouteDefinition<Path, Values>,
   getDestination: () => Readonly<Record<string, unknown>>,
   getReplace: () => boolean,
   cleanups: Cleanup[],
 ): void {
-  if (!element || element.nodeType !== Node.ELEMENT_NODE || element.tagName !== "A") {
+  if (
+    !isServerElement(element) &&
+    (!element || element.nodeType !== Node.ELEMENT_NODE || element.tagName !== "A")
+  ) {
     throw new TypeError("Link must decorate an anchor element");
   }
   const href = (): string => {
@@ -132,6 +224,10 @@ export function link<Path extends string, Values extends RouteValues>(
     }
     return routeHref(definition, getDestination());
   };
+  if (isServerElement(element)) {
+    setServerAttribute(element, "href", href());
+    return;
+  }
   cleanups.push(
     runtimeEffect(() => element.setAttribute("href", href())),
     (() => {
@@ -161,12 +257,16 @@ export function link<Path extends string, Values extends RouteValues>(
 }
 
 export function bindValue(
-  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | ServerElement,
   property: "value" | "checked",
   getValue: () => unknown,
   setValue: (value: unknown) => void,
   cleanups: Cleanup[],
 ): void {
+  if (isServerElement(element)) {
+    setServerValue(element, property, property === "checked" ? Boolean(getValue()) : getValue());
+    return;
+  }
   const eventName =
     property === "checked" || element instanceof HTMLSelectElement ? "change" : "input";
   const stopEffect = runtimeEffect(() => {
@@ -186,10 +286,16 @@ export function bindValue(
 export function when(
   region: Region,
   getCondition: () => unknown,
-  consequent: () => Block,
-  alternate: () => Block,
+  consequent: RenderFactory,
+  alternate: RenderFactory,
   cleanups: Cleanup[],
+  frame: RenderFrame = rootFrame(),
 ): void {
+  const renderFrame = frameForRegion(frame, region);
+  if (isServerRegion(region)) {
+    mountServerBlock((getCondition() ? consequent : alternate)(renderFrame), region);
+    return;
+  }
   let current: Block | undefined;
   let currentCondition: boolean | undefined;
   let initialized = false;
@@ -219,7 +325,7 @@ export function when(
       current.move(region.end.parentNode!, region.end);
       current.enter();
     } else {
-      current = nextCondition ? consequent() : alternate();
+      current = (nextCondition ? consequent : alternate)(renderFrame);
       current.mount(region.end.parentNode!, region.end);
       if (initialized) current.enter();
     }
@@ -253,9 +359,25 @@ export function list<T>(
   region: Region,
   getItems: () => Iterable<T>,
   getKey: (item: T, index: number) => unknown,
-  render: (item: Signal<T>, index: Signal<number>) => Block,
+  render: (item: Signal<T>, index: Signal<number>, frame: RenderFrame) => Block,
   cleanups: Cleanup[],
+  frame: RenderFrame = rootFrame(),
 ): void {
+  const renderFrame = frameForRegion(frame, region);
+  if (isServerRegion(region)) {
+    const keys = new Set<unknown>();
+    let index = 0;
+    for (const itemValue of getItems()) {
+      const key = getKey(itemValue, index);
+      if (keys.has(key)) throw new Error("Keyed JSX lists require unique keys");
+      keys.add(key);
+      const item = $signal(itemValue);
+      const position = $signal(index);
+      mountServerBlock(render(item, position, renderFrame), region);
+      index += 1;
+    }
+    return;
+  }
   let rows = new Map<unknown, ListRow<T>>();
   const leavingRows = new Map<unknown, ListRow<T>>();
   let order: unknown[] = [];
@@ -281,7 +403,7 @@ export function list<T>(
         } else {
           const item = $signal(entry.item);
           const index = $signal(entry.index);
-          row = { key: entry.key, item, index, block: render(item, index) };
+          row = { key: entry.key, item, index, block: render(item, index, renderFrame) };
         }
         nextRows.set(entry.key, row);
       }
@@ -346,8 +468,10 @@ export function child<Props extends object>(
   const state = reactive<Record<string, unknown>>({});
   for (const [name, getter] of Object.entries(propGetters)) state[name] = getter();
   const props = readonlyProps(state) as Readonly<Props>;
-  const mounted = resolvedBlock(getFactory(candidate)(props, frame), frame);
-  mounted.mount(region.end.parentNode!, region.end);
+  const renderFrame = frameForRegion(frame, region);
+  const mounted = resolvedBlock(getFactory(candidate)(props, renderFrame), renderFrame);
+  if (isServerRegion(region)) mountServerBlock(mounted, region);
+  else mounted.mount(region.end.parentNode!, region.end);
   cleanups.push(() => mounted.dispose());
   for (const [name, getter] of Object.entries(propGetters)) {
     cleanups.push(
@@ -384,7 +508,13 @@ export function contextProvider(
   const contexts = new Map(frame.contexts);
   contexts.set(key, readData);
   const childFrame: RenderFrame = { ...frame, contexts };
-  const rendered = render(childFrame);
-  rendered.mount(region.end.parentNode!, region.end);
+  const rendered = render(frameForRegion(childFrame, region));
+  if (isServerRegion(region)) mountServerBlock(rendered, region);
+  else rendered.mount(region.end.parentNode!, region.end);
   cleanups.push(() => rendered.dispose());
+}
+
+function frameForRegion(frame: RenderFrame, region: Region): RenderFrame {
+  const claim = regionHydrationClaim(region);
+  return claim ? { ...frame, claim } : frame;
 }

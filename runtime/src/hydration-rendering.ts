@@ -1,0 +1,206 @@
+import type { Block, Region, RenderView, TemplateDefinition } from "./rendering.ts";
+import type { HydrationSession } from "./ssr-session.ts";
+
+export interface HydrationClaim {
+  readonly start?: Comment;
+  readonly end?: Comment;
+  cursor: Node | null;
+}
+
+export interface HydratedFragment {
+  readonly kind: "hydrated-fragment";
+  readonly start: Comment;
+  readonly end: Comment;
+  readonly session: HydrationSession;
+}
+
+const hydratedRegions = new WeakSet<Comment>();
+
+export function rootHydrationClaim(target: Element): HydrationClaim {
+  return { cursor: target.firstChild };
+}
+
+export function regionHydrationClaim(region: Region): HydrationClaim | undefined {
+  if (!("end" in region) || !hydratedRegions.has(region.end)) return undefined;
+  return { start: region.start, end: region.end, cursor: region.start.nextSibling };
+}
+
+export function isHydratedRegion(region: Region): region is { start: Comment; end: Comment } {
+  return "end" in region && hydratedRegions.has(region.end);
+}
+
+export function isHydratedFragment(value: unknown): value is HydratedFragment {
+  return (value as HydratedFragment | undefined)?.kind === "hydrated-fragment";
+}
+
+function mismatch(message: string): never {
+  throw new Error(`Solix hydration mismatch: ${message}`);
+}
+
+function isComment(node: Node | null, data: string): node is Comment {
+  return node?.nodeType === Node.COMMENT_NODE && (node as Comment).data === data;
+}
+
+function matchingEnd(start: Comment, prefix: "solix:block" | "solix"): Comment {
+  const startPattern =
+    prefix === "solix:block" ? /^solix:block:start(?::t[a-z0-9]+)?$/ : /^solix:s:\d+$/;
+  const endPattern = prefix === "solix:block" ? "solix:block:end" : /^solix:e:\d+$/;
+  let depth = 0;
+  for (let node = start.nextSibling; node; node = node.nextSibling) {
+    if (node.nodeType !== Node.COMMENT_NODE) continue;
+    const data = (node as Comment).data;
+    if (startPattern.test(data)) {
+      depth += 1;
+    } else if (typeof endPattern === "string" ? data === endPattern : endPattern.test(data)) {
+      if (depth === 0) return node as Comment;
+      depth -= 1;
+    }
+  }
+  return mismatch(`missing end marker for ${start.data}`);
+}
+
+function matchChildren(
+  expectedParent: Node,
+  actualStart: Node | null,
+  actualEnd: Node | null,
+  elements: Element[],
+  regions: { start: Comment; end: Comment }[],
+): void {
+  let actual = actualStart;
+  const expected = Array.from(expectedParent.childNodes);
+  for (let index = 0; index < expected.length; index += 1) {
+    const expectedNode = expected[index]!;
+    if (
+      expectedNode.nodeType === Node.COMMENT_NODE &&
+      /^solix:s:\d+$/.test((expectedNode as Comment).data)
+    ) {
+      const data = (expectedNode as Comment).data;
+      if (!isComment(actual, data)) mismatch(`expected <!--${data}-->`);
+      const regionIndex = Number(data.slice("solix:s:".length));
+      const end = matchingEnd(actual, "solix");
+      const expectedEnd = expected[++index];
+      if (
+        !expectedEnd ||
+        expectedEnd.nodeType !== Node.COMMENT_NODE ||
+        (expectedEnd as Comment).data !== `solix:e:${regionIndex}`
+      ) {
+        mismatch(`invalid compiled region ${regionIndex}`);
+      }
+      regions[regionIndex] = { start: actual, end };
+      hydratedRegions.add(end);
+      actual = end.nextSibling;
+      continue;
+    }
+    if (!actual || actual === actualEnd) mismatch(`missing ${expectedNode.nodeName}`);
+    if (expectedNode.nodeType !== actual.nodeType) mismatch(`expected ${expectedNode.nodeName}`);
+    if (expectedNode.nodeType === Node.TEXT_NODE) {
+      if (expectedNode.nodeValue !== actual.nodeValue) mismatch("static text differs");
+    } else if (expectedNode.nodeType === Node.COMMENT_NODE) {
+      if ((expectedNode as Comment).data !== (actual as Comment).data) mismatch("comment differs");
+    } else if (expectedNode.nodeType === Node.ELEMENT_NODE) {
+      const expectedElement = expectedNode as Element;
+      const actualElement = actual as Element;
+      if (expectedElement.tagName !== actualElement.tagName) {
+        mismatch(`expected <${expectedElement.tagName.toLowerCase()}>`);
+      }
+      for (const attribute of expectedElement.attributes) {
+        if (attribute.name === "data-solix-e") continue;
+        if (actualElement.getAttribute(attribute.name) !== attribute.value) {
+          mismatch(`static attribute ${attribute.name} differs`);
+        }
+      }
+      const elementIndex = expectedElement.getAttribute("data-solix-e");
+      if (elementIndex !== null) {
+        const parsed = Number(elementIndex);
+        if (!Number.isInteger(parsed)) mismatch("invalid element marker");
+        elements[parsed] = actualElement;
+      }
+      matchChildren(expectedElement, actualElement.firstChild, null, elements, regions);
+    }
+    actual = actual.nextSibling;
+  }
+  if (actual !== actualEnd) mismatch("unexpected server nodes");
+}
+
+export function instantiateHydrated(
+  definition: TemplateDefinition,
+  session: HydrationSession,
+  claim: HydrationClaim,
+): RenderView {
+  session.claimTemplate(definition.signature);
+  const start = claim.cursor;
+  if (!isComment(start, `solix:block:start:${definition.signature}`)) {
+    mismatch(`expected block signature ${definition.signature}`);
+  }
+  const end = matchingEnd(start, "solix:block");
+  definition.element ??= document.createElement("template");
+  if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
+  const elements: Element[] = [];
+  const regions: { start: Comment; end: Comment }[] = [];
+  matchChildren(definition.element.content, start.nextSibling, end, elements, regions);
+  claim.cursor = end.nextSibling;
+  return { fragment: { kind: "hydrated-fragment", start, end, session }, elements, regions };
+}
+
+export function hydratedBlock(fragment: HydratedFragment, cleanups: (() => void)[]): Block {
+  let disposed = false;
+  let mounted = true;
+  const nodes = (): Node[] => {
+    const result: Node[] = [];
+    for (let node: Node | null = fragment.start; node; node = node.nextSibling) {
+      result.push(node);
+      if (node === fragment.end) break;
+    }
+    return result;
+  };
+  const cleanup = (): void => {
+    for (const registered of cleanups.toReversed()) registered();
+  };
+  const move = (parent: Node, before: Node | null = null): void => {
+    if (mounted && fragment.start.parentNode === parent) return;
+    const moving = document.createDocumentFragment();
+    for (const node of nodes()) moving.append(node);
+    parent.insertBefore(moving, before);
+    mounted = true;
+  };
+  return {
+    get nodes() {
+      return nodes();
+    },
+    mount(parent, before) {
+      if (!(parent instanceof Node)) mismatch("cannot mount a hydrated block on the server");
+      move(parent, before);
+    },
+    move(parent, before) {
+      if (!(parent instanceof Node)) mismatch("cannot move a hydrated block on the server");
+      move(parent, before);
+    },
+    enter() {},
+    leave: () => undefined,
+    retire() {
+      this.dispose();
+      return undefined;
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      cleanup();
+      if (fragment.session.committed) {
+        for (const node of nodes()) node.parentNode?.removeChild(node);
+      }
+    },
+  };
+}
+
+export function claimHydratedText(region: Region): Text | undefined {
+  if (!isHydratedRegion(region)) return undefined;
+  const nodes: Node[] = [];
+  for (let node = region.start.nextSibling; node && node !== region.end; node = node.nextSibling) {
+    nodes.push(node);
+  }
+  if (nodes.length === 0) return undefined;
+  if (nodes.length !== 1 || nodes[0]!.nodeType !== Node.TEXT_NODE) {
+    return mismatch("dynamic text region differs");
+  }
+  return nodes[0] as Text;
+}

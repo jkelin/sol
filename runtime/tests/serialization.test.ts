@@ -1,0 +1,109 @@
+import { describe, expect, test } from "bun:test";
+import { deserializeGraph, serializeGraph } from "../src/serialization.ts";
+
+describe("SSR graph serialization", () => {
+  test("round trips cycles, aliases, sparse arrays, and null prototypes", () => {
+    const shared = { label: "shared" };
+    const sparse: unknown[] = [];
+    sparse.length = 4;
+    sparse[1] = undefined;
+    sparse[3] = shared;
+    const nullObject = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(nullObject, "__proto__", {
+      value: "safe",
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+    const value: Record<string, unknown> = { shared, alias: shared, sparse, nullObject };
+    value.self = value;
+
+    const restored = deserializeGraph(serializeGraph(value)) as typeof value;
+    expect(restored.self).toBe(restored);
+    expect(restored.shared).toBe(restored.alias);
+    expect(0 in (restored.sparse as unknown[])).toBe(false);
+    expect(1 in (restored.sparse as unknown[])).toBe(true);
+    expect(Object.getPrototypeOf(restored.nullObject)).toBeNull();
+    expect((restored.nullObject as Record<string, unknown>).__proto__).toBe("safe");
+    expect(Object.getPrototypeOf(restored)).toBe(Object.prototype);
+  });
+
+  test("round trips supported scalar and built-in values", () => {
+    const expression = /solix/giu;
+    expression.lastIndex = 3;
+    const error = new TypeError("failed", { cause: { code: 42 } });
+    const values = {
+      undefined,
+      nan: NaN,
+      infinity: Infinity,
+      negativeInfinity: -Infinity,
+      negativeZero: -0,
+      bigint: 12345678901234567890n,
+      date: new Date("2026-07-14T00:00:00.000Z"),
+      invalidDate: new Date(NaN),
+      expression,
+      url: new URL("https://example.com/path?q=1"),
+      map: new Map<unknown, unknown>([[{ key: true }, new Set([1, 2])]]),
+      error,
+    };
+    const serialized = serializeGraph(values);
+    expect(serialized).not.toContain(error.stack ?? "__missing_stack__");
+    const restored = deserializeGraph(serialized) as typeof values;
+    expect(restored.undefined).toBeUndefined();
+    expect(Number.isNaN(restored.nan)).toBe(true);
+    expect(restored.infinity).toBe(Infinity);
+    expect(restored.negativeInfinity).toBe(-Infinity);
+    expect(Object.is(restored.negativeZero, -0)).toBe(true);
+    expect(restored.bigint).toBe(values.bigint);
+    expect(restored.date.toISOString()).toBe(values.date.toISOString());
+    expect(Number.isNaN(restored.invalidDate.getTime())).toBe(true);
+    expect(restored.expression.source).toBe("solix");
+    expect(restored.expression.flags).toBe("giu");
+    expect(restored.expression.lastIndex).toBe(3);
+    expect(restored.url.href).toBe(values.url.href);
+    expect([...(restored.map.values().next().value as Set<number>)]).toEqual([1, 2]);
+    expect(restored.error).toBeInstanceOf(Error);
+    expect(restored.error.name).toBe("TypeError");
+    expect(restored.error.message).toBe("failed");
+    expect(restored.error.cause).toEqual({ code: 42 });
+  });
+
+  test("escapes script-closing and Unicode separator data", () => {
+    const serialized = serializeGraph("</script><script>&\u2028\u2029");
+    expect(serialized).not.toContain("<");
+    expect(serialized).not.toContain(">");
+    expect(serialized).not.toContain("&");
+    expect(deserializeGraph(serialized)).toBe("</script><script>&\u2028\u2029");
+  });
+
+  test("rejects executable and custom-prototype values", () => {
+    class Custom {
+      value = 1;
+    }
+    expect(() => serializeGraph(() => undefined)).toThrow("function");
+    expect(() => serializeGraph(Symbol("value"))).toThrow("symbol");
+    expect(() => serializeGraph(new Custom())).toThrow("custom-prototype");
+    expect(() => serializeGraph(new Uint8Array([1]))).toThrow("typed buffer");
+  });
+
+  test("rejects accessors, symbol keys, and custom array properties", () => {
+    const accessor = Object.defineProperty({}, "value", { enumerable: true, get: () => 1 });
+    const symbolKey = { [Symbol("key")]: true };
+    const array = [1] as unknown[] & { extra?: boolean };
+    array.extra = true;
+    expect(() => serializeGraph(accessor)).toThrow("accessor");
+    expect(() => serializeGraph(symbolKey)).toThrow("symbol-keyed");
+    expect(() => serializeGraph(array)).toThrow("custom properties");
+  });
+
+  test("rejects malformed graphs and references", () => {
+    expect(() => deserializeGraph("{")).toThrow("payload JSON");
+    expect(() => deserializeGraph("{}")).toThrow("payload graph");
+    expect(() =>
+      deserializeGraph(JSON.stringify({ root: { $: "ref", v: 2 }, objects: [] })),
+    ).toThrow("reference");
+    expect(() => deserializeGraph(JSON.stringify({ root: { $: "mystery" }, objects: [] }))).toThrow(
+      "value tag",
+    );
+  });
+});

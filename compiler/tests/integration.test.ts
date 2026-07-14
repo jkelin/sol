@@ -6,6 +6,9 @@ import type { Component } from "../../runtime/src/components.ts";
 import { $form } from "../../runtime/src/forms.ts";
 import { $mutation, $query } from "../../runtime/src/queries.ts";
 import { mount } from "../../runtime/src/rendering.ts";
+import { renderToStringAsync } from "../../runtime/src/ssr.ts";
+import { hydrate } from "../../runtime/src/hydrate.ts";
+import { serializeGraph } from "../../runtime/src/serialization.ts";
 
 interface SetupCounts {
   app: number;
@@ -24,6 +27,8 @@ declare global {
   var integrationInvalidatePortalTarget: () => void;
   var integrationConditionalRefConnected: boolean;
   var integrationKeyedRefs: Set<number>;
+  var integrationPending: Promise<string>;
+  var integrationResolve: (value: string) => void;
 }
 
 let window: Window;
@@ -106,6 +111,17 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
     }).outputText + `\n// ${crypto.randomUUID()}`;
   const encoded = Buffer.from(javascript).toString("base64");
   return import(`data:text/javascript;base64,${encoded}`);
+}
+
+async function expectRejection(promise: PromiseLike<unknown>, message: string): Promise<void> {
+  let failure: unknown;
+  try {
+    await promise;
+  } catch (error) {
+    failure = error;
+  }
+  expect(failure).toBeInstanceOf(Error);
+  expect(String(failure)).toContain(message);
 }
 
 test("compiled components update fine-grained DOM without rerunning setup", async () => {
@@ -920,4 +936,340 @@ test("defers nested mount phases and activates keyed refs and portals", async ()
   expect(document.querySelectorAll("#list-target > [data-keyed-id]")).toHaveLength(1);
   dispose();
   expect(globalThis.integrationKeyedRefs).toEqual(new Set());
+test("server renders compiled primitives and resolved Suspense without a DOM", async () => {
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Child = $component(async function Child(props: { label: string }) {
+      const value = await Promise.resolve(props.label);
+      return <strong className={["ready", { active: true }]}>{value}</strong>;
+    });
+    export const App = $component(function App() {
+      const items = ["one", "two"];
+      const disabled = false;
+      return <main data-title={"<&"} aria-hidden={disabled} data-enabled={disabled}>
+        <Suspense fallback={<p id="loading">Loading</p>} timeoutMs={100}>
+          <Child label="done" />
+          {items.map(item => <span key={item}>{item}</span>)}
+        </Suspense>
+      </main>;
+    });
+  `);
+  const activeDocument = globalThis.document;
+  Reflect.deleteProperty(globalThis, "document");
+  let html: string;
+  try {
+    html = await renderToStringAsync(module.App as Component, undefined, { timeoutMs: 100 });
+  } finally {
+    globalThis.document = activeDocument;
+  }
+  expect(html).toContain('<main data-title="&lt;&amp;"');
+  expect(html).toContain('aria-hidden="false"');
+  expect(html).toContain('data-enabled="false"');
+  expect(html).toContain('<strong class="ready active"');
+  expect(html).toContain(">done<!--solix:e:0-->");
+  expect(html).toContain(">one<!--solix:e:0-->");
+  expect(html).not.toContain('id="loading"');
+  expect(html).toContain("data-solix-hydration");
+});
+
+test("server renders a timed-out Suspense fallback and rejects root timeouts", async () => {
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Pending = $component(async function Pending() {
+      await new Promise(() => {});
+      return <p>never</p>;
+    });
+    export const Bounded = $component(function Bounded() {
+      return <Suspense fallback={<p id="loading">Loading</p>} timeoutMs={0}><Pending /></Suspense>;
+    });
+    export const BoundedDefault = $component(function BoundedDefault() {
+      return <Suspense fallback={<p id="default-loading">Default loading</p>}><Pending /></Suspense>;
+    });
+    export const Unbounded = $component(async function Unbounded() {
+      await new Promise(() => {});
+      return <p>never</p>;
+    });
+  `);
+  const html = await renderToStringAsync(module.Bounded as Component, undefined, { timeoutMs: 20 });
+  expect(html).toContain('id="loading"');
+  expect(html).not.toContain(">never<");
+  const defaultHtml = await renderToStringAsync(module.BoundedDefault as Component, undefined, {
+    timeoutMs: 0,
+  });
+  expect(defaultHtml).toContain('id="default-loading"');
+  await expectRejection(
+    renderToStringAsync(module.Unbounded as Component, undefined, { timeoutMs: 1 }),
+    "timed out",
+  );
+});
+
+test("hydrates server DOM in place and replays async component data", async () => {
+  globalThis.integrationSetups.app = 0;
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Child = $component(async function Child() {
+      const value = await Promise.resolve().then(() => {
+        globalThis.integrationSetups.app += 1;
+        return "ready";
+      });
+      let count = 0;
+      async function increment() {
+        count = await Promise.resolve(count + 1);
+      }
+      return <button id="hydrated" onClick={increment}>{value}:{count}</button>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p>Loading</p>}><Child /></Suspense>;
+    });
+  `);
+  const App = module.App as Component;
+  const html = await renderToStringAsync(App, undefined, { timeoutMs: 100 });
+  expect(globalThis.integrationSetups.app).toBe(1);
+  const target = document.createElement("div");
+  target.innerHTML = html;
+  const serverButton = target.querySelector("#hydrated");
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#hydrated")).toBe(serverButton);
+  expect(globalThis.integrationSetups.app).toBe(1);
+  (serverButton as HTMLButtonElement).click();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(serverButton?.textContent).toBe("ready:1");
+  dispose();
+  expect(target.childNodes).toHaveLength(0);
+});
+
+test("hydrates a timed-out fallback and resumes only its pending work", async () => {
+  globalThis.integrationSetups.app = 0;
+  globalThis.integrationPending = new Promise((resolve) => {
+    globalThis.integrationResolve = resolve;
+  });
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Child = $component(async function Child() {
+      const value = await (() => {
+        globalThis.integrationSetups.app += 1;
+        return globalThis.integrationPending;
+      })();
+      return <p id="resumed">{value}</p>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p id="timed-out">Waiting</p>} timeoutMs={0}><Child /></Suspense>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 20 });
+  const fallback = target.querySelector("#timed-out");
+  expect(globalThis.integrationSetups.app).toBe(1);
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#timed-out")).toBe(fallback);
+  expect(globalThis.integrationSetups.app).toBe(2);
+  globalThis.integrationResolve("continued");
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(target.querySelector("#resumed")?.textContent).toBe("continued");
+  expect(target.querySelector("#timed-out")).toBeNull();
+  dispose();
+});
+
+test("rejects hydration mismatches without replacing server DOM", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() { return <main><p>Stable</p></main>; });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const original = target.firstChild;
+  (target.querySelector("main") as HTMLElement).outerHTML = "<section><p>Changed</p></section>";
+  await expectRejection(hydrate(App, target), "hydration mismatch");
+  expect(target.firstChild).toBe(original);
+  expect(target.querySelector("section")?.textContent).toBe("Changed");
+
+  target.innerHTML = await renderToStringAsync(App);
+  const signedStart = target.firstChild as Comment;
+  signedStart.data = "solix:block:start:tstale";
+  await expectRejection(hydrate(App, target), "block signature");
+  expect((target.firstChild as Comment).data).toBe("solix:block:start:tstale");
+});
+
+test("rejects dynamic hydration prop mismatches without mutating server DOM", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { label: string; tone: string }) {
+      return <main data-tone={props.tone}>{props.label}</main>;
+    });
+  `);
+  const App = module.App as Component<{ label: string; tone: string }>;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { label: "server", tone: "calm" });
+  const main = target.querySelector("main")!;
+  await expectRejection(hydrate(App, target, { label: "client", tone: "loud" }), "mismatch");
+  expect(target.querySelector("main")).toBe(main);
+  expect(main.getAttribute("data-tone")).toBe("calm");
+  expect(main.textContent).toBe("server");
+});
+
+test("validates SSR and hydration public interfaces and payloads", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() { return <main>Valid</main>; });
+  `);
+  const App = module.App as Component;
+  await expectRejection(renderToStringAsync(App, 1 as never), "props must be an object");
+  await expectRejection(
+    renderToStringAsync(App, undefined, null as never),
+    "options must be an object",
+  );
+  await Promise.all(
+    [-1, NaN, Infinity].map((timeoutMs) =>
+      expectRejection(renderToStringAsync(App, undefined, { timeoutMs }), "finite non-negative"),
+    ),
+  );
+
+  const target = document.createElement("div");
+  await expectRejection(hydrate(App, target), "payload is missing");
+  target.innerHTML =
+    '<script type="application/json" data-solix-hydration>{</script>' +
+    '<script type="application/json" data-solix-hydration>{}</script>';
+  await expectRejection(hydrate(App, target), "exactly once");
+  target.innerHTML = '<script type="application/json" data-solix-hydration>{</script>';
+  await expectRejection(hydrate(App, target), "payload JSON");
+  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+    version: 999,
+    templates: [],
+    async: [],
+    boundaries: [],
+  })}</script>`;
+  await expectRejection(hydrate(App, target), "protocol 999");
+  target.innerHTML = `<script type="application/json" data-solix-hydration>${serializeGraph({
+    version: 1,
+    templates: [],
+    async: [{ site: 1, status: "fulfilled", value: "bad" }],
+    boundaries: [],
+  })}</script>`;
+  await expectRejection(hydrate(App, target), "async payload");
+});
+
+test("reports the await site when replay data cannot be serialized", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(async function App() {
+      await Promise.resolve(() => undefined);
+      return <main>Rendered</main>;
+    });
+  `);
+  await expectRejection(renderToStringAsync(module.App as Component), "async site await:0");
+});
+
+test("SSR and hydration preserve Await, Suspense, and ErrorBoundary failures", async () => {
+  globalThis.integrationSetups.app = 0;
+  const module = await loadCompiled(`
+    import { Await, ErrorBoundary, Suspense } from "solix";
+    const SuspenseFailure = $component(async function SuspenseFailure() {
+      await Promise.reject(new Error("suspense failed"));
+      return <p>unexpected</p>;
+    });
+    export const App = $component(function App() {
+      return <main>
+        <Await $promise={(() => {
+          globalThis.integrationSetups.app += 1;
+          return Promise.reject(new Error("await failed"));
+        })()} error={error => <p id="await-error">{String(error)}</p>}>
+          {value => <p>{value}</p>}
+        </Await>
+        <Suspense fallback={<p>Loading</p>} error={error => <p id="suspense-error">{String(error)}</p>}>
+          <SuspenseFailure />
+        </Suspense>
+        <ErrorBoundary fallback={error => <p id="sync-error">{String(error)}</p>}>
+          {(() => { throw new Error("sync failed"); })()}
+        </ErrorBoundary>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 100 });
+  expect(target.querySelector("#await-error")?.textContent).toContain("await failed");
+  expect(target.querySelector("#suspense-error")?.textContent).toContain("suspense failed");
+  expect(target.querySelector("#sync-error")?.textContent).toContain("sync failed");
+  expect(globalThis.integrationSetups.app).toBe(1);
+  const awaitNode = target.querySelector("#await-error");
+  const suspenseNode = target.querySelector("#suspense-error");
+  const syncNode = target.querySelector("#sync-error");
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#await-error")).toBe(awaitNode);
+  expect(target.querySelector("#suspense-error")).toBe(suspenseNode);
+  expect(target.querySelector("#sync-error")).toBe(syncNode);
+  expect(globalThis.integrationSetups.app).toBe(1);
+  dispose();
+});
+
+test("nested SSR Suspense owns its timeout while its parent resolves", async () => {
+  globalThis.integrationPending = new Promise((resolve) => {
+    globalThis.integrationResolve = resolve;
+  });
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Pending = $component(async function Pending() {
+      const value = await globalThis.integrationPending;
+      return <p id="nested-ready">{value}</p>;
+    });
+    const Ready = $component(async function Ready() {
+      const value = await Promise.resolve("sibling");
+      return <p id="sibling">{value}</p>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p id="outer-loading">Outer</p>} timeoutMs={100}>
+        <Suspense fallback={<p id="inner-loading">Inner</p>} timeoutMs={0}><Pending /></Suspense>
+        <Ready />
+      </Suspense>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 100 });
+  expect(target.querySelector("#outer-loading")).toBeNull();
+  expect(target.querySelector("#inner-loading")?.textContent).toBe("Inner");
+  expect(target.querySelector("#sibling")?.textContent).toBe("sibling");
+  const inner = target.querySelector("#inner-loading");
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#inner-loading")).toBe(inner);
+  globalThis.integrationResolve("nested");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(target.querySelector("#nested-ready")?.textContent).toBe("nested");
+  dispose();
+});
+
+test("a timed-out outer boundary resumes nested boundary payloads", async () => {
+  globalThis.integrationPending = new Promise((resolve) => {
+    globalThis.integrationResolve = resolve;
+  });
+  const module = await loadCompiled(`
+    import { Suspense } from "solix";
+    const Ready = $component(async function Ready() {
+      const value = await Promise.resolve("nested ready");
+      return <p id="nested-resume-ready">{value}</p>;
+    });
+    const Pending = $component(async function Pending() {
+      const value = await globalThis.integrationPending;
+      return <p id="outer-resume-ready">{value}</p>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p id="outer-resume-fallback">Outer fallback</p>} timeoutMs={0}>
+        <Suspense fallback={<p>Nested fallback</p>}><Ready /></Suspense>
+        <Pending />
+      </Suspense>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 20 });
+  const fallback = target.querySelector("#outer-resume-fallback");
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#outer-resume-fallback")).toBe(fallback);
+  globalThis.integrationResolve("outer ready");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(target.querySelector("#nested-resume-ready")?.textContent).toBe("nested ready");
+  expect(target.querySelector("#outer-resume-ready")?.textContent).toBe("outer ready");
+  dispose();
 });

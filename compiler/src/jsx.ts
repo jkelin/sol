@@ -255,7 +255,7 @@ export function compileBuiltinElement(
     return;
   }
   if (kind === "Suspense") {
-    validateBuiltinAttributes(compiler, node, new Set(["fallback", "error"]));
+    validateBuiltinAttributes(compiler, node, new Set(["fallback", "error", "timeoutMs"]));
     const fallback = jsxFactoryFromAttribute(
       compiler,
       namedAttribute(compiler, node, "fallback", true)!,
@@ -266,7 +266,7 @@ export function compileBuiltinElement(
       mappedCode(
         compiler,
         node,
-        `__solix_suspense(__solix_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, ${fallback}, ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame);`,
+        `__solix_suspense(__solix_view.regions[${index}], ${blockFactory(compiler, childrenRoot(node), bindings, scope)}, ${fallback}, ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${suspenseTimeoutCode(compiler, node, scope)});`,
       ),
     );
     return;
@@ -324,7 +324,7 @@ export function compileBuiltinElement(
     mappedCode(
       compiler,
       node,
-      `__solix_await(__solix_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__solix_value, __solix_frame) => (${renderer})(__solix_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame);`,
+      `__solix_await(__solix_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__solix_value, __solix_frame) => (${renderer})(__solix_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __solix_cleanups, __solix_frame, ${JSON.stringify(`await:${compiler.nextAsyncId++}`)});`,
     ),
   );
 }
@@ -721,12 +721,12 @@ export function compileRenderableFactory(
   scope: Scope,
 ): string {
   if (t.isJSXElement(expression) || t.isJSXFragment(expression)) {
-    return `() => { ${compileBlockBody(compiler, expression, bindings, scope)} }`;
+    return `(__solix_frame) => { ${compileBlockBody(compiler, expression, bindings, scope)} }`;
   }
   if (t.isNullLiteral(expression) || t.isBooleanLiteral(expression, { value: false })) {
-    return "() => __solix_empty_block()";
+    return "(__solix_frame) => __solix_empty_block(__solix_frame)";
   }
-  return `() => __solix_value_block(() => (${expressionCode(expression, scope)}))`;
+  return `(__solix_frame) => __solix_value_block(() => (${expressionCode(expression, scope)}), __solix_frame)`;
 }
 
 export function compileExpressionChild(
@@ -755,7 +755,7 @@ export function compileExpressionChild(
       mappedCode(
         compiler,
         expression,
-        `__solix_list(__solix_view.regions[${index}], () => (${expressionCode(map.collection, scope)}), (__solix_value, __solix_position) => (${key}), (${itemReference}, ${indexReference}) => (${factory})(), __solix_cleanups);`,
+        `__solix_list(__solix_view.regions[${index}], () => (${expressionCode(map.collection, scope)}), (__solix_value, __solix_position) => (${key}), (${itemReference}, ${indexReference}, __solix_frame) => (${factory})(__solix_frame), __solix_cleanups, __solix_frame);`,
       ),
     );
     return;
@@ -767,7 +767,7 @@ export function compileExpressionChild(
       mappedCode(
         compiler,
         expression,
-        `__solix_when(__solix_view.regions[${index}], () => (${expressionCode(expression.test, scope)}), ${compileRenderableFactory(compiler, expression.consequent, bindings, scope)}, ${compileRenderableFactory(compiler, expression.alternate, bindings, scope)}, __solix_cleanups);`,
+        `__solix_when(__solix_view.regions[${index}], () => (${expressionCode(expression.test, scope)}), ${compileRenderableFactory(compiler, expression.consequent, bindings, scope)}, ${compileRenderableFactory(compiler, expression.alternate, bindings, scope)}, __solix_cleanups, __solix_frame);`,
       ),
     );
     return;
@@ -779,7 +779,7 @@ export function compileExpressionChild(
       mappedCode(
         compiler,
         expression,
-        `__solix_when(__solix_view.regions[${index}], () => (${expressionCode(expression.left, scope)}), ${compileRenderableFactory(compiler, expression.right, bindings, scope)}, () => __solix_empty_block(), __solix_cleanups);`,
+        `__solix_when(__solix_view.regions[${index}], () => (${expressionCode(expression.left, scope)}), ${compileRenderableFactory(compiler, expression.right, bindings, scope)}, (__solix_frame) => __solix_empty_block(__solix_frame), __solix_cleanups, __solix_frame);`,
       ),
     );
     return;
@@ -860,7 +860,7 @@ export function compileBlockBody(
   compileNode(compiler, root, context, bindings, scope);
   const templateIndex = compiler.templates.push(context.html.join("")) - 1;
   return `
-    const __solix_view = __solix_instantiate(__solix_template_${templateIndex});
+    const __solix_view = __solix_instantiate(__solix_template_${templateIndex}, __solix_frame);
     const __solix_cleanups: Array<() => void> = [];
     const __solix_lifecycle = __solix_block_lifecycle(__solix_frame);
     try {
@@ -871,4 +871,14 @@ export function compileBlockBody(
       throw __solix_render_error;
     }
   `;
+}
+
+function suspenseTimeoutCode(compiler: CompilerContext, node: t.JSXElement, scope: Scope): string {
+  const attribute = namedAttribute(compiler, node, "timeoutMs");
+  if (!attribute) return "undefined";
+  const value = staticAttributeValue(compiler, attribute);
+  if (value !== undefined) {
+    return codeFrame(compiler, attribute, "Suspense timeoutMs must be a number expression");
+  }
+  return expressionCode(expressionAttribute(compiler, attribute), scope);
 }

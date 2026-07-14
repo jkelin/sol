@@ -1,6 +1,6 @@
 # Solix runtime
 
-The `solix` package is the browser runtime and author-facing interface for Solix applications. It provides compiled components, fine-grained reactive state, DOM refs, portals, forms, cached queries, mutations, context, async rendering, transitions, typed routes, and the browser router.
+The `solix` package is the browser and server runtime plus author-facing interface for Solix applications. It provides compiled components, fine-grained reactive state, DOM refs, portals, forms, cached queries, mutations, context, async rendering, hydration, transitions, typed routes, and the browser router.
 
 ```tsx
 import { $component, mount } from "solix";
@@ -24,7 +24,13 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `forms.ts` implements form controllers, validation normalization, and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, and Suspense participation.
 - `components.ts` defines compiler-specialized component, context, async-boundary, route, and Link handles.
-- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, and render error propagation.
+- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, and error propagation.
+- `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
+- `hydration-rendering.ts` validates and claims server block, element, and region markers.
+- `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
+- `serialization.ts` encodes and decodes safe cyclic hydration-data graphs.
+- `ssr.ts` validates and implements `renderToStringAsync()`.
+- `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, parsing, URL generation, and route handles.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
@@ -44,3 +50,18 @@ The compiler turns JSX into static templates plus calls through `compiler-runtim
 `$query()` and `$mutation()` must be created during component setup. Queries default to an automatic initial fetch, zero milliseconds of freshness, five minutes of unused-cache retention, and initial-only Suspense participation. Polling is visible-document and mounted-observer only. Same-key calls deduplicate while in flight; manual refetch and mutation methods accept a call-options object before their inferred argument tuple and reject on failure.
 
 Public interfaces validate inputs before mutating runtime state. Keep that validation intact when moving implementation details between modules.
+
+## SSR and hydration
+
+`renderToStringAsync(component, props?, { timeoutMs? })` returns component markup plus one escaped
+`application/json` hydration payload. The default timeout is 5,000ms. Each `Suspense` may provide a
+server-only `timeoutMs` override; a timeout renders its fallback, while root async timeouts reject.
+
+`hydrate(component, target, props?)` returns a promise for an idempotent disposer. It requires the
+exact server output in `target`, replays settled compiler-owned awaits without invoking their thunks,
+and preserves the existing DOM on signature, marker, payload, or async-order mismatches. Timed-out
+entries execute in the browser after the fallback is claimed.
+
+The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
+URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or
+host-specific values, and the embedded JSON escapes script-closing characters.

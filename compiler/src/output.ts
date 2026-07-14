@@ -13,7 +13,7 @@ export function emitCompilation(state: CompilationState): CompileResult {
   const templates = compiler.templates
     .map(
       (html, index) =>
-        `const __solix_template_${index} = __solix_template(\`${escapeTemplate(html)}\`);`,
+        `const __solix_template_${index} = __solix_template(\`${escapeTemplate(html)}\`, ${JSON.stringify(templateSignature(html))});`,
     )
     .join("\n");
   transformedSource.prepend(`${RUNTIME_IMPORT}\n${templates}\n`);
@@ -28,4 +28,13 @@ export function emitCompilation(state: CompilationState): CompileResult {
     code: transformed,
     map: generatedSourceMap(transformedSource, transformed, compiler),
   };
+}
+
+function templateSignature(html: string): string {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < html.length; index += 1) {
+    hash ^= html.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `t${(hash >>> 0).toString(36)}`;
 }

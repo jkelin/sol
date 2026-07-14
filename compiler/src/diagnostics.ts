@@ -24,6 +24,7 @@ export function generatedSourceMap(
   transformedSource: MagicString,
   transformed: string,
   compiler: CompilerContext,
+  sourceContent = compiler.source,
 ): SourceMap {
   const decoded = transformedSource.generateDecodedMap({
     hires: true,
@@ -43,7 +44,7 @@ export function generatedSourceMap(
   }
   return new SourceMap({
     ...decoded,
-    sourcesContent: (decoded.sourcesContent ?? [compiler.source]).map((content) => content ?? ""),
+    sourcesContent: (decoded.sourcesContent ?? [sourceContent]).map(() => sourceContent),
   });
 }
 

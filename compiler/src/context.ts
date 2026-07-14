@@ -51,6 +51,7 @@ export interface CompilerContext {
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;
   nextAsyncId: number;
+  target: "client" | "server";
 }
 
 export interface CompilationState {
@@ -60,6 +61,8 @@ export interface CompilationState {
   readonly compiledJsxRanges: Array<{ start: number; end: number }>;
   readonly componentCallRanges: Set<string>;
   readonly routeCallRanges: Set<string>;
+  readonly serverCallRanges: Set<string>;
+  readonly clientServerSourceRanges: Array<{ start: number; end: number }>;
 }
 
 export function nextAsyncSite(compiler: CompilerContext): string {

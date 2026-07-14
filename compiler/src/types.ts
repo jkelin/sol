@@ -4,3 +4,7 @@ export interface CompileResult {
   code: string;
   map: SourceMap | null;
 }
+
+export interface CompileOptions {
+  readonly target?: "client" | "server";
+}

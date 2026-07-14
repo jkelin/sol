@@ -26,17 +26,6 @@ const server = Bun.serve({
       const file = Bun.file(asset);
       if (pathname !== "/" && (await file.exists())) return new Response(file);
     }
-    if (!isRead) {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: { allow: "GET, HEAD" },
-      });
-    }
-    const accept = request.headers.get("accept") ?? "";
-    const acceptsDocument =
-      accept.includes("text/html") ||
-      ((!accept || accept.includes("*/*")) && !/\/[^/]*\.[^/]+$/.test(pathname));
-    if (!acceptsDocument) return new Response("Not Found", { status: 404 });
     return handle(request, { template });
   },
 });

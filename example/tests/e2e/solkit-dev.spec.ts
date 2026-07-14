@@ -1,3 +1,4 @@
+// oxlint-disable eslint/no-underscore-dangle -- __solix is the documented development global.
 import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
@@ -49,6 +50,18 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page.getByTestId("query-loading")).toBeHidden();
   await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
+  await page.getByTestId("query-refetch").click();
+  await expect(page.getByRole("heading", { name: "Page 2" })).toBeVisible();
+  await page.getByTestId("query-mutate").click();
+  await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
+  const noteResponse = await fetch("http://127.0.0.1:4175/api/notes/1");
+  expect(noteResponse.status).toBe(200);
+  expect(await noteResponse.json()).toMatchObject({ id: 1 });
+  const requestNames = await page.evaluate(() =>
+    globalThis.__solix?.requests.map((request) => request.name).filter(Boolean),
+  );
+  expect(requestNames).toContain("notes");
+  expect(requestNames).toContain("create-note");
   expect(errors).toEqual([]);
 
   await page.goto("http://127.0.0.1:4175/async-context");

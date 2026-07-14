@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "start": "vite preview",
+    "build": "solkit build",
+    "start": "bun dist/server/index.mjs",
     "test": "bun test tests/markdown.test.ts tests/ui.test.ts",
     "test:e2e": "bun run build && playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "solix": "workspace:*",
+    "solkit": "workspace:*",
     "valibot": "^1.4.2"
   },
   "devDependencies": {

@@ -1,9 +1,9 @@
 import { $component, Route } from "solix";
 import "./Shell.css";
-import { blogDetailRoute } from "./blog-detail.route.tsx";
-import { asyncContextRoute } from "./async-context.route.tsx";
-import { todoRoute } from "./todo.route.tsx";
-import { queriesRoute } from "./queries.route.tsx";
+import { blogDetailRoute } from "./blog-detail.sol.tsx";
+import { asyncContextRoute } from "./async-context.sol.tsx";
+import { todoRoute } from "./todo.sol.tsx";
+import { queriesRoute } from "./queries.sol.tsx";
 
 const Header = $component(function Header() {
   return (

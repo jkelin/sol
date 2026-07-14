@@ -5,8 +5,8 @@ import { generate, traverse } from "./ast.ts";
 import type { CompilerContext, Scope, TemplateContext } from "./context.ts";
 import { codeFrame } from "./diagnostics.ts";
 
-export function isRouteFilename(filename: string): boolean {
-  return /\.route\.[jt]sx?$/i.test(filename.replaceAll("\\", "/"));
+export function isSolFilename(filename: string): boolean {
+  return /\.sol\.tsx?$/i.test(filename.replaceAll("\\", "/"));
 }
 
 export function normalizeJsxText(value: string): string {

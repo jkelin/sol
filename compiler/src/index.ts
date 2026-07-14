@@ -1,2 +1,2 @@
 export { compile } from "./compile.ts";
-export type { CompileResult } from "./types.ts";
+export type { CompileOptions, CompileResult } from "./types.ts";

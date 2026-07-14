@@ -43,16 +43,26 @@ function validateOptions(options: unknown): asserts options is SolkitOptions {
   if (unexpected) throw new TypeError(`Unknown solkit() option ${unexpected}`);
 }
 
-function requestFromNode(request: IncomingMessage): Request {
+async function requestFromNode(request: IncomingMessage): Promise<Request> {
   const host = request.headers.host ?? "localhost";
   const headers = new Headers();
   for (const [name, value] of Object.entries(request.headers)) {
     if (Array.isArray(value)) for (const item of value) headers.append(name, item);
     else if (value !== undefined) headers.set(name, value);
   }
+  const method = request.method ?? "GET";
+  let body: ArrayBuffer | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    const collected = Buffer.concat(await Array.fromAsync(request));
+    body = collected.buffer.slice(
+      collected.byteOffset,
+      collected.byteOffset + collected.byteLength,
+    ) as ArrayBuffer;
+  }
   return new Request(new URL(request.url ?? "/", `http://${host}`), {
-    method: request.method,
+    method,
     headers,
+    body,
   });
 }
 
@@ -60,15 +70,6 @@ async function sendResponse(response: Response, target: ServerResponse): Promise
   target.statusCode = response.status;
   response.headers.forEach((value, name) => target.setHeader(name, value));
   target.end(response.body ? Buffer.from(await response.arrayBuffer()) : undefined);
-}
-
-function acceptsHtml(request: IncomingMessage): boolean {
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
-  const accept = request.headers.accept ?? "";
-  if (accept.includes("text/html")) return true;
-  if (accept && !accept.includes("*/*")) return false;
-  const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-  return !/\/[^/]*\.[^/]+$/.test(pathname);
 }
 
 async function collectDevStyles(server: ViteDevServer): Promise<string[]> {
@@ -161,8 +162,9 @@ document.documentElement.dataset.solkitHydrated = "true";`;
       }
       if (id === RESOLVED_SERVER_ENTRY) {
         return `import { createRequestHandler } from "solkit";
+import endpoints from "virtual:solix/server-endpoints";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
-export const handle = createRequestHandler(Root);`;
+export const handle = createRequestHandler(Root, endpoints);`;
       }
       return null;
     },
@@ -176,7 +178,6 @@ export const handle = createRequestHandler(Root);`;
     configureServer(server: ViteDevServer) {
       return () => {
         server.middlewares.use((incoming, outgoing, next) => {
-          if (!acceptsHtml(incoming)) return next();
           void (async () => {
             const source = await readFile(join(config.root, "index.html"), "utf8");
             const transformedTemplate = await server.transformIndexHtml(
@@ -191,7 +192,7 @@ export const handle = createRequestHandler(Root);`;
               throw new TypeError("Solkit server entry did not export a request handler");
             }
             await sendResponse(
-              await module.handle(requestFromNode(incoming), { template }),
+              await module.handle(await requestFromNode(incoming), { template, development: true }),
               outgoing,
             );
           })().catch((error: unknown) => {

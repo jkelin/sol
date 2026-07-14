@@ -1385,6 +1385,27 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
   expect(html).toContain("data-solix-hydration");
 });
 
+test("server rendering keeps parent region slots distinct from nested region markers", async () => {
+  const module = await loadCompiled(`
+    const First = $component(function First() {
+      const left = "left";
+      const right = "right";
+      return <section><span>{left}</span><span>{right}</span></section>;
+    });
+    const Second = $component(function Second() { return <p id="second">Second</p>; });
+    export const App = $component(function App() { return <main><First /><Second /></main>; });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expect(target.querySelector("#second")?.textContent).toBe("Second");
+  expect(target.querySelector("section")?.textContent).toBe("leftright");
+  const second = target.querySelector("#second");
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#second")).toBe(second);
+  dispose();
+});
+
 test("server renders a timed-out Suspense fallback and rejects root timeouts", async () => {
   const module = await loadCompiled(`
     import { ErrorBoundary, Suspense } from "solix";

@@ -21,7 +21,17 @@ export function emitCompilation(state: CompilationState): CompileResult {
       return `const __solix_template_${index} = __solix_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
     })
     .join("\n");
-  transformedSource.prepend(`${RUNTIME_IMPORT}\n${templates}\n`);
+  const serverRuntimeImport =
+    state.serverCallRanges.size === 0
+      ? ""
+      : compiler.target === "server"
+        ? `import { httpRouteServer as __solix_http_route_server, rpcMutationServer as __solix_rpc_mutation_server, rpcQueryServer as __solix_rpc_query_server } from "solix/compiler-runtime";`
+        : `import { httpRouteClient as __solix_http_route_client, rpcMutationClient as __solix_rpc_mutation_client, rpcQueryClient as __solix_rpc_query_client } from "solix/compiler-runtime";`;
+  transformedSource.prepend(
+    serverRuntimeImport
+      ? `${RUNTIME_IMPORT}\n${serverRuntimeImport}\n${templates}\n`
+      : `${RUNTIME_IMPORT}\n${templates}\n`,
+  );
   const transformed = transformedSource.toString();
 
   parse(transformed, {
@@ -31,8 +41,26 @@ export function emitCompilation(state: CompilationState): CompileResult {
   });
   return {
     code: transformed,
-    map: generatedSourceMap(transformedSource, transformed, compiler),
+    map: generatedSourceMap(
+      transformedSource,
+      transformed,
+      compiler,
+      redactClientServerSource(state),
+    ),
   };
+}
+
+function redactClientServerSource(state: CompilationState): string {
+  if (state.compiler.target !== "client" || state.clientServerSourceRanges.length === 0) {
+    return state.compiler.source;
+  }
+  const characters = state.compiler.source.split("");
+  for (const { start, end } of state.clientServerSourceRanges) {
+    for (let index = start; index < end; index += 1) {
+      if (characters[index] !== "\n" && characters[index] !== "\r") characters[index] = " ";
+    }
+  }
+  return characters.join("");
 }
 
 function identityHash(value: string, prefix: string): string {

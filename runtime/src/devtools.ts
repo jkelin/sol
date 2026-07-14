@@ -20,6 +20,7 @@ export interface SolixRequestSnapshot {
   readonly id: number;
   readonly kind: "loader" | "query" | "mutation";
   readonly key?: string;
+  readonly name?: string;
   readonly status: Status;
   readonly args?: unknown;
   readonly data?: unknown;
@@ -270,12 +271,18 @@ class DevtoolsRegistry implements DevtoolsHook {
     );
   }
 
-  queryCreated(key: string, args: readonly unknown[], source?: SourceMetadata): number {
+  queryCreated(
+    key: string,
+    args: readonly unknown[],
+    source?: SourceMetadata,
+    name?: string,
+  ): number {
     const id = this.nextId++;
     this.requests.set(id, {
       id,
       kind: "query",
       key,
+      name,
       args: snapshotValue(args),
       status: "idle",
       source,
@@ -293,9 +300,9 @@ class DevtoolsRegistry implements DevtoolsHook {
     if (this.requests.delete(id)) this.changed();
   }
 
-  mutationCreated(source?: SourceMetadata): number {
+  mutationCreated(source?: SourceMetadata, name?: string): number {
     const id = this.nextId++;
-    this.requests.set(id, { id, kind: "mutation", status: "idle", source });
+    this.requests.set(id, { id, kind: "mutation", name, status: "idle", source });
     this.pruneRequests();
     this.changed();
     return id;
@@ -620,7 +627,8 @@ class DevtoolsPanel {
         createText(
           "strong",
           "record-title",
-          request.kind === "mutation" ? "mutation" : (request.key ?? request.kind),
+          request.name ??
+            (request.kind === "mutation" ? "mutation" : (request.key ?? request.kind)),
         ),
         createText(
           "small",
@@ -648,7 +656,7 @@ class DevtoolsPanel {
       createText(
         "strong",
         "detail-title",
-        request.kind === "mutation" ? "mutation" : (request.key ?? request.kind),
+        request.name ?? (request.kind === "mutation" ? "mutation" : (request.key ?? request.kind)),
       ),
       createText(
         "small",
@@ -668,6 +676,7 @@ class DevtoolsPanel {
         id: request.id,
         kind: request.kind,
         key: request.key,
+        name: request.name,
         status: request.status,
         duration: request.duration,
       }),
@@ -710,7 +719,7 @@ class DevtoolsPanel {
         createText("strong", "record-title", path),
         createText(
           "small",
-          path === activePath ? "route-active" : "record-meta",
+          `route-matcher ${path === activePath ? "route-active" : "record-meta"}`,
           path === activePath ? "ACTIVE" : String(route.pattern ?? ""),
         ),
       );
@@ -995,7 +1004,7 @@ main { overflow:auto; padding:8px; background:var(--canvas); scrollbar-color:var
 .tree-toggle,.tree-node { height:27px; border:0; border-radius:4px; background:transparent; }.tree-toggle { padding:0; color:var(--muted); font-size:10px; cursor:pointer; }.tree-toggle.leaf { opacity:.28; cursor:default; }.tree-node { min-width:0; overflow:hidden; padding:0 6px; text-align:left; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-size:11px; cursor:pointer; }.tree-node:hover { background:var(--surface); }.tree-node.selected { background:var(--raised); color:var(--violet); }.tree-node:focus-visible,.tree-toggle:focus-visible { outline:1px solid var(--violet); outline-offset:-1px; }
 .detail-pane,.component-detail-pane { min-width:0; overflow:auto; padding:10px; background:var(--canvas); }.detail-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 12px; padding:4px 2px 10px; border-bottom:1px solid var(--line); }.detail-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; }.detail-source { grid-column:1; overflow:hidden; color:var(--muted); font-size:10px; text-overflow:ellipsis; white-space:nowrap; }.detail-count,.detail-heading>.status { grid-column:2; grid-row:1/3; align-self:center; color:var(--muted); font-size:9px; }
 .record,.form-record { width:100%; min-width:0; display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:4px 8px; border:1px solid transparent; border-bottom-color:var(--line); border-radius:5px; background:transparent; padding:9px 7px; text-align:left; cursor:pointer; }.record:hover,.record.selected { background:var(--surface); border-color:var(--line); }.record.selected { border-left-color:var(--violet); }.form-record { cursor:default; }.record-id,.record-detail,.record-meta { color:var(--muted); font-size:10px; }.record-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }.record-meta { grid-column:2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.record-detail { grid-column:2; overflow:hidden; color:var(--muted); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }.status { min-width:58px; border:1px solid currentColor; border-radius:3px; padding:2px 5px; text-align:center; text-transform:uppercase; font-size:8px; }.status.pending { color:var(--amber); }.status.error { color:var(--red); }.status.success { color:var(--green); }.status.idle,.status.cancelled { color:var(--muted); }
-.route-record { width:100%; min-width:0; display:grid; gap:4px; border:1px solid transparent; border-bottom-color:var(--line); border-radius:5px; background:transparent; padding:9px 8px; text-align:left; cursor:pointer; }.route-record:hover,.route-record.selected { border-color:var(--line); background:var(--surface); }.route-record.selected { border-left-color:var(--violet); }.route-active { color:var(--green); font-size:9px; letter-spacing:.08em; }
+.route-record { width:100%; min-width:0; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:center; gap:4px 8px; border:1px solid transparent; border-bottom-color:var(--line); border-radius:5px; background:transparent; padding:9px 8px; text-align:left; cursor:pointer; }.route-record:hover,.route-record.selected { border-color:var(--line); background:var(--surface); }.route-record.selected { border-left-color:var(--violet); }.route-matcher { min-width:0; overflow:hidden; text-align:right; text-overflow:ellipsis; white-space:nowrap; }.route-active { color:var(--green); font-size:9px; letter-spacing:.08em; }
 .object { grid-column:1/-1; min-width:0; margin-top:6px; border:1px solid var(--line); border-radius:5px; background:var(--surface); overflow:hidden; }.object-label { display:block; padding:6px 8px; border-bottom:1px solid var(--line); color:var(--muted); font-size:9px; letter-spacing:.08em; }.object pre { max-height:220px; overflow:auto; margin:0; padding:9px; color:#d8d4e3; font:10px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; tab-size:2; white-space:pre-wrap; }
 .form-record { margin-bottom:6px; border-color:var(--line); background:var(--surface); cursor:default; }
 @keyframes pulse { 50% { opacity:.35; transform:scale(.75); } }

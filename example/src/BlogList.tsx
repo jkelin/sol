@@ -1,5 +1,5 @@
 import { $component, Link } from "solix";
-import { blogDetailRoute } from "./blog-detail.route.tsx";
+import { blogDetailRoute } from "./blog-detail.sol.tsx";
 import type { BlogEntry } from "./blog-store.ts";
 
 export const BlogList = $component(function BlogList(props: { entries: BlogEntry[] }) {

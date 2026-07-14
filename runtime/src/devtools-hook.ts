@@ -19,10 +19,15 @@ export interface DevtoolsHook {
   componentDisposed(id: number): void;
   loaderCreated(key: string, args: readonly unknown[]): number;
   loaderUpdated(id: number, state: object): void;
-  queryCreated(key: string, args: readonly unknown[], source?: SourceMetadata): number;
+  queryCreated(
+    key: string,
+    args: readonly unknown[],
+    source?: SourceMetadata,
+    name?: string,
+  ): number;
   queryUpdated(id: number, state: object): void;
   queryDisposed(id: number): void;
-  mutationCreated(source?: SourceMetadata): number;
+  mutationCreated(source?: SourceMetadata, name?: string): number;
   mutationUpdated(id: number, state: object): void;
   mutationDisposed(id: number): void;
   formCreated(strategy: string, state: object): number;
@@ -74,8 +79,9 @@ export function devtoolsQueryCreated(
   key: string,
   args: readonly unknown[],
   source?: SourceMetadata,
+  name?: string,
 ): number {
-  return hook()?.queryCreated(key, args, source) ?? 0;
+  return hook()?.queryCreated(key, args, source, name) ?? 0;
 }
 
 export function devtoolsQueryUpdated(id: number, state: object): void {
@@ -86,8 +92,8 @@ export function devtoolsQueryDisposed(id: number): void {
   if (id) hook()?.queryDisposed(id);
 }
 
-export function devtoolsMutationCreated(source?: SourceMetadata): number {
-  return hook()?.mutationCreated(source) ?? 0;
+export function devtoolsMutationCreated(source?: SourceMetadata, name?: string): number {
+  return hook()?.mutationCreated(source, name) ?? 0;
 }
 
 export function devtoolsMutationUpdated(id: number, state: object): void {

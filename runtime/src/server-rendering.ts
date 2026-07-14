@@ -73,6 +73,10 @@ function elementSlot(index: number): string {
   return `\0solix:element:${index}\0`;
 }
 
+function regionSlot(index: number): string {
+  return `\0solix:region:${index}\0`;
+}
+
 function prepareElementSlots(html: string, elements: ServerElement[]): string {
   const found = new Set<number>();
   let result = "";
@@ -250,6 +254,11 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
     for (const region of fragment.regions) {
       if (!region) continue;
       const marker = `<!--solix:s:${region.index}--><!--solix:e:${region.index}-->`;
+      if (!html.includes(marker)) throw new Error(`Missing server region metadata ${region.index}`);
+      html = html.replace(marker, regionSlot(region.index));
+    }
+    for (const region of fragment.regions) {
+      if (!region) continue;
       const content = region.blocks
         .map((block) => {
           if (!isServerBlock(block)) throw new Error("Invalid server-rendered block");
@@ -257,7 +266,7 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
         })
         .join("");
       html = html.replace(
-        marker,
+        regionSlot(region.index),
         `<!--solix:s:${region.index}-->${content}<!--solix:e:${region.index}-->`,
       );
     }

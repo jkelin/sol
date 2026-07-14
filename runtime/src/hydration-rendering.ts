@@ -248,7 +248,11 @@ export function instantiateHydrated(
   session.claimTemplate(definition.signature);
   const start = claim.cursor;
   if (!isComment(start, `solix:block:start:${definition.signature}`)) {
-    mismatch(`expected block signature ${definition.signature}`);
+    mismatch(
+      `expected block signature ${definition.signature}, received ${
+        start?.nodeType === Node.COMMENT_NODE ? (start as Comment).data : (start?.nodeName ?? "end")
+      }`,
+    );
   }
   const end = matchingEnd(start, "solix:block");
   definition.element ??= document.createElement("template");

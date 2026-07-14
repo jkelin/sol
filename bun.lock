@@ -94,6 +94,7 @@
       "version": "0.0.0",
       "dependencies": {
         "solix": "workspace:*",
+        "solkit": "workspace:*",
         "valibot": "^1.4.2",
       },
       "devDependencies": {

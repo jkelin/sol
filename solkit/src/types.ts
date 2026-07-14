@@ -1,7 +1,9 @@
 import type { Component } from "solix";
+import type { ServerEndpoint } from "solix/compiler-runtime";
 
 export interface RenderContext {
   readonly template: string;
+  readonly development?: boolean;
 }
 
 export type RequestHandler = (request: Request, context: RenderContext) => Promise<Response>;
@@ -23,3 +25,4 @@ export interface SolkitOptions {
 }
 
 export type SolkitRoot = Component;
+export type { ServerEndpoint };

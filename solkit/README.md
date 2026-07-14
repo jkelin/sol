@@ -3,7 +3,10 @@
 `solkit` is the backend runtime and Vite integration for full-stack Solix applications. It renders
 the same compiled root component on the server, injects managed `Head` output into the document,
 and hydrates the server tree in the browser. Development requests run through Vite middleware;
-production builds emit separate client and SSR bundles plus a Bun or Node.js launcher.
+production builds emit separate client and SSR bundles plus a Bun or Node.js launcher. The same
+request pipeline dispatches compiled RPC and HTTP endpoints before document rendering.
+Named queries and mutations share the JSON `POST /api/rpc/:name` protocol; lower-level HTTP routes
+retain their explicitly declared methods and body modes.
 
 ## Configure an application
 
@@ -55,10 +58,11 @@ modules is therefore available for first paint. Once Vite has evaluated the clie
 removes those temporary links and Vite owns the styles and their hot updates.
 
 `nodeAdapter()` from `solkit/adapters/node` emits the equivalent Node.js HTTP launcher. Both
-adapters serve built static files from `dist/client` and send HTML-accepting GET or HEAD requests
-through the SSR handler. Extensionless routes with an absent or wildcard `Accept` header also count
-as document requests. Missing non-document assets return 404, and other methods return 405 with an
-`Allow` header. Route state and query caches are isolated by request. Settled query data, async
+adapters serve built static files from `dist/client`, dispatch `.sol` RPC and HTTP endpoints, and
+send HTML-accepting GET or HEAD requests through the SSR renderer. Extensionless routes with an
+absent or wildcard `Accept` header also count as document requests. Missing endpoints and
+non-document assets return 404; method mismatches on a known HTTP path return 405 with an `Allow`
+header. Route state and query caches are isolated by request. Settled query data, async
 components, `Await`, Suspense state, managed head nodes, and hydration metadata cross the server to
 the browser through the Solix hydration protocol.
 
@@ -72,10 +76,11 @@ assets. Public adapter implementations should validate these paths before writin
 
 ## Low-level request handler
 
-`createRequestHandler(root)` exposes the Fetch-style SSR handler used by the Vite integration and
-generated launchers. `root` is the compiled application component. The returned `RequestHandler`
+`createRequestHandler(root, endpoints?)` exposes the Fetch-style handler used by the Vite integration and
+generated launchers. `root` is the compiled application component and `endpoints` is the generated
+server manifest. The returned `RequestHandler`
 accepts a standard `Request` plus a `RenderContext` containing the full
-HTML `template`; it handles GET and HEAD document requests and returns a standard `Response`.
+HTML `template`; it dispatches endpoints, handles GET and HEAD document requests, and returns a standard `Response`.
 Templates must contain exactly one `<!--solkit-head-->` outlet and one `<!--solkit-body-->` outlet.
 The handler forwards the request URL into the Solix renderer, replaces both outlets, and preserves
 the resulting hydration payload for the browser entry.
@@ -91,7 +96,8 @@ const response = await handle(request, { template });
 
 ## Source files
 
-- `index.ts` validates document requests and templates, renders the root, and composes full HTML.
+- `index.ts` dispatches compiled endpoints, validates document requests and templates, renders the
+  root, and composes full HTML.
 - `types.ts` defines the request handler, Vite options, adapter, and build context contracts.
 - `vite.ts` provides virtual browser/server entries, Vite development middleware, build targets,
   hydration readiness, and adapter handoff.

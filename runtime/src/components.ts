@@ -9,6 +9,14 @@ import type {
 import { CONTEXT } from "./symbols.ts";
 import type { RenderFrame } from "./rendering.ts";
 import type { JSX } from "./jsx-runtime.ts";
+import type {
+  HttpRouteConfig,
+  HttpRouteDefinition,
+  HttpRouteInput,
+  RpcArgs,
+  RpcConfig,
+  RpcFunction,
+} from "./server-functions.ts";
 
 export type Component<Props extends object = Record<string, never>> = (
   props: Readonly<Props>,
@@ -138,7 +146,36 @@ export function $route<
   Values extends RouteValues = DefaultRouteValues<Path>,
 >(_config: RouteConfig<Path, Values>, _candidate: Component): RouteDefinition<Path, Values> {
   throw new Error(
-    "$route() reached runtime. Define exported routes in a *.route.js, .jsx, .ts, or .tsx file and add solix() to Vite.",
+    "$route() reached runtime. Define exported routes in a *.sol.ts or *.sol.tsx file and add solix() to Vite.",
+  );
+}
+
+export function $rpcQuery<Input extends RpcArgs, Parsed extends RpcArgs, Data>(
+  _name: string,
+  _config: RpcConfig<Input, Parsed>,
+  _handler: (...args: Parsed) => PromiseLike<Data>,
+): RpcFunction<Input, Data> {
+  throw new Error(
+    "$rpcQuery() reached runtime. Define it as an exported constant in a *.sol.ts or *.sol.tsx file.",
+  );
+}
+
+export function $rpcMutation<Input extends RpcArgs, Parsed extends RpcArgs, Data>(
+  _name: string,
+  _config: RpcConfig<Input, Parsed>,
+  _handler: (...args: Parsed) => PromiseLike<Data>,
+): RpcFunction<Input, Data> {
+  throw new Error(
+    "$rpcMutation() reached runtime. Define it as an exported constant in a *.sol.ts or *.sol.tsx file.",
+  );
+}
+
+export function $httpRoute<Input extends HttpRouteInput, Parsed>(
+  _config: HttpRouteConfig<Input, Parsed>,
+  _handler: (input: Parsed, request: Request) => Response | PromiseLike<Response>,
+): HttpRouteDefinition {
+  throw new Error(
+    "$httpRoute() reached runtime. Define it as an exported constant in a *.sol.ts or *.sol.tsx file.",
   );
 }
 

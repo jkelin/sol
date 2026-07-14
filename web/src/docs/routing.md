@@ -5,7 +5,7 @@ section: Systems
 order: 6
 ---
 
-Routes are exported top-level constants in files ending with `.route.js`, `.route.jsx`, `.route.ts`, or `.route.tsx`. The Vite plugin discovers them below the project root.
+Routes are exported top-level constants in files ending with `.sol.ts` or `.sol.tsx`. The Vite plugin discovers them below the project root, alongside server RPC and HTTP declarations.
 
 ## Declare a typed route
 

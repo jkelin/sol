@@ -281,9 +281,10 @@ async function renderNodeAsync(node: Content, state: RenderState): Promise<strin
   if (node.type === "code") return renderCode(node, state);
   const children = async (): Promise<string> => {
     if (!("children" in node) || !Array.isArray(node.children)) return "";
-    return (
-      await Promise.all(node.children.map((child) => renderNodeAsync(child as Content, state)))
-    ).join("");
+    let rendered = "";
+    // oxlint-disable-next-line no-await-in-loop -- shared declaration indexes must follow source order
+    for (const child of node.children) rendered += await renderNodeAsync(child as Content, state);
+    return rendered;
   };
   switch (node.type) {
     case "paragraph":
@@ -420,9 +421,9 @@ export async function markdownModule(
   const parsed = parseDocument(source, file);
   const tree = unified().use(remarkParse).use(remarkGfm).parse(parsed.body) as Root;
   const state: RenderState = { file, liveBlocks: [], moduleDeclarations: [], nextCodeBlock: 0 };
-  const body = (await Promise.all(tree.children.map((node) => renderNodeAsync(node, state)))).join(
-    "",
-  );
+  let body = "";
+  // oxlint-disable-next-line no-await-in-loop -- shared live-example indexes must be deterministic
+  for (const node of tree.children) body += await renderNodeAsync(node, state);
   const imports = mergeImports(state.liveBlocks, file);
   const liveSources = state.liveBlocks.map((block) => block.moduleBody).join("\n");
   const uiModule = `/@fs/${join(dirname(file), "..", "components", "ui", "index.ts").replaceAll("\\", "/")}`;

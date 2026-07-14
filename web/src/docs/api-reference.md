@@ -39,6 +39,14 @@ order: 10
 - Mutation controllers expose `data`, `lastData`, `error`, `isMutating`, `isFailed`, and `mutate(options, ...args)`.
 - `QueryKey`, config, controller, Suspense, and per-call option types are exported from `solix`.
 
+## Server declarations
+
+- `$rpcQuery(name, { schema }, handler)` declares a validated JSON POST RPC whose schema parses the full argument tuple.
+- `$rpcMutation(name, { schema }, handler)` declares the corresponding POST RPC.
+- `$httpRoute({ method, path, schema, body? }, handler)` declares a Fetch endpoint with decoded path parameters, query values, headers, and JSON/text or byte body input.
+- Server declarations and `$route()` must be exported top-level constants in `.sol.ts` or `.sol.tsx` files.
+- HTTP handlers receive the schema output and original `Request`, and must return a `Response`.
+
 ## Routing
 
 - `$route(config, component)` declares a compile-time route handle.
@@ -60,9 +68,9 @@ order: 10
 
 ## Compiler and Vite
 
-- `compile(source, filename)` from `@solix/compiler` validates and transforms one Solix TSX module. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
-- `CompileResult` is the exported result type for that `{ code, map }` object.
-- `solix()` from `@solix/compiler/vite` returns the Vite plugin that compiles TSX, discovers typed route modules, rejects colliding route matchers, and maintains the virtual route manifest during development.
+- `compile(source, filename, { target? })` from `@solix/compiler` validates and transforms one Solix module for a client or server target. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
+- `CompileOptions` and `CompileResult` describe that boundary.
+- `solix()` from `@solix/compiler/vite` compiles TSX, discovers `.sol` UI and server declarations, rejects colliding route and endpoint matchers, and maintains both virtual manifests during development.
 - Place `solix()` before other JSX transforms in the Vite plugin list. The website additionally places its Markdown compiler before `solix()` so generated examples use the same compiler path.
 
 ## Validation behavior

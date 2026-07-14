@@ -1,6 +1,9 @@
 export {
   $component,
   $context,
+  $httpRoute,
+  $rpcMutation,
+  $rpcQuery,
   $route,
   Await,
   ErrorBoundary,
@@ -14,6 +17,15 @@ export {
   type HeadProps,
   type SuspenseProps,
 } from "./components.ts";
+export type {
+  HttpMethod,
+  HttpRouteConfig,
+  HttpRouteDefinition,
+  HttpRouteInput,
+  RpcArgs,
+  RpcConfig,
+  RpcFunction,
+} from "./server-functions.ts";
 export type { ClassValue } from "./dom.ts";
 export { GlobalPortal, Portal, type GlobalPortalProps, type PortalProps } from "./portals.ts";
 export { createRef, type Ref, type RefCallback, type RefObject } from "./refs.ts";

@@ -1,6 +1,6 @@
 import { $component, $route } from "solix";
 import { BlogList } from "./BlogList.tsx";
-import { blogDetailRoute } from "./blog-detail.route.tsx";
+import { blogDetailRoute } from "./blog-detail.sol.tsx";
 import { blogEntries, createBlogEntry } from "./blog-store.ts";
 import { pageTransition } from "./transitions.ts";
 

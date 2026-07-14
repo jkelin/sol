@@ -1,4 +1,12 @@
-import { $component, $form, $route } from "solix";
+import {
+  $component,
+  $form,
+  $httpRoute,
+  $query,
+  $route,
+  $rpcQuery,
+  type HttpRouteInput,
+} from "solix";
 import * as v from "valibot";
 import { counterLines, formLines, listLines } from "virtual:solix-code-tokens";
 import { counterSource, formSource, listSource } from "./code-samples.ts";
@@ -10,10 +18,28 @@ import {
   type ExampleMode,
 } from "./components/ui/index.ts";
 
+export const websiteMessage = $rpcQuery("website-message", { schema: v.tuple([]) }, async () => ({
+  message: "Validated on the Solix server.",
+}));
+
+export const websiteHealth = $httpRoute(
+  {
+    method: "GET",
+    path: "/api/health",
+    schema: (input: HttpRouteInput) => input,
+  },
+  async () => Response.json({ ok: true, framework: "solix" }),
+);
+
 const CounterExample = $component(function CounterExample() {
   let mode = "both" as ExampleMode;
   let count = 0;
   const doubled = count * 2;
+  const serverMessage = $query({
+    queryKey: ["website", "message"],
+    query: websiteMessage,
+    enabled: false,
+  });
 
   return (
     <article class="border-[3px] border-ink bg-paper shadow-block" data-testid="counter-example">
@@ -44,6 +70,14 @@ const CounterExample = $component(function CounterExample() {
               <Button label="−" variant="outline" disabled={count === 0} onClick={() => count--} />
               <Button label="Add one" variant="solar" onClick={() => count++} />
             </div>
+            <button
+              type="button"
+              class="mt-4 font-mono text-xs font-bold uppercase text-solar underline"
+              onClick={() => void serverMessage.refetch({ suspense: false })}
+            >
+              {serverMessage.isFetching ? "Calling server…" : "Call named RPC"}
+            </button>
+            {serverMessage.data && <p class="mt-2 text-sm">{serverMessage.data.message}</p>}
           </div>
         </div>
       </div>

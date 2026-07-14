@@ -7,6 +7,30 @@ order: 7
 
 `$query()` and `$mutation()` are component-owned async controllers. Create them during component setup so Solix can stop polling, release cache observers, and finish Suspense work when that component leaves.
 
+Async operations that belong on the server can be declared beside routes in a `.sol.ts` or
+`.sol.tsx` module. Their required schemas validate the complete argument tuple, while the exported
+value remains directly callable by the controllers:
+
+```tsx
+import { $rpcMutation, $rpcQuery } from "solix";
+import * as v from "valibot";
+
+export const loadPosts = $rpcQuery("load-posts", { schema: v.tuple([v.number()]) }, async (page) =>
+  database.posts.page(page),
+);
+
+export const savePost = $rpcMutation(
+  "save-post",
+  { schema: v.tuple([v.object({ title: v.string() })]) },
+  async (post) => database.posts.save(post),
+);
+```
+
+Server rendering invokes these definitions directly. Browser queries and mutations both use `POST`
+under `/api/rpc/:name`. The complete argument tuple, result, and exposed error details use JSON, so
+RPC inputs and outputs must be JSON-serializable. Devtools uses the declared name instead of
+displaying an anonymous mutation.
+
 ## Cached queries
 
 The first argument to `$query()` contains the async function, its JSON cache key, and lifecycle options. Remaining arguments are forwarded to the automatic request.
@@ -15,7 +39,7 @@ The first argument to `$query()` contains the async function, its JSON cache key
 const posts = $query(
   {
     queryKey: ["posts", { scope: "recent" }],
-    query: (page: number) => loadPosts(page),
+    query: loadPosts,
     enabled: true,
     staleTime: 10_000,
     cacheTime: 5 * 60_000,

@@ -1,25 +1,38 @@
 import { expect, test } from "@playwright/test";
-import { preview, type PreviewServer } from "vite";
+import { spawn, type ChildProcess } from "node:child_process";
 
-let previewServer: PreviewServer;
+let server: ChildProcess | undefined;
+
+async function waitForHydration(page: import("@playwright/test").Page): Promise<void> {
+  await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
+}
 
 test.beforeAll(async () => {
-  previewServer = await preview({
-    configFile: "vite.config.ts",
-    preview: { host: "127.0.0.1", port: 4174, strictPort: true },
+  server = spawn("bun", ["dist/server/index.mjs"], {
+    env: { ...process.env, HOST: "127.0.0.1", PORT: "4174" },
+    stdio: "inherit",
   });
+  await expect
+    .poll(async () =>
+      fetch("http://127.0.0.1:4174/").then(
+        (response) => response.status,
+        () => 0,
+      ),
+    )
+    .toBe(200);
 });
 
 test.afterAll(async () => {
-  await new Promise<void>((resolve, reject) => {
-    previewServer.httpServer.close((error) => (error ? reject(error) : resolve()));
-  });
+  if (!server) return;
+  if (server.exitCode === null) server.kill("SIGKILL");
+  if (server.exitCode === null) await new Promise<void>((resolve) => server?.once("exit", resolve));
 });
 
 test("runs landing examples and preserves preview state across view modes", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
+  await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "Build in sunlight." })).toBeVisible();
 
   const counter = page.getByTestId("counter-example");
@@ -43,6 +56,8 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await expect(counter.getByRole("button", { name: "Add one" })).toBeHidden();
   await counter.getByRole("button", { name: "both", exact: true }).click();
   await expect(counter.locator("output")).toHaveText("1");
+  await counter.getByRole("button", { name: "Call named RPC" }).click();
+  await expect(counter.getByText("Validated on the Solix server.")).toBeVisible();
 
   const list = page.getByTestId("list-example");
   const template = list.getByRole("button", { name: /Static template/ });
@@ -69,6 +84,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1632, height: 1000 });
   await page.goto("/docs");
+  await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible();
   const sidebar = page.getByRole("complementary", {
     name: "Documentation sidebar",
@@ -106,6 +122,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   await visitDocumentationPage(0);
 
   await page.goto("/docs/components-and-jsx");
+  await waitForHydration(page);
   const portalExample = page.locator('[data-live-example="PortalDemo"]');
   const localToggle = portalExample.getByRole("button", { name: "Toggle local portal" });
   await portalExample.getByRole("button", { name: "Focus the trigger" }).click();
@@ -176,6 +193,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
+  await waitForHydration(page);
   const heroLayout = await page.evaluate(() => {
     const headline = document.querySelector<HTMLElement>("#hero-title span.relative")!;
     const orbit = document.querySelector<HTMLElement>(
@@ -228,6 +246,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/docs");
+  await waitForHydration(page);
   const browse = page.getByRole("button", { name: "Browse pages" });
   await browse.click();
   const sheet = page.getByRole("dialog", { name: "Field manual" });

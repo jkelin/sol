@@ -1,6 +1,6 @@
 # Solix example
 
-This private workspace package is a notebook-style Solix application. It demonstrates reactive component state and document-head content, forms with Valibot validation, bindings, keyed lists, transitions, contexts, portals, resolved and timed-out Suspense, Await, error boundaries, cached queries, polling, mutations, compile-time routes, typed parameters, and browser navigation. The `/queries` route shows an initial Suspense fetch, two observers sharing a JSON-keyed cache, argument-changing refetches, and a mutation followed by an explicit refresh.
+This private workspace package is a notebook-style Solix application. It demonstrates reactive component state and document-head content, forms with Valibot validation, bindings, keyed lists, transitions, contexts, portals, resolved and timed-out Suspense, Await, error boundaries, cached queries, polling, mutations, compile-time routes, typed parameters, and browser navigation. The `/queries` route uses named, tuple-validated `$rpcQuery` and `$rpcMutation` declarations for its Suspense fetch and explicit refresh workflow, and exports a validated `GET /api/notes/:id` `$httpRoute`.
 
 From the repository root:
 
@@ -20,7 +20,9 @@ does not include devtools.
 Development runs through Solkit's Vite SSR middleware. The production build writes browser assets to
 `example/dist/client` and a bundled SSR handler plus Bun launcher to `example/dist/server`. The
 build-output test checks that readable compiler output contains Solix templates, routes, reactivity,
-and transitions. Playwright exercises server-rendered routes, managed head content, async/query data
-replay, browser hydration, and navigation against both the Bun and Node.js deployment adapters, as
-well as Vite development middleware. A focused fixture under `tests/fixtures` also covers timed-out
-Suspense continuation in a real browser.
+and transitions. The query declarations import their validators and a fake secret from
+`src/notes-backend.ts`; the build-output test requires those markers in the server bundle and rejects
+them in both client JavaScript and source maps. Playwright exercises server-rendered routes, managed
+head content, async/query data replay, browser hydration, and navigation against both the Bun and
+Node.js deployment adapters, as well as Vite development middleware. A focused fixture under
+`tests/fixtures` also covers timed-out Suspense continuation in a real browser.

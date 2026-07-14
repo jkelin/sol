@@ -1,14 +1,23 @@
 import type { NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 import { traverse } from "./ast.ts";
-import { isRouteFilename } from "./codegen.ts";
+import { isSolFilename } from "./codegen.ts";
 import type { CompilationState } from "./context.ts";
 import { codeFrame } from "./diagnostics.ts";
 
 export function validateCompiledModule(state: CompilationState): boolean {
-  const { ast, compiler, edits, compiledJsxRanges, componentCallRanges, routeCallRanges } = state;
+  const {
+    ast,
+    compiler,
+    edits,
+    compiledJsxRanges,
+    componentCallRanges,
+    routeCallRanges,
+    serverCallRanges,
+  } = state;
   traverse(ast, {
     CallExpression(path: NodePath<t.CallExpression>) {
+      const calleeName = t.isIdentifier(path.node.callee) ? path.node.callee.name : undefined;
       if (t.isIdentifier(path.node.callee, { name: "$component" })) {
         if (componentCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(
@@ -22,9 +31,22 @@ export function validateCompiledModule(state: CompilationState): boolean {
         codeFrame(
           compiler,
           path.node,
-          isRouteFilename(compiler.filename)
+          isSolFilename(compiler.filename)
             ? "$route() is only valid as an exported top-level const initializer"
-            : "$route() is only valid in *.route.[jt]sx? files",
+            : "$route() is only valid in *.sol.ts or *.sol.tsx files",
+        );
+      }
+      if (
+        calleeName !== undefined &&
+        ["$rpcQuery", "$rpcMutation", "$httpRoute"].includes(calleeName)
+      ) {
+        if (serverCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
+        codeFrame(
+          compiler,
+          path.node,
+          isSolFilename(compiler.filename)
+            ? `${calleeName}() is only valid as an exported top-level const initializer`
+            : `${calleeName}() is only valid in *.sol.ts or *.sol.tsx files`,
         );
       }
     },

@@ -54,24 +54,17 @@ const server = createServer((incoming, outgoing) => {
           }
         }
       }
-      if (!isRead) {
-        outgoing.writeHead(405, { allow: "GET, HEAD" }).end("Method Not Allowed");
-        return;
-      }
-      const accept = incoming.headers.accept ?? "";
-      const acceptsDocument =
-        accept.includes("text/html") ||
-        ((!accept || accept.includes("*/*")) && !/\/[^/]*\.[^/]+$/.test(pathname));
-      if (!acceptsDocument) {
-        outgoing.writeHead(404).end("Not Found");
-        return;
-      }
       const headers = new Headers();
       for (const [name, value] of Object.entries(incoming.headers)) {
         if (Array.isArray(value)) for (const item of value) headers.append(name, item);
         else if (value !== undefined) headers.set(name, value);
       }
-      const request = new Request(url, { method: incoming.method, headers });
+      const request = new Request(url, {
+        method: incoming.method,
+        headers,
+        body: isRead ? undefined : incoming,
+        duplex: isRead ? undefined : "half",
+      });
       const response = await handle(request, { template });
       outgoing.statusCode = response.status;
       response.headers.forEach((value, name) => outgoing.setHeader(name, value));

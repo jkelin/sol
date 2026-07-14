@@ -43,4 +43,15 @@ export {
 } from "./routes.ts";
 export { transition } from "./transitions.ts";
 export { requestSource } from "./queries.ts";
+export {
+  dispatchServerEndpoint,
+  httpRouteClient,
+  httpRouteServer,
+  isServerEndpoint,
+  rpcMutationClient,
+  rpcMutationServer,
+  rpcQueryClient,
+  rpcQueryServer,
+  type ServerEndpoint,
+} from "./server-functions.ts";
 export type { Component } from "./components.ts";

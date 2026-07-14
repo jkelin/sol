@@ -8,10 +8,12 @@ import { compile } from "./compile.ts";
 
 const virtualRoutes = "virtual:solix/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
+const virtualEndpoints = "virtual:solix/server-endpoints";
+const resolvedVirtualEndpoints = `\0${virtualEndpoints}`;
 const devtoolsBuildEntry = "/@solix/devtools";
 const resolvedDevtoolsBuildEntry = "\0solix:devtools-entry";
 const componentFile = /\.tsx(?:\?.*)?$/;
-const routeFile = /\.route\.[jt]sx?(?:\?.*)?$/i;
+const solFile = /\.sol\.tsx?(?:\?.*)?$/i;
 
 export interface SolixPluginOptions {
   /** Inject the in-app diagnostics panel and global API. Defaults to true for Vite dev servers. */
@@ -19,7 +21,7 @@ export interface SolixPluginOptions {
 }
 
 function isRouteFile(file: string): boolean {
-  return routeFile.test(file.replaceAll("\\", "/"));
+  return solFile.test(file.replaceAll("\\", "/"));
 }
 
 async function discoverRoutes(root: string): Promise<string[]> {
@@ -54,6 +56,18 @@ const __solix_modules = [${modules}];
 export default __solix_modules.flatMap(module => Object.values(module).filter(__solix_is_route));`;
 }
 
+function endpointManifest(files: readonly string[]): string {
+  const imports = files.map((file, index) => {
+    const specifier = `/@fs/${normalizePath(file)}`;
+    return `import * as __solix_endpoint_module_${index} from ${JSON.stringify(specifier)};`;
+  });
+  const modules = files.map((_, index) => `__solix_endpoint_module_${index}`).join(", ");
+  return `${imports.join("\n")}
+import { isServerEndpoint as __solix_is_endpoint } from "solix/compiler-runtime";
+const __solix_modules = [${modules}];
+export default __solix_modules.flatMap(module => Object.values(module).filter(__solix_is_endpoint));`;
+}
+
 function declaredRoutePaths(source: string, filename: string): string[] {
   const ast = parse(source, {
     sourceType: "module",
@@ -85,12 +99,73 @@ function declaredRoutePaths(source: string, filename: string): string[] {
   return paths;
 }
 
+interface DeclaredEndpoint {
+  readonly method: string;
+  readonly path: string;
+}
+
+function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[] {
+  const ast = parse(source, {
+    sourceType: "module",
+    sourceFilename: filename,
+    plugins: ["typescript", "jsx"],
+  });
+  const endpoints: DeclaredEndpoint[] = [];
+  for (const statement of ast.program.body) {
+    const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
+    if (!t.isVariableDeclaration(declaration)) continue;
+    for (const variable of declaration.declarations) {
+      if (!t.isCallExpression(variable.init) || !t.isIdentifier(variable.init.callee)) continue;
+      if (
+        variable.init.callee.name === "$rpcQuery" ||
+        variable.init.callee.name === "$rpcMutation"
+      ) {
+        const name = variable.init.arguments[0];
+        if (t.isStringLiteral(name)) {
+          endpoints.push({
+            method: "POST",
+            path: `/api/rpc/${name.value}`,
+          });
+        }
+      } else if (
+        variable.init.callee.name === "$httpRoute" &&
+        t.isObjectExpression(variable.init.arguments[0])
+      ) {
+        const properties = variable.init.arguments[0].properties;
+        const method = properties.find(
+          (property) =>
+            t.isObjectProperty(property) && t.isIdentifier(property.key, { name: "method" }),
+        );
+        const path = properties.find(
+          (property) =>
+            t.isObjectProperty(property) && t.isIdentifier(property.key, { name: "path" }),
+        );
+        if (
+          method &&
+          path &&
+          t.isObjectProperty(method) &&
+          t.isStringLiteral(method.value) &&
+          t.isObjectProperty(path) &&
+          t.isStringLiteral(path.value)
+        ) {
+          endpoints.push({ method: method.value.value, path: path.value.value });
+        }
+      }
+    }
+  }
+  return endpoints;
+}
+
 async function validateRouteCollisions(files: readonly string[]): Promise<void> {
   const declarations = await Promise.all(
-    files.map(async (file) => ({
-      file,
-      paths: declaredRoutePaths(await readFile(file, "utf8"), file),
-    })),
+    files.map(async (file) => {
+      const source = await readFile(file, "utf8");
+      return {
+        file,
+        paths: declaredRoutePaths(source, file),
+        endpoints: declaredEndpoints(source, file),
+      };
+    }),
   );
   const matchers = new Map<string, { file: string; path: string }>();
   for (const declaration of declarations) {
@@ -109,6 +184,22 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
       matchers.set(matcher, { file: declaration.file, path });
     }
   }
+  const endpointMatchers = new Map<string, { file: string; path: string }>();
+  for (const declaration of declarations) {
+    for (const endpoint of declaration.endpoints) {
+      const matcher = `${endpoint.method} ${endpoint.path
+        .split("/")
+        .map((segment) => (segment.startsWith(":") ? ":" : segment))
+        .join("/")}`;
+      const existing = endpointMatchers.get(matcher);
+      if (existing) {
+        throw new Error(
+          `Duplicate server endpoint ${endpoint.method} ${existing.path} in ${existing.file} and ${endpoint.path} in ${declaration.file}`,
+        );
+      }
+      endpointMatchers.set(matcher, { file: declaration.file, path: endpoint.path });
+    }
+  }
 }
 
 export function solix(options: SolixPluginOptions = {}): Plugin {
@@ -122,8 +213,10 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
   let devtoolsEnabled = false;
   const invalidateManifest = (server: ViteDevServer, file: string): void => {
     if (!isRouteFile(file) || relative(config.root, file).startsWith("..")) return;
-    const module = server.moduleGraph.getModuleById(resolvedVirtualRoutes);
-    if (module) server.moduleGraph.invalidateModule(module);
+    for (const id of [resolvedVirtualRoutes, resolvedVirtualEndpoints]) {
+      const module = server.moduleGraph.getModuleById(id);
+      if (module) server.moduleGraph.invalidateModule(module);
+    }
     server.ws.send({ type: "full-reload" });
   };
 
@@ -153,14 +246,15 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
     },
     resolveId(id) {
       if (id === virtualRoutes) return resolvedVirtualRoutes;
+      if (id === virtualEndpoints) return resolvedVirtualEndpoints;
       return id === devtoolsBuildEntry ? resolvedDevtoolsBuildEntry : null;
     },
     async load(id) {
       if (id === resolvedDevtoolsBuildEntry) return 'import "solix/devtools";';
-      if (id !== resolvedVirtualRoutes) return null;
+      if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
       const files = await discoverRoutes(config.root);
       await validateRouteCollisions(files);
-      return routeManifest(files);
+      return id === resolvedVirtualRoutes ? routeManifest(files) : endpointManifest(files);
     },
     configureServer(server) {
       const added = (file: string): void => invalidateManifest(server, file);
@@ -173,12 +267,14 @@ export function solix(options: SolixPluginOptions = {}): Plugin {
       };
     },
     transform: {
-      filter: { id: [componentFile, routeFile] },
-      handler(source, id) {
-        if ((!componentFile.test(id) && !routeFile.test(id)) || id.includes("/node_modules/")) {
+      filter: { id: [componentFile, solFile] },
+      handler(source, id, transformOptions) {
+        if ((!componentFile.test(id) && !solFile.test(id)) || id.includes("/node_modules/")) {
           return null;
         }
-        return compile(source, id.split("?", 1)[0]);
+        return compile(source, id.split("?", 1)[0], {
+          target: transformOptions?.ssr ? "server" : "client",
+        });
       },
     },
   };

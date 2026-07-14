@@ -65,7 +65,7 @@ for (const [name, adapter, command] of [
   ["bun", bunAdapter(), "bun"],
   ["node", nodeAdapter(), "node"],
 ] as const) {
-  test(`${name} adapter serves only assets and document requests`, async () => {
+  test(`${name} adapter serves assets and forwards application requests`, async () => {
     const directory = await mkdtemp(join(tmpdir(), `solkit-${name}-runtime-`));
     directories.push(directory);
     const serverDirectory = join(directory, "server");
@@ -74,7 +74,12 @@ for (const [name, adapter, command] of [
     await adapter.write({ serverDirectory, clientDirectory });
     await writeFile(
       join(serverDirectory, "app.mjs"),
-      "export async function handle(request) { return new Response(`SSR:${new URL(request.url).pathname}`); }",
+      `export async function handle(request) {
+        const pathname = new URL(request.url).pathname;
+        return pathname.endsWith(".js")
+          ? new Response("Not Found", { status: 404 })
+          : new Response(\`SSR:\${pathname}\`);
+      }`,
     );
     await writeFile(join(clientDirectory, "index.html"), "<!doctype html>");
     await writeFile(join(clientDirectory, "asset.js"), "export const value = 1;");
@@ -103,8 +108,8 @@ for (const [name, adapter, command] of [
     expect(missingAsset.status).toBe(404);
     expect(await missingAsset.text()).toBe("Not Found");
     const post = await fetch(`http://127.0.0.1:${port}/route`, { method: "POST" });
-    expect(post.status).toBe(405);
-    expect(post.headers.get("allow")).toBe("GET, HEAD");
+    expect(post.status).toBe(200);
+    expect(await post.text()).toBe("SSR:/route");
 
     process.kill();
     await process.exited;

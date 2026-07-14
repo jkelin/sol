@@ -249,21 +249,19 @@ test("renders requests and routes as selectable master-detail views", () => {
   const api = installDevtools()!;
   const hook = (globalThis as { [DEVTOOLS_HOOK]?: DevtoolsHook })[DEVTOOLS_HOOK]!;
   const queryId = hook.queryCreated("notes", [], {
-    file: "queries.route.tsx",
+    file: "queries.sol.tsx",
     line: 12,
     column: 5,
   });
   hook.queryUpdated(queryId, { hasData: true, data: { page: 1 }, isFetching: false });
-  hook.mutationCreated({ file: "queries.route.tsx", line: 18, column: 5 });
+  hook.mutationCreated({ file: "queries.sol.tsx", line: 18, column: 5 });
   api.open("requests");
   const root = document.querySelector("solix-devtools")!.shadowRoot!;
 
   expect(root.querySelector(".request-explorer .splitter")).not.toBeNull();
   expect(root.querySelectorAll(".request-explorer .record")).toHaveLength(2);
   root.querySelector<HTMLButtonElement>(".request-explorer .record:last-child")!.click();
-  expect(root.querySelector(".request-detail-pane")?.textContent).toContain(
-    "queries.route.tsx:12:5",
-  );
+  expect(root.querySelector(".request-detail-pane")?.textContent).toContain("queries.sol.tsx:12:5");
   expect(root.querySelector(".request-detail-pane")?.textContent).toContain('"page": 1');
 
   hook.routerUpdated({
@@ -278,6 +276,12 @@ test("renders requests and routes as selectable master-detail views", () => {
   api.open("router");
   expect(root.querySelector(".router-explorer .splitter")).not.toBeNull();
   expect(root.querySelectorAll(".route-record")).toHaveLength(2);
+  expect(root.querySelector(".route-record:not(.selected) .route-matcher")?.textContent).toBe(
+    "^/$",
+  );
+  expect(root.querySelector("style")?.textContent).toContain(
+    ".route-matcher { min-width:0; overflow:hidden; text-align:right;",
+  );
   expect(root.querySelector(".route-active")?.textContent).toBe("ACTIVE");
   expect(root.querySelector(".router-detail-pane")?.textContent).toContain("ACTIVE LOCATION");
 });

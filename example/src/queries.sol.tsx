@@ -1,4 +1,19 @@
-import { $component, $mutation, $query, $route, Suspense } from "solix";
+import {
+  $component,
+  $httpRoute,
+  $mutation,
+  $query,
+  $route,
+  $rpcMutation,
+  $rpcQuery,
+  Suspense,
+} from "solix";
+import {
+  noteHttpSchema,
+  notesPageSchema,
+  noteTitleSchema,
+  verifyNotesBackendSecret,
+} from "./notes-backend.ts";
 
 interface Note {
   id: number;
@@ -23,17 +38,39 @@ function delayed<T>(value: T, milliseconds = 350): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), milliseconds));
 }
 
-async function fetchNotes(page: number): Promise<NotePage> {
-  const start = (page - 1) * 2;
-  return delayed({ page, revision, notes: serverNotes.slice(start, start + 2) });
-}
+export const fetchNotes = $rpcQuery(
+  "notes",
+  { schema: notesPageSchema },
+  async (page): Promise<NotePage> => {
+    verifyNotesBackendSecret(page);
+    const start = (page - 1) * 2;
+    return delayed({ page, revision, notes: serverNotes.slice(start, start + 2) });
+  },
+);
 
-async function createNote(title: string): Promise<Note> {
-  const note = { id: nextNoteId++, title };
-  serverNotes.unshift(note);
-  revision += 1;
-  return delayed(note, 250);
-}
+export const createNote = $rpcMutation(
+  "create-note",
+  { schema: noteTitleSchema },
+  async (title): Promise<Note> => {
+    verifyNotesBackendSecret(title);
+    const note = { id: nextNoteId++, title };
+    serverNotes.unshift(note);
+    revision += 1;
+    return delayed(note, 250);
+  },
+);
+
+export const noteHttpRoute = $httpRoute(
+  {
+    method: "GET",
+    path: "/api/notes/:id",
+    schema: noteHttpSchema,
+  },
+  async ({ id }) => {
+    verifyNotesBackendSecret(id);
+    return Response.json(serverNotes.find((note) => note.id === id) ?? null);
+  },
+);
 
 const CacheObserver = $component(function CacheObserver() {
   const shared = $query(
@@ -60,6 +97,7 @@ const CacheObserver = $component(function CacheObserver() {
 
 const QueryPanel = $component(function QueryPanel() {
   let nextPage = 2;
+  let noteSequence = 1;
   const notes = $query(
     {
       queryKey: ["example", "notes"],
@@ -80,7 +118,7 @@ const QueryPanel = $component(function QueryPanel() {
   }
 
   async function addNote() {
-    await creation.mutate({}, `Mutation note ${nextNoteId}`);
+    await creation.mutate({}, `Mutation note ${noteSequence++}`);
     await notes.refetch({ suspense: false }, 1);
   }
 

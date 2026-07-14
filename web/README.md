@@ -1,6 +1,6 @@
 # Solix website
 
-The `web` workspace is the Sunblock-styled public website and documentation application for Solix. It documents the compiler, reactivity, forms, cached queries and mutations, routing, async composition, and transitions. It is built with Solix, Vite, Tailwind CSS v4, and a build-time Markdown compiler.
+The `web` workspace is the Sunblock-styled public website and documentation application for Solix. It documents the compiler, reactivity, forms, cached queries and mutations, server RPC and HTTP declarations, routing, async composition, and transitions. It is built with Solix, Solkit SSR, Vite, Tailwind CSS v4, and a build-time Markdown compiler.
 
 ## Commands
 
@@ -17,14 +17,14 @@ The root `bun run verify` includes the website's Markdown/compiler tests. Root `
 `bun run dev:web` includes Solix devtools by default: use the circular `S` launcher or
 `globalThis.__solix` to inspect the component ownership tree, loaders and requests with authored
 query/mutation locations, routing, and form validation.
-Production builds omit devtools; pass `{ devtools: false }` to `solix()` to opt out during development.
+Production builds omit devtools and emit separate Solkit client/server bundles; pass `{ devtools: false }` to `solix()` to opt out during development.
 
 ## Source structure
 
 - `src/App.tsx` owns the shared header, responsive navigation, route outlet, pending state, and footer.
-- `src/landing.route.tsx` contains the landing page and its three compiled interactive examples.
+- `src/landing.sol.tsx` contains the landing page and its three compiled interactive examples.
 - `src/code-samples.ts` is the single source for landing-page example text and build-time Shiki tokens.
-- `src/docs.route.tsx` contains the desktop/mobile documentation shell, route handles, navigation, and adjacent-page links.
+- `src/docs.sol.tsx` contains the desktop/mobile documentation shell, route handles, navigation, and adjacent-page links.
 - `src/components/ui/` contains Solix-native, shadcn-inspired leaf components. Each component owns its typed variant recipe and runtime validation; the layer intentionally does not use React, Radix, or `components.json`.
 - `src/docs/*.md` contains every documentation page and validated live Solix fences.
 - `src/markdown/compile.ts` validates frontmatter and examples, parses Remark/GFM nodes, tokenizes source with Shiki, and generates Solix JSX.

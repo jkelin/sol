@@ -378,7 +378,7 @@ test("shares query data, refetches with new arguments, and refreshes after a mut
   await expect(page.getByTestId("query-last-page")).toContainText("1");
 
   await page.getByTestId("query-mutate").click();
-  await expect(page.getByText("Mutation note 4", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mutation note 1", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
   await expect(page.getByTestId("query-observer").locator("strong")).toHaveText("2");
   expect(pageErrors).toEqual([]);

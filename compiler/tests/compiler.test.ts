@@ -39,7 +39,7 @@ describe("compiler", () => {
       const Blog = $component(function Blog() { return <main>Blog</main>; });
       export const blog = $route({ path: "/blog/:id?copy=:id&filter=:filter" }, Blog);
     `,
-      "blog.route.tsx",
+      "blog.sol.tsx",
     );
 
     expect(result.code).toContain("export const blog = __solix_route");
@@ -51,11 +51,11 @@ describe("compiler", () => {
     );
     expect(result.code).toContain('"specificity":[1,0]');
 
-    for (const extension of ["js", "jsx", "ts", "tsx"]) {
+    for (const extension of ["ts", "tsx"]) {
       const routeModule = compile(
         `import { Page } from "./Page";
          export const page = $route({ path: "/page" }, Page);`,
-        `page.route.${extension}`,
+        `page.sol.${extension}`,
       );
       expect(routeModule.code).toContain("export const page = __solix_route");
     }
@@ -73,13 +73,155 @@ describe("compiler", () => {
         return <RouteLink route={blog} params={params}><a class="entry">Open</a></RouteLink>;
       });
     `,
-      "blog.route.tsx",
+      "blog.sol.tsx",
     );
 
     expect(result.code).toContain('__solix_route({\n  path: "/blog/:id",\n  schema\n}');
     expect(result.code).toContain("__solix_link(__solix_view.elements[0]");
     expect(result.code).toContain('class="entry"');
     expect(result.code).not.toContain("<RouteLink");
+  });
+
+  test("compiles server declarations for server and browser targets", () => {
+    const source = `
+      import { $httpRoute, $rpcMutation, $rpcQuery } from "solix";
+      const schema = value => value;
+      export const load = $rpcQuery("load", { schema }, async (id) => ({ id }));
+      export const save = $rpcMutation("save", { schema }, async (value) => value);
+      export const health = $httpRoute(
+        { method: "GET", path: "/api/health/:scope", schema },
+        async () => new Response("ok"),
+      );
+    `;
+    const server = compile(source, "api.sol.ts", { target: "server" });
+    expect(server.code).toContain('__solix_rpc_query_server("load"');
+    expect(server.code).toContain('__solix_rpc_mutation_server("save"');
+    expect(server.code).toContain("__solix_http_route_server({");
+    expect(server.code).toContain('new Response("ok")');
+
+    const client = compile(source, "api.sol.ts", { target: "client" });
+    expect(client.code).toContain('__solix_rpc_query_client("load")');
+    expect(client.code).toContain('__solix_rpc_mutation_client("save")');
+    expect(client.code).toContain(
+      '__solix_http_route_client({ method: "GET", path: "/api/health/:scope" })',
+    );
+    expect(client.code).not.toContain('new Response("ok")');
+    expect(client.code).not.toContain("async (id)");
+  });
+
+  test("removes imports referenced only by stripped browser handlers", () => {
+    const result = compile(
+      `
+        import { readFile } from "node:fs/promises";
+        import { $rpcQuery } from "solix";
+        const serverRoot = "/private";
+        async function readSecret(path) {
+          return readFile(serverRoot + path, "utf8");
+        }
+        export const secret = $rpcQuery(
+          "secret",
+          { schema: value => value },
+          readSecret,
+        );
+      `,
+      "secret.sol.ts",
+      { target: "client" },
+    );
+    expect(result.code).not.toContain("node:fs/promises");
+    expect(result.code).not.toContain("readFile");
+    expect(result.code).not.toContain("readSecret");
+    expect(result.code).not.toContain("serverRoot");
+    expect(result.code).not.toContain("$rpcQuery");
+    expect(result.code).toContain('__solix_rpc_query_client("secret")');
+  });
+
+  test("keeps backend handlers, validators, dependencies, and secrets out of client modules", () => {
+    const source = `
+      import { $httpRoute, $rpcMutation, $rpcQuery } from "solix";
+      import type { PublicResult } from "./public-types";
+      import { backendDatabase } from "./backend-database-secret";
+      import { backendValidator } from "./backend-validator-secret";
+      export const frontendMarker = "🧪 FRONTEND_SOURCE_REMAINS";
+
+      export const exportedSchema = backendValidator("BACKEND_SCHEMA_IMPLEMENTATION_SECRET");
+      const handlerSecret = "BACKEND_HANDLER_CLOSURE_SECRET";
+      export function exportedBackendHelper(value) {
+        return backendDatabase(handlerSecret, value);
+      }
+
+      export const load = $rpcQuery(
+        "load",
+        { schema: exportedSchema },
+        async (id): Promise<PublicResult> => exportedBackendHelper(id),
+      );
+      export const save = $rpcMutation(
+        "save",
+        { schema: exportedSchema },
+        async (value): Promise<PublicResult> => exportedBackendHelper(value),
+      );
+      export const download = $httpRoute(
+        { method: "POST", path: "/api/download", schema: exportedSchema },
+        async (input) => Response.json(await exportedBackendHelper(input)),
+      );
+    `;
+    const server = compile(source, "private.sol.ts", { target: "server" }).code;
+    expect(server).toContain("backend-database-secret");
+    expect(server).toContain("backend-validator-secret");
+    expect(server).toContain("BACKEND_SCHEMA_IMPLEMENTATION_SECRET");
+    expect(server).toContain("BACKEND_HANDLER_CLOSURE_SECRET");
+
+    const clientResult = compile(source, "private.sol.ts", { target: "client" });
+    const client = clientResult.code;
+    expect(client).toContain('import type { PublicResult } from "./public-types"');
+    expect(client).toContain('__solix_rpc_query_client("load")');
+    expect(client).toContain('__solix_rpc_mutation_client("save")');
+    expect(client).toContain(
+      '__solix_http_route_client({ method: "POST", path: "/api/download" })',
+    );
+    expect(client).not.toContain("backend-database-secret");
+    expect(client).not.toContain("backend-validator-secret");
+    expect(client).not.toContain("BACKEND_SCHEMA_IMPLEMENTATION_SECRET");
+    expect(client).not.toContain("BACKEND_HANDLER_CLOSURE_SECRET");
+    expect(client).not.toContain("exportedSchema");
+    expect(client).not.toContain("exportedBackendHelper");
+    expect(client).not.toContain("backendDatabase");
+    expect(client).not.toContain("backendValidator");
+    const clientSources = clientResult.map?.sourcesContent?.join("\n") ?? "";
+    expect(clientSources).toContain("PublicResult");
+    expect(clientSources).toContain("🧪 FRONTEND_SOURCE_REMAINS");
+    expect(clientSources).not.toContain("backend-database-secret");
+    expect(clientSources).not.toContain("backend-validator-secret");
+    expect(clientSources).not.toContain("BACKEND_SCHEMA_IMPLEMENTATION_SECRET");
+    expect(clientSources).not.toContain("BACKEND_HANDLER_CLOSURE_SECRET");
+    expect(clientSources).not.toContain("exportedSchema");
+    expect(clientSources).not.toContain("exportedBackendHelper");
+  });
+
+  test("validates server declaration boundaries and literal configs", () => {
+    const valid = `export const load = $rpcQuery("load", { schema: value => value }, async () => 1);`;
+    expect(() => compile(valid, "api.ts")).toThrow("only valid in *.sol.ts");
+    expect(() => compile(valid.replace("export ", ""), "api.sol.ts")).toThrow("must be exported");
+    expect(() =>
+      compile(
+        `export const load = $rpcQuery("bad/name", { schema: value => value }, async () => 1);`,
+        "api.sol.ts",
+      ),
+    ).toThrow("URL-safe string literal");
+    expect(() =>
+      compile(`export const load = $rpcQuery("load", {}, async () => 1);`, "api.sol.ts"),
+    ).toThrow("requires a schema");
+    expect(() =>
+      compile(
+        `export const route = $httpRoute({ method: "get", path: "/api", schema: x => x }, async () => new Response());`,
+        "api.sol.ts",
+      ),
+    ).toThrow("supported uppercase string literal");
+    expect(() =>
+      compile(
+        `export const route = $httpRoute({ method: "GET", path: "/api/rpc/custom", schema: x => x }, async () => new Response());`,
+        "api.sol.ts",
+      ),
+    ).toThrow("reserved /api/rpc namespace");
   });
 
   test("validates the compiler-specialized Link interface", () => {
@@ -106,50 +248,47 @@ describe("compiler", () => {
     `;
     expect(() =>
       compile(`${component} export const blog = $route({ path: "/blog/:id" }, Blog);`, "Blog.tsx"),
-    ).toThrow("only valid in *.route.[jt]sx? files");
+    ).toThrow("only valid in *.sol.ts or *.sol.tsx files");
     expect(() =>
-      compile(`${component} const blog = $route({ path: "/blog/:id" }, Blog);`, "blog.route.tsx"),
+      compile(`${component} const blog = $route({ path: "/blog/:id" }, Blog);`, "blog.sol.tsx"),
     ).toThrow("must be exported");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "blog/:id" }, Blog);`,
-        "blog.route.tsx",
+        "blog.sol.tsx",
       ),
     ).toThrow("start with exactly one slash");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog/:id/:id" }, Blog);`,
-        "blog.route.tsx",
+        "blog.sol.tsx",
       ),
     ).toThrow("Duplicate route parameter id");
     expect(() =>
-      compile(
-        `${component} export const blog = $route({ path: "/blog/" }, Blog);`,
-        "blog.route.tsx",
-      ),
+      compile(`${component} export const blog = $route({ path: "/blog/" }, Blog);`, "blog.sol.tsx"),
     ).toThrow("empty or trailing segments");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog?draft=1" }, Blog);`,
-        "blog.route.tsx",
+        "blog.sol.tsx",
       ),
     ).toThrow("Invalid route query parameter draft=1");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog?from=:from&from=:other" }, Blog);`,
-        "blog.route.tsx",
+        "blog.sol.tsx",
       ),
     ).toThrow("Duplicate route query key from");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog" }, Missing);`,
-        "blog.route.tsx",
+        "blog.sol.tsx",
       ),
     ).toThrow("must reference a compiled component");
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog", extra: true }, Blog);`,
-        "blog.route.tsx",
+        "blog.sol.tsx",
       ),
     ).toThrow("may contain only path and schema");
   });

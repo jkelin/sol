@@ -4,7 +4,9 @@ import {
   component,
   instantiate,
   template,
+  rpcQueryServer,
   text,
+  type ServerEndpoint,
 } from "../../runtime/src/compiler-runtime.ts";
 
 await mock.module("virtual:solix/routes", () => ({ default: [] }));
@@ -41,12 +43,30 @@ test("renders the request URL into an SSR document and supports HEAD", async () 
 
 test("validates request and document boundaries", async () => {
   const handle = createRequestHandler(Root);
-  expect(() =>
-    handle(new Request("https://example.test/", { method: "POST" }), {
-      template: templateHtml,
-    }),
-  ).toThrow("only GET and HEAD");
+  const post = await handle(new Request("https://example.test/", { method: "POST" }), {
+    template: templateHtml,
+  });
+  expect(post.status).toBe(404);
   expect(() => handle(new Request("https://example.test/"), { template: "<div></div>" })).toThrow(
     "exactly once",
   );
+});
+
+test("dispatches server endpoints before rendering documents", async () => {
+  const endpoint = rpcQueryServer(
+    "greeting",
+    { schema: (args: readonly [string]) => [...args] as [string] },
+    async (name) => `Hello ${name}`,
+  ) as unknown as ServerEndpoint;
+  const handle = createRequestHandler(Root, [endpoint]);
+  const response = await handle(
+    new Request("https://example.test/api/rpc/greeting", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(["Solix"]),
+    }),
+    { template: templateHtml },
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ ok: true, value: "Hello Solix" });
 });

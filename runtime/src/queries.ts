@@ -10,6 +10,7 @@ import {
   type SourceMetadata,
 } from "./devtools-hook.ts";
 import { asyncValue } from "./ssr-session.ts";
+import { rpcFunctionMetadata } from "./server-functions.ts";
 
 export type QueryKey =
   | null
@@ -434,7 +435,12 @@ export function $query<Data, Args extends unknown[]>(
   subscribe(entry, cacheTime, owner);
   let disposed = false;
   let currentArgs = [...initialArgs] as Args;
-  const devtoolsId = devtoolsQueryCreated(key, currentArgs, requestSources.get(config));
+  const devtoolsId = devtoolsQueryCreated(
+    key,
+    currentArgs,
+    requestSources.get(config),
+    rpcFunctionMetadata(config.query)?.name,
+  );
   devtoolsQueryUpdated(devtoolsId, { ...entry.state.value, args: currentArgs });
   owner.push(() => {
     disposed = true;
@@ -533,7 +539,10 @@ export function $mutation<Data, Args extends unknown[]>(
   });
   let generation = 0;
   let disposed = false;
-  const devtoolsId = devtoolsMutationCreated(requestSources.get(config));
+  const devtoolsId = devtoolsMutationCreated(
+    requestSources.get(config),
+    rpcFunctionMetadata(config.mutation)?.name,
+  );
   owner.push(() => {
     disposed = true;
     generation += 1;

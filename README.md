@@ -384,9 +384,46 @@ same request-isolated capture and replay, preventing a duplicate browser fetch a
 rendered. Promise initializers that are later awaited are made lazy for replay; unrelated unawaited
 work and eager promises never consumed by a compiled await are not replayable.
 
+## Server functions
+
+Files ending in `.sol.ts` or `.sol.tsx` may export named RPCs, HTTP endpoints, and UI routes. RPC
+schemas validate the complete argument tuple on the server; their compiled values are directly
+callable during SSR and become Fetch-backed clients in the browser:
+
+```tsx
+import { $rpcMutation, $rpcQuery } from "solix";
+import * as v from "valibot";
+
+export const loadPost = $rpcQuery("load-post", { schema: v.tuple([v.number()]) }, async (id) =>
+  database.posts.get(id),
+);
+
+export const savePost = $rpcMutation(
+  "save-post",
+  { schema: v.tuple([v.object({ title: v.string() })]) },
+  async (post) => database.posts.save(post),
+);
+```
+
+Queries and mutations both use `POST /api/rpc/:name` with `application/json` argument tuples and
+JSON response envelopes. Arguments, handler results, and exposed error details must therefore be
+JSON-serializable. Pass these functions to `$query` and `$mutation` like any other async operation.
+Devtools shows the declared RPC name alongside cache keys, arguments, results, timing, and authored
+locations.
+
+Client compilation retains only RPC fetch stubs and inert HTTP route definitions. Server handlers,
+schemas, transitive backend-only imports and helpers, and their source-map content are removed from
+browser assets; type checking still runs against the authored declarations before lowering.
+
+`$httpRoute({ method, path, schema, body? }, handler)` declares a lower-level Fetch endpoint. The
+schema receives `{ params, query, headers, body }`; repeated query values are arrays. Automatic
+body parsing accepts JSON and text, while `body: "bytes"` supplies an `ArrayBuffer`. The handler
+also receives the original `Request` and must return a `Response`.
+
 ## Routing
 
-Routes are discovered automatically below the Vite project root. Define each route as an exported top-level constant in a `*.route.js`, `.jsx`, `.ts`, or `.tsx` file:
+Routes are discovered automatically below the Vite project root. Define each route as an exported
+top-level constant in a `.sol.ts` or `.sol.tsx` file:
 
 ```tsx
 import { $component, $route } from "solix";

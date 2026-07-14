@@ -89,8 +89,8 @@ export interface TemplateMetadata {
 export interface TemplateOperationMetadata {
   readonly id: string;
   readonly kind: string;
-  readonly target: "element" | "region";
-  readonly index: number;
+  readonly target?: "element" | "region";
+  readonly index?: number;
   readonly name?: string;
 }
 
@@ -213,7 +213,7 @@ function flushMounts(coordinator: MountCoordinator): void {
   }
 }
 
-function activateMounts(frame: RenderFrame): void {
+export function activateMounts(frame: RenderFrame): void {
   frame.mounts.active = true;
   flushMounts(frame.mounts);
 }
@@ -236,7 +236,7 @@ export function block(
   lifecycle: BlockLifecycle = blockLifecycle(),
 ): Block {
   if (isServerFragment(fragment)) return serverBlock(fragment, cleanups);
-  if (isHydratedFragment(fragment)) return hydratedBlock(fragment, cleanups);
+  if (isHydratedFragment(fragment)) return hydratedBlock(fragment, cleanups, lifecycle);
   const start = document.createComment("solix:block:start");
   const end = document.createComment("solix:block:end");
   fragment.prepend(start);

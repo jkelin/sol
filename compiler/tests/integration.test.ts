@@ -969,6 +969,8 @@ test("defers nested mount phases and activates keyed refs and portals", async ()
   expect(document.querySelectorAll("#list-target > [data-keyed-id]")).toHaveLength(1);
   dispose();
   expect(globalThis.integrationKeyedRefs).toEqual(new Set());
+});
+
 test("server renders compiled primitives and resolved Suspense without a DOM", async () => {
   const module = await loadCompiled(`
     import { Suspense } from "solix";
@@ -1097,6 +1099,35 @@ test("hydrates server DOM in place and replays async component data", async () =
   await Promise.resolve();
   expect(serverButton?.textContent).toBe("ready:1");
   dispose();
+  expect(target.childNodes).toHaveLength(0);
+});
+
+test("hydrates refs and mounts browser-only portals after claiming server DOM", async () => {
+  const module = await loadCompiled(`
+    import { $component, createRef, Portal } from "solix";
+    export const App = $component(function App() {
+      const target = createRef<HTMLDivElement>();
+      return <main>
+        <p id="server-node" ref={element => globalThis.integrationPortalRef = element}>Server</p>
+        <Portal target={target.current!}><button id="hydrated-portal">Portal</button></Portal>
+        <div id="portal-target" ref={target} />
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const serverNode = target.querySelector("#server-node");
+  expect(target.querySelector("#hydrated-portal")).toBeNull();
+  globalThis.integrationPortalRef = null;
+
+  const dispose = await hydrate(App, target);
+
+  expect(target.querySelector("#server-node")).toBe(serverNode);
+  expect(globalThis.integrationPortalRef as Element | null).toBe(serverNode as Element | null);
+  expect(target.querySelector("#portal-target > #hydrated-portal")?.textContent).toBe("Portal");
+  dispose();
+  expect(globalThis.integrationPortalRef).toBeNull();
   expect(target.childNodes).toHaveLength(0);
 });
 

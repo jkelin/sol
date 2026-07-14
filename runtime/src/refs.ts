@@ -1,5 +1,6 @@
 import { isObject, runtimeEffect, untrack } from "./reactivity.ts";
 import type { BlockLifecycle, Cleanup } from "./rendering.ts";
+import { isServerElement, type ServerElement } from "./server-rendering.ts";
 
 export type RefCallback<T extends Element = Element> = (element: T | null) => void;
 
@@ -47,15 +48,19 @@ function assignRef<T extends Element>(reference: Ref<T>, value: T | null): void 
 }
 
 export function ref(
-  element: Element,
+  element: Element | ServerElement,
   getRef: () => unknown,
   cleanups: Cleanup[],
   lifecycle: BlockLifecycle,
 ): void {
+  if (typeof getRef !== "function") throw new TypeError("ref expects a ref getter");
+  if (isServerElement(element)) {
+    validateRef(getRef());
+    return;
+  }
   if (!element || element.nodeType !== Node.ELEMENT_NODE) {
     throw new TypeError("ref expects a DOM Element");
   }
-  if (typeof getRef !== "function") throw new TypeError("ref expects a ref getter");
   validateRef(getRef());
   lifecycle.refMounts.push(() => {
     let attached: Ref | undefined;

@@ -35,7 +35,11 @@ function mountPortal(
   name: "Portal" | "GlobalPortal",
 ): void {
   lifecycle.portalMounts.push(() => {
-    const rendered: Block = render(frame);
+    const rendered: Block = render(
+      frame.mode === "hydrate" && !frame.hydration?.committed
+        ? { ...frame, mode: "resume", claim: undefined }
+        : frame,
+    );
     lifecycle.remoteBlocks.push(rendered);
     let target = validateTarget(getTarget(), name);
     rendered.mount(target);

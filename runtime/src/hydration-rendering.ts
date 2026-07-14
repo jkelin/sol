@@ -1,4 +1,4 @@
-import type { Block, Region, RenderView, TemplateDefinition } from "./rendering.ts";
+import type { Block, BlockLifecycle, Region, RenderView, TemplateDefinition } from "./rendering.ts";
 import { HydrationMismatchError, type HydrationSession } from "./ssr-session.ts";
 import { runtimeEffect } from "./reactivity.ts";
 
@@ -216,7 +216,8 @@ export function instantiateHydrated(
           operation.name === "value" &&
           (operation.kind === "bind" || operation.kind === "attribute"),
       )
-      .map((operation) => operation.index),
+      .map((operation) => operation.index)
+      .filter((index): index is number => index !== undefined),
   );
   matchChildren(
     definition.element.content,
@@ -230,8 +231,13 @@ export function instantiateHydrated(
   return { fragment: { kind: "hydrated-fragment", start, end, session }, elements, regions };
 }
 
-export function hydratedBlock(fragment: HydratedFragment, cleanups: (() => void)[]): Block {
+export function hydratedBlock(
+  fragment: HydratedFragment,
+  cleanups: (() => void)[],
+  lifecycle?: BlockLifecycle,
+): Block {
   let disposed = false;
+  let lifecycleQueued = false;
   let mounted = true;
   let claimedPlacement = true;
   const nodes = (): Node[] => {
@@ -262,6 +268,20 @@ export function hydratedBlock(fragment: HydratedFragment, cleanups: (() => void)
     mount(parent, before) {
       if (!(parent instanceof Node)) mismatch("cannot mount a hydrated block on the server");
       move(parent, before);
+      if (lifecycleQueued) return;
+      lifecycleQueued = true;
+      if (lifecycle) {
+        lifecycle.coordinator.refMounts.push(
+          ...lifecycle.refMounts.map((attach) => () => {
+            if (!disposed) attach();
+          }),
+        );
+        lifecycle.coordinator.portalMounts.push(
+          ...lifecycle.portalMounts.map((attach) => () => {
+            if (!disposed) attach();
+          }),
+        );
+      }
     },
     move(parent, before) {
       if (!(parent instanceof Node)) mismatch("cannot move a hydrated block on the server");
@@ -277,6 +297,7 @@ export function hydratedBlock(fragment: HydratedFragment, cleanups: (() => void)
       if (disposed) return;
       disposed = true;
       cleanup();
+      for (const remote of lifecycle?.remoteBlocks ?? []) remote.dispose();
       if (fragment.session.committed) {
         for (const node of nodes()) node.parentNode?.removeChild(node);
       }

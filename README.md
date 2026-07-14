@@ -89,6 +89,7 @@ const Overlay = $component(function Overlay() {
 ```
 
 `Portal` accepts a reactive DOM `Element` target and moves the same owned block when that target changes. `GlobalPortal` mounts its JSX, text, or primitive children directly under `document.body` without a wrapper. Portal children preserve component context, async/error ownership, events, refs, cleanup, and transitions.
+SSR omits portal children because their targets are browser-owned. During hydration, refs attach to claimed elements first and portal children then mount as fresh browser DOM without replacing the claimed server tree.
 
 ## Form validation
 

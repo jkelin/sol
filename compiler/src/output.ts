@@ -47,26 +47,28 @@ function identityHash(value: string, prefix: string): string {
 function operationMetadata(operation: string): {
   id: string;
   kind: string;
-  target: "element" | "region";
-  index: number;
+  target?: "element" | "region";
+  index?: number;
   name?: string;
 } {
   const code = operation.replaceAll(/\/\*__solix_source_\d+__\*\//g, "");
   const kind = /__solix_([a-z_]+)\(/.exec(code)?.[1];
   const target = /__solix_view\.(elements|regions)\[(\d+)\]/.exec(code);
-  if (!kind || !target) throw new Error(`Cannot describe compiled operation ${code}`);
+  if (!kind) throw new Error(`Cannot describe compiled operation ${code}`);
   const metadata: {
     id: string;
     kind: string;
-    target: "element" | "region";
-    index: number;
+    target?: "element" | "region";
+    index?: number;
     name?: string;
   } = {
     id: identityHash(code, "o"),
     kind,
-    target: target[1] === "elements" ? "element" : "region",
-    index: Number(target[2]),
   };
+  if (target) {
+    metadata.target = target[1] === "elements" ? "element" : "region";
+    metadata.index = Number(target[2]);
+  }
   if (kind === "attribute" || kind === "bind") {
     const name = /__solix_view\.elements\[\d+\],\s*"([^"]+)"/.exec(code)?.[1];
     if (name) metadata.name = name;

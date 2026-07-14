@@ -4,6 +4,7 @@ import {
   getFactory,
   readonlyProps,
   resolvedBlock,
+  rootFrame,
   type Block,
   type RenderFrame,
 } from "./rendering.ts";
@@ -42,8 +43,7 @@ export async function renderToStringAsync<Props extends object>(
   const timeoutMs = validateTimeout(options.timeoutMs, "renderToStringAsync() timeoutMs");
   const session = new SsrSession();
   const frame: RenderFrame = {
-    owner: [],
-    contexts: new Map(),
+    ...rootFrame(),
     mode: "server",
     ssr: session,
     timeoutMs,

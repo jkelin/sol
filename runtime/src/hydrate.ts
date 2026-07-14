@@ -1,7 +1,14 @@
 import type { Component } from "./components.ts";
 import { rootHydrationClaim } from "./hydration-rendering.ts";
 import { isObject, isPromiseLike, reactive } from "./reactivity.ts";
-import { getFactory, readonlyProps, type Block, type RenderFrame } from "./rendering.ts";
+import {
+  activateMounts,
+  getFactory,
+  readonlyProps,
+  rootFrame,
+  type Block,
+  type RenderFrame,
+} from "./rendering.ts";
 import { deserializeGraph } from "./serialization.ts";
 import { HydrationMismatchError, HydrationSession, type HydrationPayload } from "./ssr-session.ts";
 
@@ -64,8 +71,7 @@ export async function hydrate<Props extends object>(
   session.validateTemplateOrder(templateSignatures(target));
   const claim = rootHydrationClaim(target);
   const frame: RenderFrame = {
-    owner: [],
-    contexts: new Map(),
+    ...rootFrame(),
     mode: "hydrate",
     hydration: session,
     claim,
@@ -80,6 +86,7 @@ export async function hydrate<Props extends object>(
     if (claim.cursor !== script) {
       throw new HydrationMismatchError("unexpected root nodes");
     }
+    activateMounts(frame);
     session.commit();
     for (const element of target.querySelectorAll("[data-solix-e]")) {
       element.removeAttribute("data-solix-e");

@@ -688,22 +688,12 @@ function instrumentAwaitExpressions(
         path.node.arguments.length !== 0 ||
         !t.isMemberExpression(path.node.callee) ||
         path.node.callee.computed ||
-        !t.isIdentifier(path.node.callee.object) ||
         !t.isIdentifier(path.node.callee.property) ||
         (path.node.callee.property.name !== "use" &&
           path.node.callee.property.name !== "useOptional")
       ) {
         return;
       }
-      const receiver = path.node.callee.object;
-      const binding = path.scope.getBinding(receiver.name);
-      const localContext =
-        binding?.path.isVariableDeclarator() &&
-        t.isCallExpression(binding.path.node.init) &&
-        t.isIdentifier(binding.path.node.init.callee, { name: "$context" });
-      const moduleContext = compiler.contextNames.has(receiver.name) && !binding;
-      const importedCandidate = compiler.importNames.has(receiver.name) && !binding;
-      if (!localContext && !moduleContext && !importedCandidate) return;
       path.replaceWith(
         t.callExpression(t.identifier("__solix_context_use"), [
           path.node.callee.object as t.Expression,

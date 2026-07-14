@@ -22,6 +22,7 @@ export interface ServerFragment {
   readonly kind: "server-fragment";
   readonly fragment: ServerFragment;
   readonly definition: TemplateDefinition;
+  readonly templateHtml: string;
   readonly session?: SsrSession;
   readonly elements: ServerElement[];
   readonly regions: ServerRegion[];
@@ -58,12 +59,61 @@ export function instantiateServer(
   const fragment = {
     kind: "server-fragment",
     definition,
+    templateHtml: prepareElementSlots(definition.html, elements),
     session,
     elements,
     regions,
   } as ServerFragment;
   Object.defineProperty(fragment, "fragment", { value: fragment });
   return fragment;
+}
+
+function elementSlot(index: number): string {
+  return `\0solix:element:${index}\0`;
+}
+
+function prepareElementSlots(html: string, elements: ServerElement[]): string {
+  const found = new Set<number>();
+  let result = "";
+  let cursor = 0;
+  let inTag = false;
+  let quote: '"' | "'" | undefined;
+  for (let index = 0; index < html.length; index += 1) {
+    const character = html[index]!;
+    if (!inTag) {
+      if (character === "<") inTag = true;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === ">") {
+      inTag = false;
+      continue;
+    }
+    if (!/\s/.test(html[index - 1] ?? "")) continue;
+    const match = /^data-solix-e="(\d+)"(?=\s|\/?>)/.exec(html.slice(index));
+    if (!match) continue;
+    const elementIndex = Number(match[1]);
+    if (!elements[elementIndex] || found.has(elementIndex)) {
+      throw new Error(`Invalid server element metadata ${elementIndex}`);
+    }
+    result += html.slice(cursor, index) + elementSlot(elementIndex);
+    cursor = index + match[0].length;
+    index = cursor - 1;
+    found.add(elementIndex);
+  }
+  for (const element of elements) {
+    if (element && !found.has(element.index)) {
+      throw new Error(`Missing server element metadata ${element.index}`);
+    }
+  }
+  return result + html.slice(cursor);
 }
 
 function escapeAttribute(value: string): string {
@@ -117,13 +167,13 @@ function renderAttributes(html: string, element: ServerElement): string {
       value === undefined ? [] : [value === true ? name : `${name}="${escapeAttribute(value)}"`],
     )
     .join(" ");
-  return html.replace(marker, `${dynamic ? `${dynamic} ` : ""}${marker}`);
+  return html.replace(elementSlot(element.index), `${dynamic ? `${dynamic} ` : ""}${marker}`);
 }
 
 function renderTextareaValue(html: string, element: ServerElement): string {
   const value = element.attributes.get("value");
   if (element.tag !== "textarea" || typeof value !== "string") return html;
-  const marker = `data-solix-e="${element.index}"`;
+  const marker = elementSlot(element.index);
   const markerIndex = html.indexOf(marker);
   const contentStart = html.indexOf(">", markerIndex) + 1;
   const contentEnd = html.indexOf("</textarea>", contentStart);
@@ -136,7 +186,7 @@ function renderTextareaValue(html: string, element: ServerElement): string {
 function renderSelectValue(html: string, element: ServerElement): string {
   const value = element.attributes.get("value");
   if (element.tag !== "select" || typeof value !== "string") return html;
-  const marker = `data-solix-e="${element.index}"`;
+  const marker = elementSlot(element.index);
   const markerIndex = html.indexOf(marker);
   const contentStart = html.indexOf(">", markerIndex) + 1;
   const contentEnd = html.indexOf("</select>", contentStart);
@@ -178,7 +228,7 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
   let parent: ServerRegion | undefined;
   const render = (): string => {
     fragment.session?.recordTemplate(fragment.definition.signature);
-    let html = fragment.definition.html;
+    let html = fragment.templateHtml;
     for (const region of fragment.regions) {
       if (!region) continue;
       const marker = `<!--solix:s:${region.index}--><!--solix:e:${region.index}-->`;
@@ -194,13 +244,19 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
       );
     }
     for (const element of fragment.elements) {
-      if (element && element.tag !== "select") html = renderAttributes(html, element);
+      if (element && element.tag !== "select" && element.tag !== "textarea") {
+        html = renderAttributes(html, element);
+      }
     }
     for (const element of fragment.elements) {
-      if (!element) continue;
-      if (element.tag === "select") html = renderAttributes(html, element);
+      if (!element || element.tag !== "textarea") continue;
       html = renderTextareaValue(html, element);
+      html = renderAttributes(html, element);
+    }
+    for (const element of fragment.elements) {
+      if (!element || element.tag !== "select") continue;
       html = renderSelectValue(html, element);
+      html = renderAttributes(html, element);
     }
     return `<!--solix:block:start:${fragment.definition.signature}-->${html}<!--solix:block:end-->`;
   };

@@ -610,16 +610,17 @@ test("preserves context reads after async setup resumes", async () => {
   const module = await loadCompiled(`
     import { $component, $context, Suspense } from "solix";
     const shared = $context<{ label: string }>();
-    const AsyncChild = $component(async function AsyncChild() {
+    const AsyncChild = $component(async function AsyncChild(props: { context: typeof shared }) {
+      const alias = props.context;
       await Promise.resolve();
-      const value = shared.use();
+      const value = alias.use();
       const service = { use() { return "ordinary method"; } };
       return <p id="async-context">{value.label}:{service.use()}</p>;
     });
     export const App = $component(function App() {
       const value = { label: "provided" };
       return <shared.Provider data={value}>
-        <Suspense fallback={<p>Loading</p>}><AsyncChild /></Suspense>
+        <Suspense fallback={<p>Loading</p>}><AsyncChild context={shared} /></Suspense>
       </shared.Provider>;
     });
   `);
@@ -978,12 +979,15 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
     export const App = $component(function App() {
       const items = ["one", "two"];
       const disabled = false;
-      return <main data-title={"<&"} aria-hidden={disabled} data-enabled={disabled}>
+      return <>
+        <p id="marker-text">data-solix-e="0"</p>
+        <main data-title={"<&"} aria-hidden={disabled} data-enabled={disabled}>
         <Suspense fallback={<p id="loading">Loading</p>} timeoutMs={100}>
           <Child label="done" />
           {items.map(item => <span key={item}>{item}</span>)}
         </Suspense>
-      </main>;
+        </main>
+      </>;
     });
   `);
   const activeDocument = globalThis.document;
@@ -995,6 +999,7 @@ test("server renders compiled primitives and resolved Suspense without a DOM", a
     globalThis.document = activeDocument;
   }
   expect(html).toContain('<main data-title="&lt;&amp;"');
+  expect(html).toContain('<p id="marker-text">data-solix-e="0"</p>');
   expect(html).toContain('aria-hidden="false"');
   expect(html).toContain('data-enabled="false"');
   expect(html).toContain('<strong class="ready active"');

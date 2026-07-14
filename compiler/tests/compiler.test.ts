@@ -477,10 +477,10 @@ describe("compiler", () => {
     expect(result.code).toContain("__solix_component(async (");
     expect(result.code).toContain("__solix_context_provider");
     expect(result.code).toContain("__solix_context_use(messageContext, __solix_frame, false)");
-    expect(result.code).toContain("service.value.use()");
-    expect(result.code).toContain("messageContext.value.use()");
-    expect(result.code.match(/__solix_context_use\(messageContext/g)).toHaveLength(1);
-    expect(result.code).not.toContain("__solix_context_use(service");
+    expect(result.code).toContain("__solix_context_use(service.value, __solix_frame, false)");
+    expect(result.code).toContain(
+      "__solix_context_use(messageContext.value, __solix_frame, false)",
+    );
     expect(result.code).toContain("__solix_error_boundary");
     expect(result.code).toContain("__solix_suspense");
     expect(result.code).toContain("__solix_await");
@@ -508,6 +508,15 @@ describe("compiler", () => {
     );
 
     expect(result.code).toContain("__solix_context_use(sharedContext, __solix_frame, false)");
+  });
+
+  test("reserves private hydration element markers", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() { return <main data-solix-e="authored">Bad</main>; });`,
+        "PrivateMarker.tsx",
+      ),
+    ).toThrow("data-solix-e is reserved for hydration metadata");
   });
 
   test("captures component awaits without instrumenting fire-and-forget helper work", () => {

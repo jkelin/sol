@@ -482,6 +482,9 @@ export function compileIntrinsicElement(
       codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
     const sourceName = getAttributeName(compiler, attribute.name);
     if (sourceName === "key") continue;
+    if (sourceName === "data-solix-e") {
+      codeFrame(compiler, attribute, "data-solix-e is reserved for hydration metadata");
+    }
     if (sourceName === "$form") {
       const controller = expressionCode(expressionAttribute(compiler, attribute), scope);
       deferredOperations.push(

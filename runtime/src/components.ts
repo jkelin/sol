@@ -7,6 +7,7 @@ import type {
   RouteValues,
 } from "./routes.ts";
 import { CONTEXT } from "./symbols.ts";
+import type { RenderFrame } from "./rendering.ts";
 import type { JSX } from "./jsx-runtime.ts";
 
 export type Component<Props extends object = Record<string, never>> = (
@@ -50,8 +51,8 @@ export function $context<TShape extends object>(): Context<TShape> {
     throw new Error("Context providers must be rendered as JSX inside a compiled component");
   }) as Component<{ data: TShape; children?: JSX.Element | readonly JSX.Element[] }>;
 
-  const read = (optional: boolean): TShape | undefined => {
-    const source = runtimeState.activeFrame?.contexts.get(key);
+  const read = (optional: boolean, frame?: RenderFrame): TShape | undefined => {
+    const source = (frame ?? runtimeState.activeFrame)?.contexts.get(key);
     if (!source) {
       if (optional) return undefined;
       throw new Error("Context is not available outside its Provider");
@@ -62,9 +63,24 @@ export function $context<TShape extends object>(): Context<TShape> {
   return Object.freeze({
     [CONTEXT]: key,
     Provider,
-    use: () => read(false)!,
-    useOptional: () => read(true),
+    use: (frame?: RenderFrame) => read(false, frame)!,
+    useOptional: (frame?: RenderFrame) => read(true, frame),
   }) as Context<TShape>;
+}
+
+export function contextUse<TShape extends object>(
+  candidate: Context<TShape>,
+  frame: RenderFrame,
+  optional: boolean,
+) {
+  if (CONTEXT in candidate) {
+    const internal = candidate as Context<TShape> & {
+      use(frame: RenderFrame): TShape;
+      useOptional(frame: RenderFrame): TShape | undefined;
+    };
+    return optional ? internal.useOptional(frame) : internal.use(frame);
+  }
+  return optional ? candidate.useOptional() : candidate.use();
 }
 
 function contextProxy(source: () => object): object {

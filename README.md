@@ -238,8 +238,8 @@ use `useOptional()` when an absent provider is valid.
 const noteContext = $context<{ section: string; visits: number }>();
 
 const AsyncNote = $component(async function AsyncNote() {
-  const context = noteContext.use(); // read context before the first await
   const note = await getNote();
+  const context = noteContext.use(); // context remains available after awaits
   return (
     <p>
       {context.section}: {note.text}

@@ -23,7 +23,7 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `reactivity.ts` implements signals, computed values, effects, batching, proxies, and render ownership state.
 - `forms.ts` implements form controllers, validation normalization, and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, and Suspense participation.
-- `components.ts` defines compiler-specialized component, context, async-boundary, route, and Link handles.
+- `components.ts` defines compiler-specialized component, context, async-boundary, route, and Link handles, including frame-explicit context reads used by async compiled setup.
 - `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, render adapters, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers.

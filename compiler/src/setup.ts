@@ -430,49 +430,53 @@ function instrumentAwaitExpressions(
 ): void {
   const file = t.file(t.program([t.expressionStatement(declaration)]));
   type LocalFunction = t.FunctionDeclaration | t.FunctionExpression | t.ArrowFunctionExpression;
-  const localFunctions = new Map<string, LocalFunction>();
+  const functionsByIdentifier = new WeakMap<t.Identifier, LocalFunction>();
+  const localFunctions = new Set<LocalFunction>();
   traverse(file, {
     FunctionDeclaration(path: NodePath<t.FunctionDeclaration>) {
-      if (path.node.id) localFunctions.set(path.node.id.name, path.node);
+      if (!path.node.id) return;
+      functionsByIdentifier.set(path.node.id, path.node);
+      localFunctions.add(path.node);
     },
     VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
       if (
         t.isIdentifier(path.node.id) &&
         (t.isFunctionExpression(path.node.init) || t.isArrowFunctionExpression(path.node.init))
       ) {
-        localFunctions.set(path.node.id.name, path.node.init);
+        functionsByIdentifier.set(path.node.id, path.node.init);
+        localFunctions.add(path.node.init);
       }
     },
   });
 
-  const calledHelpers = (node: t.Node): Set<LocalFunction> => {
-    const called = new Set<LocalFunction>();
-    const cloned = t.cloneNode(node, true);
-    const statements = t.isFunctionDeclaration(cloned)
-      ? [cloned]
-      : t.isExpression(cloned)
-        ? [t.expressionStatement(cloned)]
-        : [];
-    traverse(t.file(t.program(statements)), {
-      CallExpression(path: NodePath<t.CallExpression>) {
-        if (!t.isIdentifier(path.node.callee)) return;
-        const helper = localFunctions.get(path.node.callee.name);
-        if (helper) called.add(helper);
-      },
-    });
-    return called;
+  const callTargets = new WeakMap<t.CallExpression, LocalFunction>();
+  const callsByOwner = new Map<LocalFunction | t.FunctionExpression, Set<LocalFunction>>();
+  const targetForCall = (path: NodePath<t.CallExpression>): LocalFunction | undefined => {
+    if (!t.isIdentifier(path.node.callee)) return undefined;
+    const binding = path.scope.getBinding(path.node.callee.name);
+    return binding ? functionsByIdentifier.get(binding.identifier) : undefined;
   };
-
   const reachable = new Set<LocalFunction>();
   traverse(file, {
-    AwaitExpression(path: NodePath<t.AwaitExpression>) {
-      if (path.getFunctionParent()?.node !== declaration) return;
-      for (const helper of calledHelpers(path.node.argument)) reachable.add(helper);
+    CallExpression(path: NodePath<t.CallExpression>) {
+      const target = targetForCall(path);
+      if (!target) return;
+      callTargets.set(path.node, target);
+      const owner = path.getFunctionParent()?.node;
+      if (owner === declaration || localFunctions.has(owner as LocalFunction)) {
+        const calls = callsByOwner.get(owner as LocalFunction | t.FunctionExpression) ?? new Set();
+        calls.add(target);
+        callsByOwner.set(owner as LocalFunction | t.FunctionExpression, calls);
+      }
+      const awaited = path.findParent((parent) => parent.isAwaitExpression());
+      if (awaited?.isAwaitExpression() && awaited.getFunctionParent()?.node === declaration) {
+        reachable.add(target);
+      }
     },
   });
   const queue = [...reachable];
   for (let index = 0; index < queue.length; index += 1) {
-    for (const helper of calledHelpers(queue[index]!)) {
+    for (const helper of callsByOwner.get(queue[index]!) ?? []) {
       if (reachable.has(helper)) continue;
       reachable.add(helper);
       queue.push(helper);
@@ -492,7 +496,7 @@ function instrumentAwaitExpressions(
     if (ownAwait.has(helper)) return true;
     if (seen.has(helper)) return false;
     seen.add(helper);
-    return [...calledHelpers(helper)].some(
+    return [...(callsByOwner.get(helper) ?? [])].some(
       (called) => reachable.has(called) && hasCapturedAwait(called, seen),
     );
   };
@@ -507,7 +511,7 @@ function instrumentAwaitExpressions(
       expression = expression.expression;
     }
     if (!t.isCallExpression(expression) || !t.isIdentifier(expression.callee)) return undefined;
-    return localFunctions.get(expression.callee.name);
+    return callTargets.get(expression);
   };
 
   traverse(file, {
@@ -522,6 +526,29 @@ function instrumentAwaitExpressions(
         t.stringLiteral(nextAsyncSite(compiler)),
         t.arrowFunctionExpression([], argument),
       ]);
+      path.skip();
+    },
+  });
+
+  traverse(file, {
+    CallExpression(path: NodePath<t.CallExpression>) {
+      if (
+        path.node.arguments.length !== 0 ||
+        !t.isMemberExpression(path.node.callee) ||
+        path.node.callee.computed ||
+        !t.isIdentifier(path.node.callee.property) ||
+        (path.node.callee.property.name !== "use" &&
+          path.node.callee.property.name !== "useOptional")
+      ) {
+        return;
+      }
+      path.replaceWith(
+        t.callExpression(t.identifier("__solix_context_use"), [
+          path.node.callee.object as t.Expression,
+          t.identifier("__solix_frame"),
+          t.booleanLiteral(path.node.callee.property.name === "useOptional"),
+        ]),
+      );
       path.skip();
     },
   });

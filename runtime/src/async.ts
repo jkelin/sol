@@ -29,6 +29,9 @@ export function suspense(
   frame: RenderFrame,
   timeoutMs?: number,
 ): void {
+  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) {
+    throw new TypeError("Suspense timeoutMs must be a finite non-negative number");
+  }
   const hydrationClaim = regionHydrationClaim(region);
   if (frame.mode === "hydrate" && frame.hydration && hydrationClaim && !isServerRegion(region)) {
     const state = frame.hydration.claimBoundary();

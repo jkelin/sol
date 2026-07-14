@@ -606,6 +606,34 @@ test("context optional reads and local Await errors work without Suspense", asyn
   dispose();
 });
 
+test("preserves context reads after async setup resumes", async () => {
+  const module = await loadCompiled(`
+    import { $component, $context, Suspense } from "solix";
+    const shared = $context<{ label: string }>();
+    const AsyncChild = $component(async function AsyncChild() {
+      await Promise.resolve();
+      const value = shared.use();
+      const service = { use() { return "ordinary method"; } };
+      return <p id="async-context">{value.label}:{service.use()}</p>;
+    });
+    export const App = $component(function App() {
+      const value = { label: "provided" };
+      return <shared.Provider data={value}>
+        <Suspense fallback={<p>Loading</p>}><AsyncChild /></Suspense>
+      </shared.Provider>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const paragraph = target.querySelector("#async-context");
+  expect(paragraph?.textContent).toBe("provided:ordinary method");
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#async-context")).toBe(paragraph);
+  expect(paragraph?.textContent).toBe("provided:ordinary method");
+  dispose();
+});
+
 test("missing contexts throw and ErrorBoundary catches sync and async render failures", async () => {
   const missingModule = await loadCompiled(`
     import { $component, $context } from "solix";
@@ -1394,6 +1422,19 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
       expectRejection(renderToStringAsync(App, undefined, { timeoutMs }), "finite non-negative"),
     ),
   );
+
+  const suspenseModule = await loadCompiled(`
+    import { Suspense } from "solix";
+    export const App = $component(function App(props: { timeoutMs: number }) {
+      return <Suspense fallback={<p>Loading</p>} timeoutMs={props.timeoutMs}><main>Ready</main></Suspense>;
+    });
+  `);
+  const SuspenseApp = suspenseModule.App as Component<{ timeoutMs: number }>;
+  for (const timeoutMs of [-1, NaN, Infinity]) {
+    expect(() => mount(SuspenseApp, document.createElement("div"), { timeoutMs })).toThrow(
+      "finite non-negative",
+    );
+  }
 
   const target = document.createElement("div");
   await expectRejection(hydrate(null as never, target), "compiled Solix component");

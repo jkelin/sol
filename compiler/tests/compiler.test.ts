@@ -511,6 +511,29 @@ describe("compiler", () => {
     expect(second.code).not.toContain('"await:FirstModule.tsx:0"');
   });
 
+  test("resolves awaited helpers by lexical binding when names are shadowed", () => {
+    const result = compile(
+      `
+      const App = $component(async function App() {
+        async function load() { return await Promise.resolve("outer"); }
+        {
+          async function load() { await Promise.resolve("shadow"); }
+          void load();
+        }
+        const value = await load();
+        return <p>{value}</p>;
+      });
+    `,
+      "ShadowedHelper.tsx",
+    );
+
+    expect(result.code).toContain('await Promise.resolve("shadow")');
+    expect(result.code).toContain(
+      'await __solix_async_value(__solix_frame, "await:ShadowedHelper.tsx:0", () => Promise.resolve("outer"))',
+    );
+    expect(result.code).toContain("const value = __solix_signal(await load())");
+  });
+
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {

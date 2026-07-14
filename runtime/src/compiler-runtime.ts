@@ -1,4 +1,5 @@
 export { contextProvider } from "./dom.ts";
+export { contextUse } from "./components.ts";
 export { attribute, bindValue, child, event, link, list, text, when } from "./dom.ts";
 export { awaitBlock, errorBoundary, suspense } from "./async.ts";
 export { asyncValue } from "./ssr-session.ts";

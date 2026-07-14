@@ -10,6 +10,7 @@ export const RUNTIME_IMPORT = `import {
   child as __solix_child,
   component as __solix_component,
   contextProvider as __solix_context_provider,
+  contextUse as __solix_context_use,
   emptyBlock as __solix_empty_block,
   errorBoundary as __solix_error_boundary,
   event as __solix_event,

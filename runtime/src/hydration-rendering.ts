@@ -8,6 +8,14 @@ export interface HydrationClaim {
   cursor: Node | null;
 }
 
+export interface HeadHydrationClaim {
+  readonly index: number;
+  readonly start: Comment;
+  readonly end: Comment;
+  readonly claim: HydrationClaim;
+  readonly signatures: readonly string[];
+}
+
 export interface HydratedFragment {
   readonly kind: "hydrated-fragment";
   readonly start: Comment;
@@ -19,6 +27,44 @@ const hydratedRegions = new WeakSet<Comment>();
 
 export function rootHydrationClaim(target: Element): HydrationClaim {
   return { cursor: target.firstChild };
+}
+
+export function headHydrationClaims(
+  head: HTMLHeadElement,
+  id: string,
+  count: number,
+): HeadHydrationClaim[] {
+  const claims: HeadHydrationClaim[] = [];
+  const startPattern = new RegExp(
+    `^solix:head:start:${id.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}:(\\d+)$`,
+  );
+  for (const node of head.childNodes) {
+    if (node.nodeType !== Node.COMMENT_NODE) continue;
+    const start = node as Comment;
+    const match = startPattern.exec(start.data);
+    if (!match) continue;
+    const index = Number(match[1]);
+    const endData = `solix:head:end:${id}:${index}`;
+    let end: Comment | undefined;
+    const signatures: string[] = [];
+    for (let current = start.nextSibling; current; current = current.nextSibling) {
+      if (current.nodeType !== Node.COMMENT_NODE) continue;
+      const comment = current as Comment;
+      const signature = /^solix:block:start:(t[a-z0-9]+)$/.exec(comment.data)?.[1];
+      if (signature) signatures.push(signature);
+      if (comment.data === endData) {
+        end = comment;
+        break;
+      }
+    }
+    if (!end) mismatch(`missing server Head end marker ${index}`);
+    claims.push({ index, start, end, claim: { cursor: start.nextSibling }, signatures });
+  }
+  const indexes = claims.map((claim) => claim.index).toSorted((left, right) => left - right);
+  if (claims.length !== count || indexes.some((index, position) => index !== position)) {
+    mismatch("server Head blocks differ");
+  }
+  return claims;
 }
 
 export function regionHydrationClaim(region: Region): HydrationClaim | undefined {
@@ -175,7 +221,7 @@ function matchChildren(
         !(
           elementIndex !== null &&
           boundElements.has(Number(elementIndex)) &&
-          actualElement.tagName === "TEXTAREA"
+          ["SCRIPT", "STYLE", "TEXTAREA", "TITLE"].includes(actualElement.tagName)
         )
       ) {
         matchChildren(
@@ -219,6 +265,11 @@ export function instantiateHydrated(
       .map((operation) => operation.index)
       .filter((index): index is number => index !== undefined),
   );
+  for (const operation of definition.metadata.operations) {
+    if (operation.kind === "raw_text" && operation.index !== undefined) {
+      propertyValueElements.add(operation.index);
+    }
+  }
   matchChildren(
     definition.element.content,
     start.nextSibling,

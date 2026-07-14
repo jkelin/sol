@@ -1,5 +1,5 @@
 import type { Component } from "./components.ts";
-import { rootHydrationClaim } from "./hydration-rendering.ts";
+import { headHydrationClaims, rootHydrationClaim } from "./hydration-rendering.ts";
 import { isObject, isPromiseLike, reactive } from "./reactivity.ts";
 import {
   activateMounts,
@@ -16,7 +16,11 @@ function hydrationPayload(value: unknown): HydrationPayload {
   if (!isObject(value) || Array.isArray(value)) {
     throw new TypeError("Invalid Solix hydration payload");
   }
-  if (Object.keys(value).toSorted().join(",") !== "async,boundaries,templates,version") {
+  const keys = Object.keys(value).toSorted().join(",");
+  if (
+    keys !== "async,boundaries,templates,version" &&
+    keys !== "async,boundaries,head,templates,version"
+  ) {
     throw new TypeError("Invalid Solix hydration payload fields");
   }
   const payload = value as Partial<HydrationPayload>;
@@ -27,6 +31,17 @@ function hydrationPayload(value: unknown): HydrationPayload {
     !Array.isArray(payload.boundaries)
   ) {
     throw new TypeError("Invalid Solix hydration payload");
+  }
+  if (
+    payload.head !== undefined &&
+    (!isObject(payload.head) ||
+      Array.isArray(payload.head) ||
+      Object.keys(payload.head).toSorted().join(",") !== "count,id" ||
+      typeof payload.head.id !== "string" ||
+      !Number.isInteger(payload.head.count) ||
+      payload.head.count < 1)
+  ) {
+    throw new TypeError("Invalid Solix hydration Head payload");
   }
   return payload as HydrationPayload;
 }
@@ -68,13 +83,20 @@ export async function hydrate<Props extends object>(
   }
   const payload = hydrationPayload(deserializeGraph(script.textContent ?? ""));
   const session = new HydrationSession(payload);
-  session.validateTemplateOrder(templateSignatures(target));
+  const documentHeadClaims = payload.head
+    ? headHydrationClaims(target.ownerDocument.head, payload.head.id, payload.head.count)
+    : [];
+  session.validateTemplateOrder([
+    ...templateSignatures(target),
+    ...documentHeadClaims.flatMap((headClaim) => headClaim.signatures),
+  ]);
   const claim = rootHydrationClaim(target);
   const frame: RenderFrame = {
     ...rootFrame(),
     mode: "hydrate",
     hydration: session,
     claim,
+    headClaims: documentHeadClaims.toSorted((left, right) => left.index - right.index),
   };
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
   let rendered: Block | undefined;
@@ -83,6 +105,9 @@ export async function hydrate<Props extends object>(
     rendered = isPromiseLike(result) ? await session.track(result) : result;
     rendered.mount(target);
     await session.wait();
+    if (frame.headClaims?.length) {
+      throw new HydrationMismatchError("did not consume every server Head block");
+    }
     if (claim.cursor !== script) {
       throw new HydrationMismatchError("unexpected root nodes");
     }
@@ -90,6 +115,19 @@ export async function hydrate<Props extends object>(
     session.commit();
     for (const element of target.querySelectorAll("[data-solix-e]")) {
       element.removeAttribute("data-solix-e");
+    }
+    for (const headClaim of documentHeadClaims) {
+      for (
+        let node = headClaim.start.nextSibling;
+        node && node !== headClaim.end;
+        node = node.nextSibling
+      ) {
+        if (!(node instanceof Element)) continue;
+        node.removeAttribute("data-solix-e");
+        for (const element of node.querySelectorAll("[data-solix-e]")) {
+          element.removeAttribute("data-solix-e");
+        }
+      }
     }
     script.remove();
     let disposed = false;

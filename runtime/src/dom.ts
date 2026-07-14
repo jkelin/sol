@@ -92,28 +92,73 @@ export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[
 }
 
 export function rawText(
-  element: Element,
+  element: Element | ServerElement,
   getValues: () => readonly unknown[],
   cleanups: Cleanup[],
 ): void {
+  if (isServerElement(element)) {
+    if (!RAW_TEXT_TAGS.has(element.tag.toUpperCase())) {
+      throw new TypeError("rawText() expects a script, style, textarea, or title element");
+    }
+    const values = getValues();
+    if (!Array.isArray(values)) throw new TypeError("rawText() values must be an array");
+    element.textContent = values.map(displayValue).join("");
+    return;
+  }
   if (!element || element.nodeType !== Node.ELEMENT_NODE || !RAW_TEXT_TAGS.has(element.tagName)) {
     throw new TypeError("rawText() expects a script, style, textarea, or title element");
   }
+  let hydrating = element.hasAttribute("data-solix-e");
   cleanups.push(
     runtimeEffect(() => {
       const values = getValues();
       if (!Array.isArray(values)) throw new TypeError("rawText() values must be an array");
-      element.textContent = values.map(displayValue).join("");
+      const value = values.map(displayValue).join("");
+      if (hydrating) {
+        hydrating = false;
+        if (element.textContent !== value) {
+          throw new HydrationMismatchError("raw text differs");
+        }
+        return;
+      }
+      element.textContent = value;
     }),
   );
 }
 
 export function head(render: RenderFactory, cleanups: Cleanup[], frame: RenderFrame): void {
+  if (frame.mode === "server") {
+    const rendered = render({ ...frame, head: true });
+    if (!frame.ssr) throw new Error("Head server rendering requires an SSR session");
+    frame.ssr.captureHead(rendered);
+    cleanups.push(() => rendered.dispose());
+    return;
+  }
   if (typeof document === "undefined" || !document.head) {
     throw new Error("Head requires a browser document with a head element");
   }
-  const rendered = render({ ...frame, head: true });
-  cleanups.push(() => rendered.dispose());
+  const headClaim = frame.mode === "hydrate" ? frame.headClaims?.shift() : undefined;
+  if (frame.mode === "hydrate" && !headClaim) {
+    throw new HydrationMismatchError("server Head block is missing");
+  }
+  const rendered = render({ ...frame, head: true, claim: headClaim?.claim ?? frame.claim });
+  if (headClaim && headClaim.claim.cursor !== headClaim.end) {
+    const claimedNodes = rendered.nodes;
+    rendered.dispose();
+    for (const node of claimedNodes) headClaim.end.before(node);
+    throw new HydrationMismatchError("unexpected server Head nodes");
+  }
+  cleanups.push(() => {
+    const preserveClaim = Boolean(headClaim && frame.hydration && !frame.hydration.committed);
+    const claimedNodes = preserveClaim ? rendered.nodes : [];
+    rendered.dispose();
+    if (preserveClaim) {
+      for (const node of claimedNodes) headClaim!.end.before(node);
+    } else {
+      headClaim?.start.remove();
+      headClaim?.end.remove();
+    }
+  });
   rendered.mount(document.head, document.head.firstChild);
 }
 

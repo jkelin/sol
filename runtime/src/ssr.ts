@@ -14,6 +14,7 @@ import { SsrSession } from "./ssr-session.ts";
 
 export interface RenderToStringOptions {
   readonly timeoutMs?: number;
+  readonly onHead?: (html: string) => void;
 }
 
 export const DEFAULT_SSR_TIMEOUT = 5_000;
@@ -38,7 +39,12 @@ export async function renderToStringAsync<Props extends object>(
     throw new TypeError("renderToStringAsync() options must be an object");
   }
   for (const key of Object.keys(options)) {
-    if (key !== "timeoutMs") throw new TypeError(`Unknown renderToStringAsync() option ${key}`);
+    if (key !== "timeoutMs" && key !== "onHead") {
+      throw new TypeError(`Unknown renderToStringAsync() option ${key}`);
+    }
+  }
+  if (options.onHead !== undefined && typeof options.onHead !== "function") {
+    throw new TypeError("renderToStringAsync() onHead must be a function");
   }
   const timeoutMs = validateTimeout(options.timeoutMs, "renderToStringAsync() timeoutMs");
   const session = new SsrSession();
@@ -61,6 +67,11 @@ export async function renderToStringAsync<Props extends object>(
         return block.serverHtml();
       })
       .join("");
+    const head = session.headHtml();
+    if (head && !options.onHead) {
+      throw new Error("renderToStringAsync() rendered Head content without an onHead callback");
+    }
+    options.onHead?.(head);
     for (const entry of session.async) {
       if (entry.status === "pending") continue;
       try {

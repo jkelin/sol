@@ -1,3 +1,5 @@
+import type { Block } from "./rendering.ts";
+
 export const HYDRATION_VERSION = 1;
 
 export class HydrationMismatchError extends Error {
@@ -33,6 +35,7 @@ export interface HydrationPayload {
   readonly templates: string[];
   readonly async: AsyncEntry[];
   readonly boundaries: ("resolved" | "timeout" | "error")[];
+  readonly head?: { readonly id: string; readonly count: number };
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -55,6 +58,9 @@ export class SsrSession {
   readonly templates: string[] = [];
   readonly async: AsyncEntry[] = [];
   readonly boundaries: ("resolved" | "timeout" | "error")[] = [];
+  private readonly headBlocks: Array<{ readonly index: number; readonly block: Block }> = [];
+  private readonly headId = Math.random().toString(36).slice(2);
+  private headIndex = 0;
   private rootPending = 0;
   private boundaryPending = 0;
   private completion = deferred();
@@ -76,6 +82,20 @@ export class SsrSession {
 
   recordTemplate(signature: string): void {
     this.templates.push(signature);
+  }
+
+  captureHead(block: Block): void {
+    this.headBlocks.unshift({ index: this.headIndex++, block });
+  }
+
+  headHtml(): string {
+    return this.headBlocks
+      .map(({ index, block }) => {
+        const render = (block as { serverHtml?: unknown }).serverHtml;
+        if (typeof render !== "function") throw new Error("Invalid server-rendered Head block");
+        return `<!--solix:head:start:${this.headId}:${index}-->${render.call(block)}<!--solix:head:end:${this.headId}:${index}-->`;
+      })
+      .join("");
   }
 
   capture<T>(
@@ -204,6 +224,9 @@ export class SsrSession {
       templates: this.templates,
       async: this.async,
       boundaries: this.boundaries,
+      ...(this.headBlocks.length > 0
+        ? { head: { id: this.headId, count: this.headBlocks.length } }
+        : {}),
     };
   }
 

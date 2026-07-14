@@ -10,6 +10,7 @@ export interface ServerElement {
   readonly index: number;
   readonly tag: string;
   readonly attributes: Map<string, string | true | undefined>;
+  textContent?: string;
 }
 
 export interface ServerRegion {
@@ -183,6 +184,23 @@ function renderTextareaValue(html: string, element: ServerElement): string {
   return `${html.slice(0, contentStart)}${escapeText(value)}${html.slice(contentEnd)}`;
 }
 
+function renderRawTextValue(html: string, element: ServerElement): string {
+  if (element.textContent === undefined) return html;
+  const marker = elementSlot(element.index);
+  const markerIndex = html.indexOf(marker);
+  const contentStart = html.indexOf(">", markerIndex) + 1;
+  const closingTag = `</${element.tag}>`;
+  const contentEnd = html.indexOf(closingTag, contentStart);
+  if (markerIndex < 0 || contentStart === 0 || contentEnd < 0) {
+    throw new Error(`Invalid server raw-text metadata ${element.index}`);
+  }
+  const value =
+    element.tag === "script" || element.tag === "style"
+      ? element.textContent
+      : escapeText(element.textContent);
+  return `${html.slice(0, contentStart)}${value}${html.slice(contentEnd)}`;
+}
+
 function renderSelectValue(html: string, element: ServerElement): string {
   const value = element.attributes.get("value");
   if (element.tag !== "select" || typeof value !== "string") return html;
@@ -242,6 +260,10 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
         marker,
         `<!--solix:s:${region.index}-->${content}<!--solix:e:${region.index}-->`,
       );
+    }
+    for (const element of fragment.elements) {
+      if (!element || element.textContent === undefined) continue;
+      html = renderRawTextValue(html, element);
     }
     for (const element of fragment.elements) {
       if (element && element.tag !== "select" && element.tag !== "textarea") {

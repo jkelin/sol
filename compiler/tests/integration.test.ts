@@ -284,6 +284,151 @@ test("Head keeps reactive script bindings on the executable replacement", async 
   expect((window as unknown as { dynamicHeadScripts?: number }).dynamicHeadScripts).toBe(1);
 });
 
+test("SSR serializes Head separately and hydration claims its owned nodes", async () => {
+  const staticTitle = document.createElement("title");
+  staticTitle.textContent = "Static title";
+  document.head.append(staticTitle);
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App() {
+      let title = "Server title";
+      let description = "Server description";
+      return <main>
+        <Head>
+          <title>Page: {title}</title>
+          <meta name="description" content={description} />
+          <style>{"body { color: " + title + "; }"}</style>
+        </Head>
+        <h1>Server body</h1>
+        <button onClick={() => { title = "Client title"; description = "Client description"; }}>Update</button>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  let headHtml = "";
+  const bodyHtml = await renderToStringAsync(App, undefined, {
+    onHead: (html) => {
+      headHtml = html;
+    },
+  });
+
+  expect(bodyHtml).toContain("Server body");
+  expect(bodyHtml).not.toContain("Server title");
+  expect(headHtml).toContain("Page: Server title");
+  expect(headHtml).toContain('content="Server description"');
+  expect(headHtml).toContain("body { color: Server title; }");
+  expect(headHtml).toContain("solix:head:start:");
+
+  const headTemplate = document.createElement("template");
+  headTemplate.innerHTML = headHtml;
+  document.head.prepend(headTemplate.content);
+  const serverTitle = document.head.querySelector("title");
+  const serverMeta = document.head.querySelector('meta[name="description"]');
+  const target = document.createElement("div");
+  target.innerHTML = bodyHtml;
+  const serverHeading = target.querySelector("h1");
+  const dispose = await hydrate(App, target);
+
+  expect(target.querySelector("h1")).toBe(serverHeading);
+  expect(document.head.querySelector("title")).toBe(serverTitle);
+  expect(document.head.querySelector('meta[name="description"]')).toBe(serverMeta);
+  expect(document.title).toBe("Page: Server title");
+
+  target.querySelector("button")!.click();
+  expect(document.title).toBe("Page: Client title");
+  expect(serverMeta?.getAttribute("content")).toBe("Client description");
+  expect(document.head.querySelector("style")?.textContent).toContain("Client title");
+
+  dispose();
+  expect(document.title).toBe("Static title");
+  expect(document.head.querySelector('meta[name="description"]')).toBeNull();
+  expect(document.head.querySelector("style")).toBeNull();
+});
+
+test("SSR Head preserves independent ordering and script identity through hydration", async () => {
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App() {
+      let showNewer = true;
+      return <main>
+        <Head><title>Older</title><meta name="shared" content="older" /></Head>
+        {showNewer && <Head>
+          <title>Newer</title>
+          <meta name="shared" content="newer" />
+          <script nonce="server-nonce">{"globalThis.ssrHeadScript = (globalThis.ssrHeadScript ?? 0) + 1;"}</script>
+        </Head>}
+        <button onClick={() => showNewer = false}>Hide newer</button>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  let headHtml = "";
+  const bodyHtml = await renderToStringAsync(App, undefined, {
+    onHead: (html) => {
+      headHtml = html;
+    },
+  });
+  expect(headHtml.indexOf("Newer")).toBeLessThan(headHtml.indexOf("Older"));
+  expect(headHtml).toContain('nonce="server-nonce"');
+  expect(headHtml).toContain("globalThis.ssrHeadScript");
+
+  document.head.innerHTML = headHtml;
+  const titles = [...document.head.querySelectorAll("title")];
+  const script = document.head.querySelector("script");
+  const target = document.createElement("div");
+  target.innerHTML = bodyHtml;
+  const dispose = await hydrate(App, target);
+
+  expect([...document.head.querySelectorAll("title")]).toEqual(titles);
+  expect(document.head.querySelector("script")).toBe(script);
+  expect(document.title).toBe("Newer");
+  expect(
+    [...document.head.querySelectorAll('meta[name="shared"]')].map((meta) =>
+      meta.getAttribute("content"),
+    ),
+  ).toEqual(["newer", "older"]);
+
+  target.querySelector("button")!.click();
+  expect(document.title).toBe("Older");
+  expect(document.head.querySelector("script")).toBeNull();
+  dispose();
+  expect(document.head.querySelector("title")).toBeNull();
+});
+
+test("a later hydration mismatch preserves server-rendered Head nodes", async () => {
+  const module = await loadCompiled(`
+    import { $component, Head } from "solix";
+    export const App = $component(function App(props: { label: string }) {
+      return <main>
+        <Head><title>Preserved {props.label}</title><meta name="preserved-head" content={props.label} /></Head>
+        <p>{props.label}</p>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ label: string }>;
+  let headHtml = "";
+  const bodyHtml = await renderToStringAsync(
+    App,
+    { label: "server" },
+    {
+      onHead: (html) => {
+        headHtml = html;
+      },
+    },
+  );
+  document.head.innerHTML = headHtml;
+  const title = document.head.querySelector("title");
+  const meta = document.head.querySelector('meta[name="preserved-head"]');
+  const headSnapshot = document.head.innerHTML;
+  const target = document.createElement("div");
+  target.innerHTML = bodyHtml;
+
+  await expectRejection(hydrate(App, target, { label: "client" }), "hydration mismatch");
+  expect(document.head.querySelector("title")).toBe(title);
+  expect(document.head.querySelector('meta[name="preserved-head"]')).toBe(meta);
+  expect(document.head.innerHTML).toBe(headSnapshot);
+});
+
 test("empty Head is inert and scripts outside Head stay inert", async () => {
   window.happyDOM.settings.enableJavaScriptEvaluation = true;
   const before = [...document.head.childNodes];
@@ -1718,6 +1863,18 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     [-1, NaN, Infinity].map((timeoutMs) =>
       expectRejection(renderToStringAsync(App, undefined, { timeoutMs }), "finite non-negative"),
     ),
+  );
+  await expectRejection(
+    renderToStringAsync(App, undefined, { onHead: "invalid" } as never),
+    "onHead must be a function",
+  );
+  const headModule = await loadCompiled(`
+    import { Head } from "solix";
+    export const App = $component(function App() { return <><Head><title>Required callback</title></Head><main /></>; });
+  `);
+  await expectRejection(
+    renderToStringAsync(headModule.App as Component),
+    "without an onHead callback",
   );
 
   const suspenseModule = await loadCompiled(`

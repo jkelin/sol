@@ -53,9 +53,12 @@ Public interfaces validate inputs before mutating runtime state. Keep that valid
 
 ## SSR and hydration
 
-`renderToStringAsync(component, props?, { timeoutMs? })` returns component markup plus one escaped
+`renderToStringAsync(component, props?, { timeoutMs?, onHead? })` returns component markup plus one escaped
 `application/json` hydration payload. The default timeout is 5,000ms. Each `Suspense` may provide a
 server-only `timeoutMs` override; a timeout renders its fallback, while root async timeouts reject.
+When a render contains `Head`, `onHead` is required and receives the separately serialized managed
+head markup after async work settles. Insert it into the response document's `<head>` before the body
+markup. Its private ownership markers let hydration claim the head and body trees together.
 
 `hydrate(component, target, props?)` returns a promise for an idempotent disposer. It requires the
 exact server output in `target`, replays settled compiler-owned awaits without invoking their thunks,
@@ -77,4 +80,4 @@ host-specific values, and the embedded JSON escapes script-closing characters.
 
 ## Document head
 
-`Head` accepts JSX children such as `title`, `meta`, `link`, `style`, and `script`, then mounts them directly into `document.head`. Managed blocks precede static head content so their titles take effect, and newer blocks precede older blocks. Each instance owns and cleans up only its nodes without deduplicating overlaps. Reactive title, style, script, and textarea text is assigned through `textContent`. The render frame marks Head descendants so only their template scripts are recreated as executable elements; scripts elsewhere retain ordinary inert template-clone behavior. Scripts execute when inserted according to native browser behavior, while later text updates do not rerun an already-connected script.
+`Head` accepts JSX children such as `title`, `meta`, `link`, `style`, and `script`, then mounts them directly into `document.head`. Managed blocks precede static head content so their titles take effect, and newer blocks precede older blocks. Each instance owns and cleans up only its nodes without deduplicating overlaps. Reactive title, style, script, and textarea text is assigned through `textContent`. SSR serializes managed blocks through `onHead`; hydration claims those exact elements, including scripts, and removes only their private compiler markers. The render frame marks client-only Head descendants so only their template scripts are recreated as executable elements; scripts elsewhere retain ordinary inert template-clone behavior. Scripts execute when inserted according to native browser behavior, while later text updates do not rerun an already-connected or hydrated script.

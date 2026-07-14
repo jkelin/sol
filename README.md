@@ -217,6 +217,8 @@ Each `Head` block owns the nodes it inserts and removes only those nodes when it
 
 Scripts are recreated as executable DOM elements before insertion. Inline and external scripts therefore follow native browser execution rules: insertion executes them, later inline-text updates do not rerun them, and cleanup cannot reverse their side effects.
 
+During server rendering, pass `onHead` to collect the serialized managed head separately from the body markup. Insert that string into the document `<head>` and the returned body string into the application target before calling `hydrate()`. Hydration claims both trees in place, preserves script identity, and makes the claimed head nodes reactive and owned by their original blocks.
+
 ## Transitions
 
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string, so the application can define animation details with Tailwind, another CSS framework, or its own stylesheet. Transitions run only for updates after the initial render:
@@ -309,9 +311,19 @@ markers used by `hydrate()`:
 ```tsx
 import { hydrate, renderToStringAsync } from "solix";
 
-const html = await renderToStringAsync(App, { initialCount: 2 }, { timeoutMs: 5_000 });
+let head = "";
+const html = await renderToStringAsync(
+  App,
+  { initialCount: 2 },
+  {
+    timeoutMs: 5_000,
+    onHead: (value) => {
+      head = value;
+    },
+  },
+);
 
-// In the browser, after placing `html` inside #app:
+// In the browser, after placing `head` in document.head and `html` inside #app:
 const dispose = await hydrate(App, document.querySelector("#app")!, { initialCount: 2 });
 ```
 

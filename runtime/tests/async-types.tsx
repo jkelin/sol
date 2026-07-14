@@ -53,7 +53,7 @@ const Valid = $component(function Valid() {
 
 void Valid;
 
-const options: RenderToStringOptions = { timeoutMs: 100 };
+const options: RenderToStringOptions = { timeoutMs: 100, onHead: (html) => void html };
 const rendered: Promise<string> = renderToStringAsync(Valid, undefined, options);
 const hydrated: Promise<() => void> = hydrate(Valid, document.body);
 void rendered;

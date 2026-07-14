@@ -29,6 +29,7 @@ import {
   isHydratedFragment,
   type HydratedFragment,
   type HydrationClaim,
+  type HeadHydrationClaim,
 } from "./hydration-rendering.ts";
 
 export type Cleanup = () => void;
@@ -119,6 +120,7 @@ export interface RenderFrame {
   readonly ssrBoundary?: number;
   readonly hydration?: HydrationSession;
   readonly claim?: HydrationClaim;
+  readonly headClaims?: HeadHydrationClaim[];
   readonly waitForResume?: boolean;
   readonly timeoutMs?: number;
 }

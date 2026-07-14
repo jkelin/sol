@@ -1290,6 +1290,47 @@ test("server form bindings parse correctly and hydration validates instead of mu
   expect(mismatchedNote.value).toBe("server note");
 });
 
+test("hydrates dynamic textarea and select values as DOM properties", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { selected: string; note: string }) {
+      return <main>
+        <select id="dynamic-select" value={props.selected}>
+          <option value="first">First</option>
+          <option value="second">Second</option>
+        </select>
+        <textarea id="dynamic-note" value={props.note}></textarea>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ selected: string; note: string }>;
+  const props = { selected: "second", note: "server note" };
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, props);
+  const select = target.querySelector<HTMLSelectElement>("#dynamic-select")!;
+  const note = target.querySelector<HTMLTextAreaElement>("#dynamic-note")!;
+  expect(select.value).toBe("second");
+  expect(note.value).toBe("server note");
+
+  const dispose = await hydrate(App, target, props);
+  expect(target.querySelector("#dynamic-select")).toBe(select);
+  expect(target.querySelector("#dynamic-note")).toBe(note);
+  dispose();
+
+  target.innerHTML = await renderToStringAsync(App, props);
+  const serverHtml = target.innerHTML;
+  const mismatchedSelect = target.querySelector<HTMLSelectElement>("#dynamic-select")!;
+  const mismatchedNote = target.querySelector<HTMLTextAreaElement>("#dynamic-note")!;
+  await expectRejection(
+    hydrate(App, target, { selected: "first", note: "client note" }),
+    "dynamic attribute value differs",
+  );
+  expect(target.innerHTML).toBe(serverHtml);
+  expect(target.querySelector("#dynamic-select")).toBe(mismatchedSelect);
+  expect(target.querySelector("#dynamic-note")).toBe(mismatchedNote);
+  expect(mismatchedSelect.value).toBe("second");
+  expect(mismatchedNote.value).toBe("server note");
+});
+
 test("hydration rejects a Link destination mismatch without rewriting href", async () => {
   const module = await loadCompiled(`
     import { Link } from "solix";
@@ -1811,7 +1852,7 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
 test("keeps late settlements from timed-out boundaries uncaptured", async () => {
   globalThis.integrationLoad = (id) => {
     globalThis.integrationLoads += 1;
-    const delay = id === "late" ? 10 : 30;
+    const delay = id === "resolved" ? 1 : id === "late" ? 30 : 50;
     return new Promise((resolve) => setTimeout(() => resolve(`${id} result`), delay));
   };
   const module = await loadCompiled(`
@@ -1822,29 +1863,30 @@ test("keeps late settlements from timed-out boundaries uncaptured", async () => 
     });
     export const App = $component(function App() {
       return <main>
-        <Suspense fallback={<p id="late-fallback">Late fallback</p>} timeoutMs={0}>
+        <Suspense fallback={<p id="late-fallback">Late fallback</p>} timeoutMs={15}>
+          <Child id="resolved" />
           <Child id="late" />
         </Suspense>
         <Suspense fallback={<p>Slow fallback</p>} timeoutMs={100}>
-          <Child id="slow" />
+          <Child id="blocker" />
         </Suspense>
       </main>;
     });
   `);
   const App = module.App as Component;
   const target = document.createElement("div");
-  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 100 });
-  expect(globalThis.integrationLoads).toBe(2);
+  target.innerHTML = await renderToStringAsync(App, undefined, { timeoutMs: 120 });
+  expect(globalThis.integrationLoads).toBe(3);
   const payload = deserializeGraph(
     target.querySelector<HTMLScriptElement>("script[data-solix-hydration]")!.textContent,
   ) as { async: { status: string }[] };
-  expect(payload.async.map((entry) => entry.status)).toEqual(["pending", "fulfilled"]);
+  expect(payload.async.map((entry) => entry.status)).toEqual(["fulfilled", "pending", "fulfilled"]);
   const fallback = target.querySelector("#late-fallback");
 
   const dispose = await hydrate(App, target);
-  expect(globalThis.integrationLoads).toBe(3);
+  expect(globalThis.integrationLoads).toBe(4);
   expect(target.querySelector("#late-fallback")).toBe(fallback);
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await new Promise((resolve) => setTimeout(resolve, 40));
   expect(target.querySelector('[data-id="late"]')?.textContent).toBe("late result");
   dispose();
 });

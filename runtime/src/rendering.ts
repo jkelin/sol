@@ -91,6 +91,7 @@ export interface TemplateOperationMetadata {
   readonly kind: string;
   readonly target: "element" | "region";
   readonly index: number;
+  readonly name?: string;
 }
 
 export interface PendingBlock extends PromiseLike<Block> {

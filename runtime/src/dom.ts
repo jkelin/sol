@@ -175,7 +175,17 @@ export function attribute(
       const value = isClass ? normalizeClass(getValue() as ClassValue) : getValue();
       if (hydrating) {
         hydrating = false;
-        if (element.getAttribute(property) !== serializedAttribute(property, value)) {
+        const formValue =
+          property === "value" && (element.tagName === "TEXTAREA" || element.tagName === "SELECT");
+        const actual = formValue
+          ? (element as HTMLTextAreaElement | HTMLSelectElement).value
+          : element.getAttribute(property);
+        const expected = formValue
+          ? value == null
+            ? ""
+            : String(value)
+          : serializedAttribute(property, value);
+        if (actual !== expected) {
           throw new HydrationMismatchError(`dynamic attribute ${property} differs`);
         }
         return;

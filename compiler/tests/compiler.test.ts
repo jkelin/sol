@@ -401,6 +401,10 @@ describe("compiler", () => {
 
     expect(result.code.match(/__solix_bind\([^\n]+"value"/g)?.length).toBe(2);
     expect(result.code.match(/__solix_bind\([^\n]+"checked"/g)?.length).toBe(1);
+    expect(
+      result.code.match(/"kind":"bind","target":"element","index":\d+,"name":"value"/g)?.length,
+    ).toBe(2);
+    expect(result.code).toMatch(/"kind":"bind","target":"element","index":\d+,"name":"checked"/);
   });
 
   test("connects form controllers through the $form element property", () => {
@@ -475,6 +479,9 @@ describe("compiler", () => {
     expect(result.code).toContain('"elements":["p"]');
     expect(result.code).toContain('"regions":[0,1]');
     expect(result.code).toMatch(/"operations":\[\{"id":"o[a-z0-9]+","kind":"attribute"/);
+    expect(result.code).toMatch(
+      /"kind":"attribute","target":"element","index":0,"name":"data-state"/,
+    );
   });
 
   test("captures component awaits without instrumenting fire-and-forget helper work", () => {

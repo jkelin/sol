@@ -208,9 +208,14 @@ export function instantiateHydrated(
   if (!definition.element.innerHTML) definition.element.innerHTML = definition.html;
   const elements: Element[] = [];
   const regions: { start: Comment; end: Comment }[] = [];
-  const boundElements = new Set(
+  const propertyValueElements = new Set(
     definition.metadata.operations
-      .filter((operation) => operation.kind === "bind" && operation.target === "element")
+      .filter(
+        (operation) =>
+          operation.target === "element" &&
+          operation.name === "value" &&
+          (operation.kind === "bind" || operation.kind === "attribute"),
+      )
       .map((operation) => operation.index),
   );
   matchChildren(
@@ -219,7 +224,7 @@ export function instantiateHydrated(
     end,
     elements,
     regions,
-    boundElements,
+    propertyValueElements,
   );
   claim.cursor = end.nextSibling;
   return { fragment: { kind: "hydrated-fragment", start, end, session }, elements, regions };

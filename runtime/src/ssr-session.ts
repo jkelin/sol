@@ -132,10 +132,6 @@ export class SsrSession {
       if (settled) return;
       settled = true;
       this.boundaries[index] = "timeout";
-      for (const entry of this.boundaryEntries.get(index) ?? []) {
-        entry.status = "pending";
-        delete entry.value;
-      }
       this.boundaryPending -= 1;
       try {
         onTimeout();

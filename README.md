@@ -18,7 +18,7 @@ bun install
 bun run dev
 ```
 
-The Tailwind-powered notebook example demonstrates compiler-managed state, keyed lists, bindings, compile-time routes, path parameters, browser history, and shared blog entries.
+The Tailwind-powered notebook example demonstrates compiler-managed state, keyed lists, bindings, cached queries, mutations, compile-time routes, path parameters, browser history, and shared blog entries.
 
 `bun run build` (or `bun run build:example`) creates an unminified production example in `example/dist/`. Use `bun run build:example:inspect` to create a separate readable build in `example/out/inspect/`.
 
@@ -101,6 +101,63 @@ The `$form` property connects the controller to the form's submit, input, and fo
 Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()` when both methods exist, making async refinements work without a separate controller API.
 
 `class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, nested arrays, and object maps. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
+
+## Queries and mutations
+
+`$query()` caches an asynchronous function by a JSON key and exposes reactive request state. It runs once when its component mounts unless `enabled` is false or the cache is still fresh. `$mutation()` wraps imperative asynchronous work without running it automatically.
+
+```tsx
+import { $component, $mutation, $query, Suspense } from "solix";
+
+const Posts = $component(function Posts() {
+  const posts = $query(
+    {
+      queryKey: ["posts"],
+      query: (page: number) => fetch(`/posts?page=${page}`).then((response) => response.json()),
+      staleTime: 10_000,
+      cacheTime: 5 * 60_000,
+      pollingInterval: 30_000,
+      suspense: { initial: true, refetch: false },
+    },
+    1,
+  );
+  const createPost = $mutation({
+    mutation: (title: string) =>
+      fetch("/posts", { method: "POST", body: JSON.stringify({ title }) }),
+  });
+
+  async function addPost() {
+    await createPost.mutate({}, "A compiled query");
+    await posts.refetch({ suspense: false }, 1);
+  }
+
+  return (
+    <section>
+      <button onClick={() => void posts.refetch({}, 2)} disabled={posts.isFetching}>
+        Page 2
+      </button>
+      <button onClick={addPost} disabled={createPost.isMutating}>
+        Add post
+      </button>
+      {(posts.data ?? []).map((post) => (
+        <p key={post.id}>{post.title}</p>
+      ))}
+    </section>
+  );
+});
+
+const App = $component(function App() {
+  return (
+    <Suspense fallback={<p>Loading posts…</p>}>
+      <Posts />
+    </Suspense>
+  );
+});
+```
+
+Query keys accept only JSON values and use their exact `JSON.stringify()` result as cache identity; argument-sensitive values must therefore be included in the key when they represent distinct resources. Same-key requests share data and an in-flight promise. `data` retains the latest successful result, `lastData` holds the result it replaced, and failures retain both while setting `error` and `isFailed`.
+
+`staleTime` defaults to `0`, `cacheTime` to five minutes, and polling is disabled by default. Polling runs only while an enabled observer is mounted and the document is visible. Initial uncached requests participate in the nearest parent Suspense by default; cached refetches and mutations opt in through their config or per-call `suspense` option. Manual methods reject on failure. Call `refetch()` without arguments to reuse the most recently requested argument tuple; when passing new function arguments, an options object comes first so object-valued arguments remain unambiguous.
 
 ## Transitions
 

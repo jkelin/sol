@@ -1,6 +1,6 @@
 # Solix website
 
-The `web` workspace is the Sunblock-styled public website and documentation application for Solix. It is built with Solix, Vite, Tailwind CSS v4, and a build-time Markdown compiler.
+The `web` workspace is the Sunblock-styled public website and documentation application for Solix. It documents the compiler, reactivity, forms, cached queries and mutations, routing, async composition, and transitions. It is built with Solix, Vite, Tailwind CSS v4, and a build-time Markdown compiler.
 
 ## Commands
 

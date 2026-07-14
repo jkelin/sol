@@ -4,6 +4,7 @@ import ts from "typescript";
 import { compile } from "../src/index.ts";
 import type { Component } from "../../runtime/src/components.ts";
 import { $form } from "../../runtime/src/forms.ts";
+import { $mutation, $query } from "../../runtime/src/queries.ts";
 import { mount } from "../../runtime/src/rendering.ts";
 
 interface SetupCounts {
@@ -14,6 +15,10 @@ interface SetupCounts {
 declare global {
   var integrationSetups: SetupCounts;
   var integrationForm: typeof $form;
+  var integrationMutation: typeof $mutation;
+  var integrationQuery: typeof $query;
+  var integrationResolvers: Array<(value: string) => void>;
+  var integrationRejectors: Array<(error: unknown) => void>;
 }
 
 let window: Window;
@@ -24,6 +29,10 @@ beforeEach(() => {
   globalThis.integrationSetups = { app: 0, child: 0 };
   Object.assign(globalThis, {
     integrationForm: $form,
+    integrationMutation: $mutation,
+    integrationQuery: $query,
+    integrationResolvers: [],
+    integrationRejectors: [],
     window,
     document: window.document,
     Node: window.Node,
@@ -386,6 +395,157 @@ test("contexts compose with async components, Suspense, Await, and ErrorBoundary
 
   dispose();
   expect(target.childNodes).toHaveLength(0);
+});
+
+test("query and mutation controllers update compiled DOM and opt into Suspense per request", async () => {
+  const module = await loadCompiled(`
+    import { $component, Suspense } from "solix";
+
+    const DataPanel = $component(function DataPanel() {
+      const query = globalThis.integrationQuery({
+        queryKey: ["compiled-query", ${JSON.stringify(crypto.randomUUID())}],
+        query: () => new Promise<string>((resolve, reject) => {
+          globalThis.integrationResolvers.push(resolve);
+          globalThis.integrationRejectors.push(reject);
+        }),
+        cacheTime: 0,
+      });
+      const mutation = globalThis.integrationMutation({
+        mutation: (value: string) => new Promise<string>((resolve, reject) => {
+          globalThis.integrationResolvers.push(() => resolve(value));
+          globalThis.integrationRejectors.push(reject);
+        }),
+      });
+      function refetch() {
+        void query.refetch({ suspense: true }).catch(() => {});
+      }
+      function mutate() {
+        void mutation.mutate({ suspense: true }, "saved").catch(() => {});
+      }
+      function failWithoutSuspense() {
+        void query.refetch({ suspense: false }).catch(() => {});
+      }
+      return <section id="data-panel">
+        <p id="query-data">{query.data ?? "empty"}</p>
+        <p id="query-last">{query.lastData ?? "none"}</p>
+        <p id="query-failed">{String(query.isFailed)}</p>
+        <p id="mutation-data">{mutation.data ?? "empty"}</p>
+        <button id="refetch" onClick={refetch}>Refetch</button>
+        <button id="mutate" onClick={mutate}>Mutate</button>
+        <button id="fail" onClick={failWithoutSuspense}>Fail</button>
+      </section>;
+    });
+
+    export const App = $component(function App() {
+      return <Suspense
+        fallback={<p id="controller-loading">Loading</p>}
+        error={error => <p id="controller-error">{String(error)}</p>}
+      >
+        <DataPanel />
+      </Suspense>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(target.querySelector("#controller-loading")?.textContent).toBe("Loading");
+  globalThis.integrationResolvers.shift()!("first");
+  globalThis.integrationRejectors.shift();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#query-data")?.textContent).toBe("first");
+
+  target.querySelector<HTMLButtonElement>("#refetch")!.click();
+  expect(target.querySelector("#controller-loading")?.textContent).toBe("Loading");
+  globalThis.integrationResolvers.shift()!("second");
+  globalThis.integrationRejectors.shift();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#query-data")?.textContent).toBe("second");
+  expect(target.querySelector("#query-last")?.textContent).toBe("first");
+
+  target.querySelector<HTMLButtonElement>("#mutate")!.click();
+  expect(target.querySelector("#controller-loading")?.textContent).toBe("Loading");
+  globalThis.integrationResolvers.shift()!("ignored");
+  globalThis.integrationRejectors.shift();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#mutation-data")?.textContent).toBe("saved");
+
+  target.querySelector<HTMLButtonElement>("#fail")!.click();
+  const failure = new Error("background failure");
+  globalThis.integrationRejectors.shift()!(failure);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#data-panel")).not.toBeNull();
+  expect(target.querySelector("#query-failed")?.textContent).toBe("true");
+  expect(target.querySelector("#query-data")?.textContent).toBe("second");
+
+  target.querySelector<HTMLButtonElement>("#refetch")!.click();
+  expect(target.querySelector("#controller-loading")?.textContent).toBe("Loading");
+  const boundaryFailure = new Error("boundary failure");
+  globalThis.integrationRejectors.shift()!(boundaryFailure);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#controller-error")?.textContent).toContain("boundary failure");
+
+  dispose();
+  expect(target.childNodes).toHaveLength(0);
+});
+
+test("disposing a suspended query finishes its parent boundary before settlement", async () => {
+  const module = await loadCompiled(`
+    import { $component, Suspense } from "solix";
+    const Pending = $component(function Pending() {
+      const query = globalThis.integrationQuery({
+        queryKey: ["disposed-query", ${JSON.stringify(crypto.randomUUID())}],
+        query: () => new Promise<string>(resolve => globalThis.integrationResolvers.push(resolve)),
+        cacheTime: 0,
+      });
+      return <p>{query.data ?? "pending"}</p>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p>Loading</p>}><Pending /></Suspense>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  expect(target.textContent).toBe("Loading");
+  dispose();
+  globalThis.integrationResolvers.shift()!("late");
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.childNodes).toHaveLength(0);
+});
+
+test("a query failure without an async boundary remains in reactive controller state", async () => {
+  const module = await loadCompiled(`
+    import { $component } from "solix";
+    export const App = $component(function App() {
+      const query = globalThis.integrationQuery({
+        queryKey: ["boundary-free-failure", ${JSON.stringify(crypto.randomUUID())}],
+        query: () => new Promise<string>((_resolve, reject) => {
+          globalThis.integrationRejectors.push(reject);
+        }),
+        cacheTime: 0,
+        suspense: { initial: false },
+      });
+      return <p id="boundary-free-state">
+        {query.isFailed ? String(query.error) : "ready"}
+      </p>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  expect(target.querySelector("#boundary-free-state")?.textContent).toBe("ready");
+
+  globalThis.integrationRejectors.shift()!(new Error("stored without boundary"));
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#boundary-free-state")?.textContent).toContain(
+    "stored without boundary",
+  );
+  dispose();
 });
 
 test("context optional reads and local Await errors work without Suspense", async () => {

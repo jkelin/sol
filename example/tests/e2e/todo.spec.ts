@@ -281,3 +281,27 @@ test("renders context-backed async components and Await behind Suspense", async 
   await expect(page.getByTestId("context-consumer")).toContainText("visits 1");
   expect(pageErrors).toEqual([]);
 });
+
+test("shares query data, refetches with new arguments, and refreshes after a mutation", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await page.goto("/queries");
+  await expect(page.getByTestId("query-loading")).toBeVisible();
+  await expect(page.getByTestId("query-panel")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
+  await expect(page.getByTestId("query-notes").getByRole("listitem")).toHaveCount(2);
+  await expect(page.getByTestId("query-observer").locator("strong")).toHaveText("1");
+
+  await page.getByTestId("query-refetch").click();
+  await expect(page.getByRole("heading", { name: "Page 2" })).toBeVisible();
+  await expect(page.getByTestId("query-last-page")).toContainText("1");
+
+  await page.getByTestId("query-mutate").click();
+  await expect(page.getByText("Mutation note 4", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
+  await expect(page.getByTestId("query-observer").locator("strong")).toHaveText("2");
+  expect(pageErrors).toEqual([]);
+});

@@ -112,6 +112,7 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
   test("generates the ordered navigation registry", async () => {
     const source = await registrySource(join(import.meta.dir, ".."));
     expect(source).toContain('"slug":"getting-started"');
+    expect(source).toContain('"slug":"queries-and-mutations"');
     expect(source).toContain('"slug":"api-reference"');
     expect(source.indexOf('"getting-started"')).toBeLessThan(source.indexOf('"api-reference"'));
   });

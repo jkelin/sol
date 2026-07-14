@@ -2,7 +2,7 @@
 title: Async Rendering and Context
 description: Compose providers, async components, Await, Suspense, and error boundaries with explicit ownership.
 section: Systems
-order: 7
+order: 8
 ---
 
 Create object context with `$context<T>()`. A provider receives its object through `data`; descendants call `use()` for a stable reactive proxy that follows provider replacement.

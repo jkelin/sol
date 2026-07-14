@@ -2,6 +2,7 @@ import { $component, Route } from "solix";
 import { blogDetailRoute } from "./blog-detail.route.tsx";
 import { asyncContextRoute } from "./async-context.route.tsx";
 import { todoRoute } from "./todo.route.tsx";
+import { queriesRoute } from "./queries.route.tsx";
 
 const Header = $component(function Header() {
   return (
@@ -57,6 +58,19 @@ const Header = $component(function Header() {
             href="/async-context"
           >
             Async
+          </a>
+          <a
+            classNames={[
+              "rounded px-3 py-2 transition-colors hover:bg-paper-inset",
+              {
+                "bg-paper text-graphite shadow-[inset_0_0_0_1px_var(--color-rule-strong)]":
+                  queriesRoute.isActive,
+                "text-pencil": !queriesRoute.isActive,
+              },
+            ]}
+            href="/queries"
+          >
+            Queries
           </a>
         </nav>
       </div>

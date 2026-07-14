@@ -10,7 +10,7 @@
     "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts"
   },
   "scripts": {
-    "test": "bun test tests/runtime.test.ts tests/router.test.ts",
+    "test": "bun test tests/runtime.test.ts tests/router.test.ts tests/queries.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

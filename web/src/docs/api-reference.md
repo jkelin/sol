@@ -1,8 +1,8 @@
 ---
 title: API Reference
-description: A compact index of the public runtime, compiler, component, form, routing, async, and transition interfaces.
+description: A compact index of the public runtime, compiler, component, form, query, routing, async, and transition interfaces.
 section: Reference
-order: 9
+order: 10
 ---
 
 ## Components and mounting
@@ -24,6 +24,15 @@ order: 9
 - `$form(options, submit)` creates values, errors, form errors, submission state, reset behavior, and validation handlers.
 - `$form={controller}` connects the controller to an intrinsic form.
 - Parser inputs may be callable, expose `parse()` or `parseAsync()`, or implement Standard Schema.
+
+## Queries and mutations
+
+- `$query(config, ...initialArgs)` creates a component-owned, JSON-keyed query observer and starts its enabled initial request.
+- Query config contains `query`, `queryKey`, `enabled`, `staleTime`, `cacheTime`, `pollingInterval`, and phase-specific `suspense` options.
+- Query controllers expose `data`, `lastData`, `error`, `isFetching`, `isRefetching`, `isFailed`, and `refetch(options, ...args)`.
+- `$mutation({ mutation, suspense? })` creates an imperative mutation controller without starting work.
+- Mutation controllers expose `data`, `lastData`, `error`, `isMutating`, `isFailed`, and `mutate(options, ...args)`.
+- `QueryKey`, config, controller, Suspense, and per-call option types are exported from `solix`.
 
 ## Routing
 

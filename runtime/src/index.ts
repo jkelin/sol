@@ -22,6 +22,18 @@ export {
   type FormValidationStrategy,
 } from "./forms.ts";
 export { $computed, $signal, type ReadonlySignal, type Signal } from "./reactivity.ts";
+export {
+  $mutation,
+  $query,
+  type MutationCallOptions,
+  type MutationConfig,
+  type MutationController,
+  type QueryCallOptions,
+  type QueryConfig,
+  type QueryController,
+  type QueryKey,
+  type QuerySuspenseOptions,
+} from "./queries.ts";
 export { mount } from "./rendering.ts";
 export { Route, router, type Router } from "./router.ts";
 export {

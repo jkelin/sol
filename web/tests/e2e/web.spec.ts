@@ -87,6 +87,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
     { href: "/docs/reactivity", title: "Reactivity" },
     { href: "/docs/forms-and-validation", title: "Forms and Validation" },
     { href: "/docs/routing", title: "Routing" },
+    { href: "/docs/queries-and-mutations", title: "Queries and Mutations" },
     { href: "/docs/async-and-context", title: "Async Rendering and Context" },
     { href: "/docs/transitions", title: "Transitions" },
     { href: "/docs/api-reference", title: "API Reference" },

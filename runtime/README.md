@@ -1,6 +1,6 @@
 # Solix runtime
 
-The `solix` package is the browser runtime and author-facing interface for Solix applications. It provides compiled components, fine-grained reactive state, forms, context, async rendering, transitions, typed routes, and the browser router.
+The `solix` package is the browser runtime and author-facing interface for Solix applications. It provides compiled components, fine-grained reactive state, forms, cached queries, mutations, context, async rendering, transitions, typed routes, and the browser router.
 
 ```tsx
 import { $component, mount } from "solix";
@@ -22,6 +22,7 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
 - `reactivity.ts` implements signals, computed values, effects, batching, proxies, and render ownership state.
 - `forms.ts` implements form controllers, validation normalization, and submission state.
+- `queries.ts` implements cached query controllers, mutation controllers, request deduplication, polling, eviction, and Suspense participation.
 - `components.ts` defines compiler-specialized component, context, async-boundary, route, and Link handles.
 - `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, and render error propagation.
 - `routes.ts` implements typed route matching, parsing, URL generation, and route handles.
@@ -36,6 +37,8 @@ Application code normally imports only `solix`. The JSX transform resolves `soli
 
 ## How it works
 
-The compiler turns JSX into static templates plus calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Solix markers, and creates owned blocks. `reactivity.ts` tracks the effects that read signals, so writes schedule only dependent DOM operations. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, and route changes dispose the correct work. `router.ts` supplies route state through an internal adapter while keeping route handles independent of browser globals.
+The compiler turns JSX into static templates plus calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Solix markers, and creates owned blocks. `reactivity.ts` tracks the effects that read signals, so writes schedule only dependent DOM operations. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, queries, and route changes dispose the correct work. `queries.ts` keeps shared cache entries behind serialized JSON keys while each mounted observer owns its polling and Suspense lifecycle. `router.ts` supplies route state through an internal adapter while keeping route handles independent of browser globals.
+
+`$query()` and `$mutation()` must be created during component setup. Queries default to an automatic initial fetch, zero milliseconds of freshness, five minutes of unused-cache retention, and initial-only Suspense participation. Polling is visible-document and mounted-observer only. Same-key calls deduplicate while in flight; manual refetch and mutation methods accept a call-options object before their inferred argument tuple and reject on failure.
 
 Public interfaces validate inputs before mutating runtime state. Keep that validation intact when moving implementation details between modules.

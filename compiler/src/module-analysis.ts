@@ -41,18 +41,24 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
       } else if (statement.source.value === "solix") {
         for (const specifier of statement.specifiers) {
           if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
+          if (specifier.importKind === "type") continue;
           if (specifier.imported.name === "Route") {
             compiler.componentNames.add(specifier.local.name);
           }
           if (
             specifier.imported.name === "Suspense" ||
             specifier.imported.name === "Await" ||
-            specifier.imported.name === "ErrorBoundary"
+            specifier.imported.name === "ErrorBoundary" ||
+            specifier.imported.name === "Portal" ||
+            specifier.imported.name === "GlobalPortal"
           ) {
             compiler.builtinNames.set(specifier.local.name, specifier.imported.name);
           }
           if (t.isIdentifier(specifier.imported, { name: "Link" })) {
             compiler.linkNames.add(specifier.local.name);
+          }
+          if (t.isIdentifier(specifier.imported, { name: "createRef" })) {
+            compiler.refCreatorNames.add(specifier.local.name);
           }
         }
       }

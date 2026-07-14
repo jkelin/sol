@@ -196,6 +196,16 @@ export function runtimeEffect(callback: () => void): Cleanup {
   return createReactiveEffect(callback, false);
 }
 
+export function untrack<T>(callback: () => T): T {
+  const previousEffect = activeEffect;
+  activeEffect = undefined;
+  try {
+    return callback();
+  } finally {
+    activeEffect = previousEffect;
+  }
+}
+
 export function isObject(value: unknown): value is object {
   return typeof value === "object" && value !== null;
 }

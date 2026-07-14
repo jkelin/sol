@@ -316,7 +316,7 @@ export function list<T>(
 
     for (const key of order) {
       const row = nextRows.get(key) ?? leavingRows.get(key);
-      row?.block.move(region.end.parentNode!, region.end);
+      row?.block.mount(region.end.parentNode!, region.end);
     }
     if (initialized) {
       for (const key of entering) nextRows.get(key)!.block.enter();

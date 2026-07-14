@@ -19,6 +19,11 @@ declare global {
   var integrationQuery: typeof $query;
   var integrationResolvers: Array<(value: string) => void>;
   var integrationRejectors: Array<(error: unknown) => void>;
+  var integrationPortalRef: Element | null;
+  var integrationPortalClicks: number;
+  var integrationInvalidatePortalTarget: () => void;
+  var integrationConditionalRefConnected: boolean;
+  var integrationKeyedRefs: Set<number>;
 }
 
 let window: Window;
@@ -81,7 +86,13 @@ function installAnimations(): Array<{ cancelled: boolean; finish(): void }> {
 
 async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const result = compile(source, "Integration.tsx");
-  const runtimeUrl = new URL("../../runtime/src/components.ts", import.meta.url).href;
+  const runtimeModule = ["components.ts", "portals.ts", "refs.ts"]
+    .map(
+      (file) =>
+        `export * from ${JSON.stringify(new URL(`../../runtime/src/${file}`, import.meta.url).href)};`,
+    )
+    .join("\n");
+  const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtimeModule).toString("base64")}`;
   const compilerRuntimeUrl = new URL("../../runtime/src/compiler-runtime.ts", import.meta.url).href;
   const sourceWithRuntime = result.code
     .replace('"solix/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
@@ -770,4 +781,143 @@ test("async rejections prefer Await, then Suspense, then ErrorBoundary", async (
   expect(target.querySelector("#unexpected-suspense-boundary")).toBeNull();
   expect(target.querySelector("#boundary-error")?.textContent).toContain("boundary");
   dispose();
+});
+
+test("compiled refs and portals preserve ownership across targets and body", async () => {
+  const animations = installAnimations();
+  const module = await loadCompiled(`
+    import { $component, $context, Await, createRef, GlobalPortal, Portal } from "solix";
+    const context = $context<{ label: string }>();
+
+    const PortalContent = $component(function PortalContent() {
+      const shared = context.use();
+      return <button
+        id="portal-content"
+        ref={element => globalThis.integrationPortalRef = element}
+        onClick={() => globalThis.integrationPortalClicks += 1}
+      >{shared.label}</button>;
+    });
+
+    export const App = $component(function App() {
+      const first = createRef<HTMLDivElement>();
+      const second = createRef<HTMLDivElement>();
+      let useSecond = false;
+      let invalidTarget = false;
+      let showTargeted = true;
+      let showGlobal = true;
+      const shared = { label: "From context" };
+      globalThis.integrationInvalidatePortalTarget = () => invalidTarget = true;
+      return <context.Provider data={shared}>
+        <main>
+          <button id="retarget" onClick={() => useSecond = true}>Retarget</button>
+          <button id="hide-targeted" onClick={() => showTargeted = false}>Hide targeted</button>
+          <button id="hide-global" onClick={() => showGlobal = false}>Hide global</button>
+          <Portal target={invalidTarget ? null as unknown as Element : (useSecond ? second : first).current!}>
+            Portal text {2}
+            {showTargeted && <>
+              <PortalContent />
+              <Await $promise={Promise.resolve("Async ready")}>
+                {value => <p id="portal-async">{value}</p>}
+              </Await>
+            </>}
+          </Portal>
+          <div id="first-target" ref={first} />
+          <div id="second-target" ref={second} />
+          {showGlobal && <GlobalPortal>
+            <aside id="global-content" $transition={{ leave: "transition-leave" }}>Global</aside>
+          </GlobalPortal>}
+        </main>
+      </context.Provider>;
+    });
+  `);
+  const target = document.createElement("div");
+  document.body.append(target);
+  globalThis.integrationPortalRef = null;
+  globalThis.integrationPortalClicks = 0;
+  const dispose = mount(module.App as Component, target);
+
+  const portalNode = document.querySelector<HTMLButtonElement>("#portal-content")!;
+  expect(portalNode.parentElement?.id).toBe("first-target");
+  expect(document.querySelector("#first-target")?.textContent).toContain("Portal text2");
+  expect(portalNode.textContent).toBe("From context");
+  expect(globalThis.integrationPortalRef as Element | null).toBe(portalNode as Element | null);
+  expect(document.querySelector("#global-content")?.parentElement).toBe(document.body);
+  portalNode.click();
+  expect(globalThis.integrationPortalClicks).toBe(1);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(document.querySelector("#portal-async")?.textContent).toBe("Async ready");
+
+  target.querySelector<HTMLButtonElement>("#retarget")!.click();
+  expect(document.querySelector("#portal-content")).toBe(portalNode);
+  expect(portalNode.parentElement?.id).toBe("second-target");
+  expect(() => globalThis.integrationInvalidatePortalTarget()).toThrow(
+    "Portal target must be a DOM Element",
+  );
+  expect(portalNode.parentElement?.id).toBe("second-target");
+
+  target.querySelector<HTMLButtonElement>("#hide-targeted")!.click();
+  expect(document.querySelector("#portal-content")).toBeNull();
+  expect(globalThis.integrationPortalRef).toBeNull();
+
+  target.querySelector<HTMLButtonElement>("#hide-global")!.click();
+  expect(document.querySelector("#global-content")).not.toBeNull();
+  expect(animations).toHaveLength(1);
+  animations[0]!.finish();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(document.querySelector("#global-content")).toBeNull();
+
+  dispose();
+});
+
+test("defers nested mount phases and activates keyed refs and portals", async () => {
+  const module = await loadCompiled(`
+    import { $component, createRef, Portal } from "solix";
+    export const App = $component(function App() {
+      const conditionalTarget = createRef<HTMLDivElement>();
+      const listTarget = createRef<HTMLDivElement>();
+      let visible = true;
+      let items = [{ id: 1 }];
+      return <main>
+        {visible && <Portal target={conditionalTarget.current!}>
+          <button id="conditional-portal" ref={element => {
+            globalThis.integrationConditionalRefConnected = element?.isConnected ?? false;
+          }}>Conditional</button>
+        </Portal>}
+        <section>
+          {items.map(item => <Portal key={item.id} target={listTarget.current!}>
+            <button data-keyed-id={item.id} ref={element => {
+              if (element) globalThis.integrationKeyedRefs.add(item.id);
+              else globalThis.integrationKeyedRefs.delete(item.id);
+            }}>{item.id}</button>
+          </Portal>)}
+        </section>
+        <div id="conditional-target" ref={conditionalTarget} />
+        <div id="list-target" ref={listTarget} />
+        <button id="add-keyed" onClick={() => items.push({ id: 2 })}>Add</button>
+        <button id="remove-keyed" onClick={() => items.splice(0, 1)}>Remove</button>
+      </main>;
+    });
+  `);
+  globalThis.integrationConditionalRefConnected = false;
+  globalThis.integrationKeyedRefs = new Set();
+  const target = document.createElement("div");
+  document.body.append(target);
+  const dispose = mount(module.App as Component, target);
+
+  expect(document.querySelector("#conditional-target > #conditional-portal")).not.toBeNull();
+  expect(globalThis.integrationConditionalRefConnected).toBe(true);
+  expect(globalThis.integrationKeyedRefs).toEqual(new Set([1]));
+  expect(document.querySelectorAll("#list-target > [data-keyed-id]")).toHaveLength(1);
+
+  target.querySelector<HTMLButtonElement>("#add-keyed")!.click();
+  expect(globalThis.integrationKeyedRefs).toEqual(new Set([1, 2]));
+  expect(document.querySelectorAll("#list-target > [data-keyed-id]")).toHaveLength(2);
+
+  target.querySelector<HTMLButtonElement>("#remove-keyed")!.click();
+  await Promise.resolve();
+  expect(globalThis.integrationKeyedRefs).toEqual(new Set([2]));
+  expect(document.querySelectorAll("#list-target > [data-keyed-id]")).toHaveLength(1);
+  dispose();
+  expect(globalThis.integrationKeyedRefs).toEqual(new Set());
 });

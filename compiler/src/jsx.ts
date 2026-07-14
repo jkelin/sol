@@ -217,13 +217,43 @@ export function isDefinitelyPrimitive(expression: Expression): boolean {
 
 export function compileBuiltinElement(
   compiler: CompilerContext,
-  kind: "Suspense" | "Await" | "ErrorBoundary",
+  kind: "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal",
   node: t.JSXElement,
   context: TemplateContext,
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
 ): void {
   const index = region(context);
+  if (kind === "Portal" || kind === "GlobalPortal") {
+    const allowed = kind === "Portal" ? new Set(["target", "key"]) : new Set(["key"]);
+    validateBuiltinAttributes(compiler, node, allowed);
+    const render = blockFactory(compiler, childrenRoot(node), bindings, scope);
+    if (kind === "GlobalPortal") {
+      context.operations.push(
+        mappedCode(
+          compiler,
+          node,
+          `__solix_global_portal(${render}, __solix_cleanups, __solix_lifecycle, __solix_frame);`,
+        ),
+      );
+      return;
+    }
+    const target = jsxAttributeExpression(
+      compiler,
+      namedAttribute(compiler, node, "target", true)!,
+    );
+    if (t.isJSXElement(target) || t.isJSXFragment(target) || isDefinitelyPrimitive(target)) {
+      codeFrame(compiler, target, "Portal target must be a DOM Element expression");
+    }
+    context.operations.push(
+      mappedCode(
+        compiler,
+        node,
+        `__solix_portal(() => (${expressionCode(target, scope)}), ${render}, __solix_cleanups, __solix_lifecycle, __solix_frame);`,
+      ),
+    );
+    return;
+  }
   if (kind === "Suspense") {
     validateBuiltinAttributes(compiler, node, new Set(["fallback", "error"]));
     const fallback = jsxFactoryFromAttribute(
@@ -364,6 +394,7 @@ export function compileComponentElement(
       codeFrame(compiler, attribute, "$bind is only valid on intrinsic form elements");
     if (name === "$transition")
       codeFrame(compiler, attribute, "$transition is only valid on intrinsic elements");
+    if (name === "ref") codeFrame(compiler, attribute, "ref is only valid on intrinsic elements");
     const value = staticAttributeValue(compiler, attribute);
     const getter =
       value !== undefined
@@ -495,6 +526,17 @@ export function compileIntrinsicElement(
           compiler,
           attribute,
           `__solix_transition(__solix_view.elements[${element}], () => (${value}));`,
+        ),
+      );
+      continue;
+    }
+    if (sourceName === "ref") {
+      const value = expressionCode(expressionAttribute(compiler, attribute), scope);
+      deferredOperations.push((element) =>
+        mappedCode(
+          compiler,
+          attribute,
+          `__solix_ref(__solix_view.elements[${element}], () => (${value}), __solix_cleanups, __solix_lifecycle);`,
         ),
       );
       continue;
@@ -820,9 +862,10 @@ export function compileBlockBody(
   return `
     const __solix_view = __solix_instantiate(__solix_template_${templateIndex});
     const __solix_cleanups: Array<() => void> = [];
+    const __solix_lifecycle = __solix_block_lifecycle(__solix_frame);
     try {
       ${context.operations.join("\n")}
-      return __solix_block(__solix_view.fragment, __solix_cleanups);
+      return __solix_block(__solix_view.fragment, __solix_cleanups, __solix_lifecycle);
     } catch (__solix_render_error) {
       for (const __solix_cleanup of __solix_cleanups.toReversed()) __solix_cleanup();
       throw __solix_render_error;

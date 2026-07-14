@@ -34,6 +34,20 @@ export interface Block {
   dispose(): void;
 }
 
+export interface BlockLifecycle {
+  readonly refMounts: Cleanup[];
+  readonly portalMounts: Cleanup[];
+  readonly remoteBlocks: Block[];
+  readonly coordinator: MountCoordinator;
+}
+
+interface MountCoordinator {
+  active: boolean;
+  flushing: boolean;
+  readonly refMounts: Cleanup[];
+  readonly portalMounts: Cleanup[];
+}
+
 export interface TemplateDefinition {
   readonly html: string;
   element?: HTMLTemplateElement;
@@ -55,6 +69,7 @@ export interface SuspenseController {
 export interface RenderFrame {
   readonly owner: Cleanup[];
   readonly contexts: ReadonlyMap<symbol, () => object>;
+  readonly mounts: MountCoordinator;
   readonly suspense?: SuspenseController;
   readonly handleError?: (error: unknown) => void;
 }
@@ -112,13 +127,61 @@ export function instantiate(definition: TemplateDefinition): View {
   return { fragment, elements, regions };
 }
 
-export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Block {
+function mountCoordinator(active: boolean): MountCoordinator {
+  return { active, flushing: false, refMounts: [], portalMounts: [] };
+}
+
+export function blockLifecycle(frame?: RenderFrame): BlockLifecycle {
+  return {
+    refMounts: [],
+    portalMounts: [],
+    remoteBlocks: [],
+    coordinator: frame?.mounts ?? mountCoordinator(true),
+  };
+}
+
+function flushMounts(coordinator: MountCoordinator): void {
+  if (!coordinator.active || coordinator.flushing) return;
+  coordinator.flushing = true;
+  try {
+    while (coordinator.refMounts.length > 0 || coordinator.portalMounts.length > 0) {
+      while (coordinator.refMounts.length > 0) coordinator.refMounts.shift()!();
+      coordinator.portalMounts.shift()?.();
+    }
+  } finally {
+    coordinator.flushing = false;
+  }
+}
+
+function activateMounts(frame: RenderFrame): void {
+  frame.mounts.active = true;
+  flushMounts(frame.mounts);
+}
+
+function combinedTransition(
+  local: Promise<void> | undefined,
+  remoteBlocks: readonly Block[],
+): Promise<void> | undefined {
+  const transitions = remoteBlocks.flatMap((remote) => {
+    const transition = remote.leave();
+    return transition ? [transition] : [];
+  });
+  if (local) transitions.unshift(local);
+  return transitions.length > 0 ? Promise.all(transitions).then(() => undefined) : undefined;
+}
+
+export function block(
+  fragment: DocumentFragment,
+  cleanups: Cleanup[] = [],
+  lifecycle: BlockLifecycle = blockLifecycle(),
+): Block {
   const start = document.createComment("solix:block:start");
   const end = document.createComment("solix:block:end");
   fragment.prepend(start);
   fragment.append(end);
   let disposed = false;
   let cleaned = false;
+  let mounted = false;
   const nodes = (): Node[] => {
     const result: Node[] = [];
     let node: Node | null = start;
@@ -134,6 +197,31 @@ export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Blo
     for (const node of nodes()) moving.append(node);
     parent.insertBefore(moving, before);
   };
+  const mountBlock = (parent: Node, before: Node | null = null): void => {
+    if (disposed) return;
+    move(parent, before);
+    if (mounted) return;
+    mounted = true;
+    try {
+      lifecycle.coordinator.refMounts.push(
+        ...lifecycle.refMounts.map((attach) => () => {
+          if (!disposed) attach();
+        }),
+      );
+      lifecycle.coordinator.portalMounts.push(
+        ...lifecycle.portalMounts.map((attach) => () => {
+          if (!disposed) attach();
+        }),
+      );
+      flushMounts(lifecycle.coordinator);
+    } catch (error) {
+      disposed = true;
+      cleanup();
+      for (const remote of lifecycle.remoteBlocks) remote.dispose();
+      remove();
+      throw error;
+    }
+  };
   const cleanup = (): void => {
     if (cleaned) return;
     cleaned = true;
@@ -146,26 +234,32 @@ export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Blo
     get nodes() {
       return nodes();
     },
-    mount: move,
+    mount: mountBlock,
     move,
     enter() {
-      if (!disposed) void runTransitions(nodes(), "enter");
+      if (disposed) return;
+      void runTransitions(nodes(), "enter");
+      for (const remote of lifecycle.remoteBlocks) remote.enter();
     },
     leave() {
-      return disposed ? undefined : runTransitions(nodes(), "leave");
+      return disposed
+        ? undefined
+        : combinedTransition(runTransitions(nodes(), "leave"), lifecycle.remoteBlocks);
     },
     retire() {
       if (disposed) return undefined;
-      const leaving = runTransitions(nodes(), "leave");
+      const leaving = combinedTransition(runTransitions(nodes(), "leave"), lifecycle.remoteBlocks);
       cleanup();
       if (!leaving) {
         disposed = true;
+        for (const remote of lifecycle.remoteBlocks) remote.dispose();
         remove();
         return undefined;
       }
       return leaving.then(() => {
         if (disposed) return;
         disposed = true;
+        for (const remote of lifecycle.remoteBlocks) remote.dispose();
         remove();
       });
     },
@@ -174,6 +268,7 @@ export function block(fragment: DocumentFragment, cleanups: Cleanup[] = []): Blo
       disposed = true;
       cancelTransitions(nodes());
       cleanup();
+      for (const remote of lifecycle.remoteBlocks) remote.dispose();
       remove();
     },
   };
@@ -295,7 +390,32 @@ export function renderComponent<Props extends object>(
   }
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
   const frame = rootFrame();
-  return resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
+  return activatedBlock(resolvedBlock(getFactory(candidate)(initialProps, frame), frame), frame);
+}
+
+function activatedBlock(rendered: Block, frame: RenderFrame): Block {
+  let activated = false;
+  return {
+    get nodes() {
+      return rendered.nodes;
+    },
+    mount(parent, before) {
+      rendered.mount(parent, before);
+      if (activated) return;
+      activated = true;
+      try {
+        activateMounts(frame);
+      } catch (error) {
+        rendered.dispose();
+        throw error;
+      }
+    },
+    move: (parent, before) => rendered.move(parent, before),
+    enter: () => rendered.enter(),
+    leave: () => rendered.leave(),
+    retire: () => rendered.retire(),
+    dispose: () => rendered.dispose(),
+  };
 }
 
 export function readonlyProps<Props extends object>(props: Props): Readonly<Props> {
@@ -327,17 +447,14 @@ export function mount<Props extends object>(
     throw new TypeError("mount() expects a DOM Element target");
   }
   if (props != null && !isObject(props)) throw new TypeError("mount() props must be an object");
-  const factory = getFactory(candidate);
-  const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
-  const frame = rootFrame();
-  const mounted = resolvedBlock(factory(initialProps, frame), frame);
+  const mounted = renderComponent(candidate, props);
   target.replaceChildren();
   mounted.mount(target);
   return () => mounted.dispose();
 }
 
 export function rootFrame(): RenderFrame {
-  return { owner: [], contexts: new Map() };
+  return { owner: [], contexts: new Map(), mounts: mountCoordinator(false) };
 }
 
 function cancelPendingBlock(value: PromiseLike<unknown>): void {

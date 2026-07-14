@@ -38,6 +38,85 @@ Only use one class alias on an element. The compiler normalizes dynamic values a
 
 General component children are not supported in the first version. Prefer explicit typed props and focused leaf components. `Suspense`, `ErrorBoundary`, context providers, `Await`, and `Link` have compiler-specialized child contracts.
 
+## DOM refs and portals
+
+`createRef<T>()` creates an object ref whose non-reactive `current` value is assigned after its element is inserted and reset to `null` during cleanup. Intrinsic elements also accept callback refs; callbacks receive the element when attached and `null` when detached.
+
+`Portal` renders JSX, text, and primitive children into a reactive element target without recreating them when the target changes. `GlobalPortal` renders the same child types directly under `document.body`, which is useful for dialogs, notifications, and other page-level overlays. Both preserve context, async boundaries, events, refs, and transitions.
+
+```solix live preview=PortalDemo title="Refs and portals"
+import { $component, createRef, GlobalPortal, Portal } from "solix";
+
+const PortalDemo = $component(function PortalDemo() {
+  const target = createRef<HTMLDivElement>();
+  const trigger = createRef<HTMLButtonElement>();
+  let localOpen = false;
+  let globalOpen = false;
+  let callbackState = "detached";
+
+  return (
+    <section class="grid gap-4 border-[3px] border-ink bg-cream p-5 shadow-block-sm">
+      <div class="flex flex-wrap gap-3">
+        <button
+          ref={trigger}
+          class="border-[3px] border-ink bg-solar px-4 py-2 font-mono text-xs font-bold uppercase shadow-block-sm"
+          onClick={() => (localOpen = !localOpen)}
+        >
+          Toggle local portal
+        </button>
+        <button
+          class="border-[3px] border-ink bg-white px-4 py-2 font-mono text-xs font-bold uppercase"
+          onClick={() => trigger.current?.focus()}
+        >
+          Focus the trigger
+        </button>
+        <button
+          class="border-[3px] border-ink bg-cobalt px-4 py-2 font-mono text-xs font-bold uppercase text-white"
+          onClick={() => (globalOpen = true)}
+        >
+          Open global portal
+        </button>
+      </div>
+
+      <p data-testid="portal-ref-state" class="font-mono text-xs uppercase">Callback ref: {callbackState}</p>
+      <div ref={target} class="min-h-20 border-2 border-dashed border-ink/40 bg-white p-3">
+        <span class="font-mono text-xs uppercase text-pencil">Local portal target</span>
+      </div>
+
+      {localOpen && (
+        <Portal target={target.current!}>
+          <div
+            data-testid="local-portal-content"
+            ref={(element) => (callbackState = element ? "attached" : "detached")}
+            class="mt-2 border-[3px] border-ink bg-solar p-4 font-bold"
+          >
+            Rendered through Portal
+          </div>
+        </Portal>
+      )}
+
+      {globalOpen && (
+        <GlobalPortal>
+          <div class="fixed inset-0 z-50 grid place-items-center bg-ink/55 p-6" role="dialog" aria-label="Global notice">
+            <div class="border-[3px] border-ink bg-cream p-6 shadow-block">
+              <p class="font-display text-2xl uppercase">Direct child of body</p>
+              <button
+                class="mt-4 border-[3px] border-ink bg-solar px-4 py-2 font-mono text-xs font-bold uppercase"
+                onClick={() => (globalOpen = false)}
+              >
+                Close global portal
+              </button>
+            </div>
+          </div>
+        </GlobalPortal>
+      )}
+    </section>
+  );
+});
+```
+
+Portal targets are `Element` objects rather than selector strings. If the target expression changes, Solix validates it and moves the existing portal nodes. A target created with a ref must be available before a conditional Portal is first shown, as in the example above.
+
 ## Lists and identity
 
 Map reactive arrays with a stable `key`:

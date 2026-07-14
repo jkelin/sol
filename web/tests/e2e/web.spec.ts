@@ -105,6 +105,27 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   };
   await visitDocumentationPage(0);
 
+  await page.goto("/docs/components-and-jsx");
+  const portalExample = page.locator('[data-live-example="PortalDemo"]');
+  const localToggle = portalExample.getByRole("button", { name: "Toggle local portal" });
+  await portalExample.getByRole("button", { name: "Focus the trigger" }).click();
+  await expect(localToggle).toBeFocused();
+  await localToggle.click();
+  await expect(portalExample.getByTestId("local-portal-content")).toBeVisible();
+  await expect(portalExample.getByTestId("portal-ref-state")).toHaveText("Callback ref: attached");
+  await localToggle.click();
+  await expect(portalExample.getByTestId("local-portal-content")).toBeHidden();
+  await expect(portalExample.getByTestId("portal-ref-state")).toHaveText("Callback ref: detached");
+
+  await portalExample.getByRole("button", { name: "Open global portal" }).click();
+  const globalPortal = page.getByRole("dialog", { name: "Global notice" });
+  await expect(globalPortal).toBeVisible();
+  expect(await globalPortal.evaluate((element) => element.parentElement === document.body)).toBe(
+    true,
+  );
+  await globalPortal.getByRole("button", { name: "Close global portal" }).click();
+  await expect(globalPortal).toBeHidden();
+
   await page
     .getByRole("link", { name: /Reactivity/ })
     .first()

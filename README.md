@@ -59,6 +59,37 @@ Derived inference follows direct reads in the initializer. When a helper functio
 
 Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static checkbox/radio inputs and `value` for other supported controls. Signal arrays and plain-object values are deep proxies, so nested assignments and mutating array methods are reactive. Dates, collections, and class instances retain their original identity.
 
+## Refs and portals
+
+Intrinsic elements accept callback refs and mutable object refs. `createRef<T>()` returns a typed, non-reactive `{ current: T | null }` object; refs attach after DOM insertion and clear during disposal.
+
+```tsx
+import { $component, createRef, GlobalPortal, Portal } from "solix";
+
+const Overlay = $component(function Overlay() {
+  const target = createRef<HTMLDivElement>();
+  let open = false;
+  return (
+    <main>
+      <button onClick={() => (open = true)}>Open</button>
+      <div ref={target} />
+      {open && (
+        <Portal target={target.current!}>
+          <p>Targeted content</p>
+        </Portal>
+      )}
+      {open && (
+        <GlobalPortal>
+          <button onClick={() => (open = false)}>Close overlay</button>
+        </GlobalPortal>
+      )}
+    </main>
+  );
+});
+```
+
+`Portal` accepts a reactive DOM `Element` target and moves the same owned block when that target changes. `GlobalPortal` mounts its JSX, text, or primitive children directly under `document.body` without a wrapper. Portal children preserve component context, async/error ownership, events, refs, cleanup, and transitions.
+
 ## Form validation
 
 `$form()` owns a form's values, validation errors, and submission state. It accepts a callable parser or a schema with `parse()` or `parseAsync()`, so Valibot and Zod can share the same controller API.

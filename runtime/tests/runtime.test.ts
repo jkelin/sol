@@ -6,6 +6,7 @@ import { $component, $context } from "../src/components.ts";
 import { normalizeClass } from "../src/dom.ts";
 import { $form } from "../src/forms.ts";
 import { $computed, $signal, type Signal } from "../src/reactivity.ts";
+import { createRef, type Ref } from "../src/refs.ts";
 import { mount } from "../src/rendering.ts";
 import { transition } from "../src/transitions.ts";
 import {
@@ -13,6 +14,7 @@ import {
   batch,
   bindValue,
   block,
+  blockLifecycle,
   child,
   component,
   configureRouteRuntime,
@@ -25,6 +27,7 @@ import {
   resolveRoute,
   routeHref,
   runtimeEffect,
+  ref,
   template,
   text,
   when,
@@ -42,6 +45,46 @@ beforeEach(() => {
     NodeFilter: window.NodeFilter,
     Element: window.Element,
     HTMLSelectElement: window.HTMLSelectElement,
+  });
+});
+
+describe("DOM refs", () => {
+  test("attaches after insertion, switches reactively, and clears on disposal", () => {
+    const definition = template('<button data-solix-e="0">Focus</button>');
+    const view = instantiate(definition);
+    const cleanups: (() => void)[] = [];
+    const lifecycle = blockLifecycle();
+    const objectRef = createRef<HTMLButtonElement>();
+    const firstCalls: Array<HTMLButtonElement | null> = [];
+    const callbackRef: Ref<HTMLButtonElement> = (element) => firstCalls.push(element);
+    const activeRef = $signal<Ref<HTMLButtonElement>>(objectRef);
+    ref(view.elements[0] as HTMLButtonElement, () => activeRef.value, cleanups, lifecycle);
+    const rendered = block(view.fragment, cleanups, lifecycle);
+    document.body.append(document.createElement("main"));
+    const target = document.body.querySelector("main")!;
+
+    expect(objectRef.current).toBeNull();
+    rendered.mount(target);
+    expect(objectRef.current?.isConnected).toBe(true);
+
+    activeRef.value = callbackRef;
+    expect(objectRef.current).toBeNull();
+    expect(firstCalls).toEqual([target.querySelector("button")]);
+
+    rendered.dispose();
+    expect(firstCalls).toEqual([expect.any(window.HTMLButtonElement), null]);
+  });
+
+  test("validates ref constructors and structural objects", () => {
+    expect(() => (createRef as (...values: unknown[]) => unknown)(null)).toThrow(
+      "does not accept an initial value",
+    );
+    const element = document.createElement("button");
+    const lifecycle = blockLifecycle();
+    expect(() => ref(element, () => [], [], lifecycle)).toThrow("callback or an object");
+    const readonly = {};
+    Object.defineProperty(readonly, "current", { value: null });
+    expect(() => ref(element, () => readonly, [], lifecycle)).toThrow("must be writable");
   });
 });
 

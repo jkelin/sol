@@ -16,6 +16,7 @@ export function compile(source: string, filename = "component.tsx"): CompileResu
     componentNames: new Set(),
     builtinNames: new Map(),
     linkNames: new Set(),
+    refCreatorNames: new Set(),
     mappingOrigins: [],
     nextListId: 0,
   };

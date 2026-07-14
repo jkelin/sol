@@ -27,8 +27,9 @@ export interface CompilerContext {
   source: string;
   templates: string[];
   componentNames: Set<string>;
-  builtinNames: Map<string, "Suspense" | "Await" | "ErrorBoundary">;
+  builtinNames: Map<string, "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal">;
   linkNames: Set<string>;
+  refCreatorNames: Set<string>;
   propsName?: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
   nextListId: number;

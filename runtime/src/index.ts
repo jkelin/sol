@@ -13,6 +13,8 @@ export {
   type SuspenseProps,
 } from "./components.ts";
 export type { ClassValue } from "./dom.ts";
+export { GlobalPortal, Portal, type GlobalPortalProps, type PortalProps } from "./portals.ts";
+export { createRef, type Ref, type RefCallback, type RefObject } from "./refs.ts";
 export {
   $form,
   type FormConfig,

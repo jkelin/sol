@@ -186,7 +186,10 @@ export function compileSetup(
   propsName: string | undefined,
 ): { bindings: Map<string, ReactiveKind>; code: string; scope: Map<string, string> } {
   const bindings = new Map<string, ReactiveKind>();
-  const declarationKinds = new WeakMap<t.VariableDeclarator, ReactiveKind | "function">();
+  const declarationKinds = new WeakMap<
+    t.VariableDeclarator,
+    ReactiveKind | "function" | "stable"
+  >();
   const remainingDataNames = new Set<string>();
   for (const statement of setup) {
     if (!t.isVariableDeclaration(statement)) continue;
@@ -209,6 +212,14 @@ export function compileSetup(
       remainingDataNames.delete(declaration.id.name);
       if (t.isFunctionExpression(initializer) || t.isArrowFunctionExpression(initializer)) {
         declarationKinds.set(declaration, "function");
+        continue;
+      }
+      if (
+        t.isCallExpression(initializer) &&
+        t.isIdentifier(initializer.callee) &&
+        compiler.refCreatorNames.has(initializer.callee.name)
+      ) {
+        declarationKinds.set(declaration, "stable");
         continue;
       }
       if (
@@ -271,7 +282,7 @@ export function compileSetup(
         );
       }
       const kind = declarationKinds.get(declaration)!;
-      if (kind === "function") {
+      if (kind === "function" || kind === "stable") {
         generated.push(
           mappedCode(
             compiler,

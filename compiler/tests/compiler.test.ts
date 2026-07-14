@@ -10,6 +10,14 @@ function linkSource(link: string): string {
   `;
 }
 
+function componentSource(jsx: string, imports = ""): string {
+  return `
+    import { $component${imports} } from "solix";
+    const Child = $component(function Child() { return <p>Child</p>; });
+    const App = $component(function App() { return ${jsx}; });
+  `;
+}
+
 describe("compiler", () => {
   test("compiles exported route declarations and path parameters", () => {
     const result = compile(
@@ -239,6 +247,94 @@ describe("compiler", () => {
         "InvalidTransition.tsx",
       ),
     ).toThrow("requires an expression");
+  });
+
+  test("compiles intrinsic refs and portal builtins", () => {
+    const result = compile(
+      `
+      import { $component, createRef as makeRef, GlobalPortal as BodyPortal, Portal as TargetPortal } from "solix";
+      const App = $component(function App() {
+        const target = makeRef<HTMLDivElement>();
+        const callback = (element: HTMLButtonElement | null) => void element;
+        return <main>
+          <div ref={target} />
+          <TargetPortal target={target.current!}><button ref={callback}>Targeted</button><span>Sibling</span></TargetPortal>
+          <BodyPortal><aside>Global</aside></BodyPortal>
+        </main>;
+      });
+    `,
+      "Portals.tsx",
+    );
+
+    expect(result.code).toContain("__solix_block_lifecycle(__solix_frame)");
+    expect(result.code).toContain("const target = makeRef<HTMLDivElement>();");
+    expect(result.code).not.toContain("__solix_signal(makeRef())");
+    expect(result.code).toContain("__solix_ref(__solix_view.elements[0]");
+    expect(result.code).toContain("__solix_portal(() => (target.current!)");
+    expect(result.code).toContain("__solix_global_portal(");
+    expect(result.code).toContain('<button data-solix-e="0">Targeted</button><span>Sibling</span>');
+    expect(result.code).not.toContain("<TargetPortal");
+    expect(result.code).not.toContain("<BodyPortal");
+  });
+
+  test("maps ref and portal operations to their authored JSX", () => {
+    const source = [
+      'import { $component, createRef, GlobalPortal, Portal } from "solix";',
+      "const App = $component(function App() {",
+      "  const target = createRef<HTMLDivElement>();",
+      "  const callback = (element: HTMLDivElement | null) => void element;",
+      "  return <main>",
+      "    <div ref={callback} />",
+      "    <Portal target={target.current!}><p>Targeted</p></Portal>",
+      "    <GlobalPortal><p>Global</p></GlobalPortal>",
+      "  </main>;",
+      "});",
+    ].join("\n");
+    const result = compile(source, "MappedPortals.tsx");
+    const consumer = new SourceMapConsumer(JSON.parse(result.map!.toString()));
+    const originalLine = (needle: string): number | null => {
+      const offset = result.code.indexOf(needle);
+      const prefix = result.code.slice(0, offset);
+      const lines = prefix.split("\n");
+      return consumer.originalPositionFor({
+        line: lines.length,
+        column: lines.at(-1)!.length,
+      }).line;
+    };
+
+    expect(originalLine("__solix_ref(__solix_view")).toBe(6);
+    expect(originalLine("__solix_portal(() =>")).toBe(7);
+    expect(originalLine("__solix_global_portal(")).toBe(8);
+  });
+
+  test("validates ref and portal compiler boundaries", () => {
+    expect(() => compile(componentSource('<input ref="field" />'), "InvalidRef.tsx")).toThrow(
+      "requires an expression",
+    );
+    expect(() => compile(componentSource("<Child ref={() => {}} />"), "ComponentRef.tsx")).toThrow(
+      "ref is only valid on intrinsic elements",
+    );
+    expect(() => compile(componentSource("<Portal />", ", Portal"), "MissingTarget.tsx")).toThrow(
+      "target is required",
+    );
+    expect(() =>
+      compile(componentSource('<Portal target="body" />', ", Portal"), "StaticTarget.tsx"),
+    ).toThrow("requires an expression");
+    expect(() =>
+      compile(
+        componentSource("<GlobalPortal target={document.body} />", ", GlobalPortal"),
+        "GlobalTarget.tsx",
+      ),
+    ).toThrow("Unexpected target property");
+    expect(() =>
+      compile(
+        componentSource(
+          "<>{[document.body].map(target => <Portal key={target} target={target}><p>Row</p></Portal>)}</>",
+          ", Portal",
+        ),
+        "KeyedPortal.tsx",
+      ),
+    ).not.toThrow();
   });
 
   test("keeps outer row state distinct in nested keyed lists", () => {

@@ -47,7 +47,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `rendering.ts` implements templates, shared component-props validation, block and setup lifecycle,
   compiled component factories,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
-  shared display-value normalization, asynchronous retirement settlement, and error propagation.
+  shared single-value and concatenate-then-normalize display conversion, asynchronous retirement
+  settlement, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
   including shared HTML-string normalization, dynamic attribute and form-control serialization,
   collision-safe normalized text, U+0000 and lone-surrogate replacement that preserves valid

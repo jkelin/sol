@@ -504,6 +504,14 @@ function pruneClientServerDependencies(state: CompilationState): void {
               : [];
           for (const candidate of candidates) {
             const names = Object.keys(t.getBindingIdentifiers(candidate));
+            if (
+              t.isVariableDeclarator(candidate) &&
+              t.isCallExpression(candidate.init) &&
+              state.compiler.componentCalls.has(candidate.init) &&
+              names.some((name) => exportedNames.has(name))
+            ) {
+              continue;
+            }
             const bindings = names.map((name) => path.scope.getBinding(name)).filter(Boolean);
             const references = bindings.flatMap((binding) => binding!.referencePaths);
             const meaningfulReferences = references.filter(

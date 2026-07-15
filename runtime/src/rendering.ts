@@ -417,9 +417,16 @@ export function emptyBlock(frame?: RenderFrame): Block {
   return block(document.createDocumentFragment());
 }
 
+function displayValuePart(value: unknown): string {
+  return value == null || typeof value === "boolean" ? "" : String(value);
+}
+
 export function displayValue(value: unknown): string {
-  const displayed = value == null || typeof value === "boolean" ? "" : String(value);
-  return normalizeHtmlString(displayed);
+  return normalizeHtmlString(displayValuePart(value));
+}
+
+export function displayValues(values: readonly unknown[]): string {
+  return normalizeHtmlString(values.map(displayValuePart).join(""));
 }
 
 function escapeText(value: string): string {

@@ -57,7 +57,9 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
   selecting direct server definitions or browser stubs and pruning imports, declarators,
   assignments, effect statements, attached comments, and exported dependency closures used only
-  by stripped server expressions. Declaration helpers are resolved through named, aliased, or
+  by stripped server expressions. Exported compiled components remain client roots even when their
+  only local reference is server-only, while ordinary exported server dependencies are still
+  removed to protect the client boundary. Declaration helpers are resolved through named, aliased, or
   namespace Sol import bindings and may be published by inline or later export declarations;
   identifier default exports are supported, type-only exports are ignored, and ambiguous mixed
   frontend/server effects receive a diagnostic instead of being deleted.

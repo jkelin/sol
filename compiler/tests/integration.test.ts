@@ -1680,6 +1680,47 @@ test("normalizes lone surrogates across UTF-8 transport and preserves valid pair
   disposeMounted();
 });
 
+test("preserves surrogate pairs split across adjacent raw-text values", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: {
+      high: string;
+      low: string;
+      lone: string;
+    }) {
+      return <main>
+        <textarea id="pair-textarea">{props.high}{props.low}</textarea>
+        <title id="pair-title">{"\\uD83D"}{props.low}</title>
+        <script id="pair-script">/*{props.high}{props.low}*/</script>
+        <style id="pair-style">/*{props.high}{props.low}*/</style>
+        <textarea id="lone-textarea">{props.lone}</textarea>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ high: string; low: string; lone: string }>;
+  const props = { high: "\uD83D", low: "\uDE00", lone: "\uD83D" };
+  const expectedPair = props.high + props.low;
+  const html = await renderToStringAsync(App, props);
+  const transported = new TextDecoder().decode(new TextEncoder().encode(html));
+  const assertRawText = (target: ParentNode): void => {
+    expect(target.querySelector("#pair-textarea")?.textContent).toBe(expectedPair);
+    expect(target.querySelector("#pair-title")?.textContent).toBe(expectedPair);
+    expect(target.querySelector("#pair-script")?.textContent).toBe(`/*${expectedPair}*/`);
+    expect(target.querySelector("#pair-style")?.textContent).toBe(`/*${expectedPair}*/`);
+    expect(target.querySelector("#lone-textarea")?.textContent).toBe("\uFFFD");
+  };
+
+  const target = document.createElement("div");
+  target.innerHTML = transported;
+  const disposeHydrated = await hydrate(App, target, props);
+  assertRawText(target);
+  disposeHydrated();
+
+  const mounted = document.createElement("div");
+  const disposeMounted = mount(App, mounted, props);
+  assertRawText(mounted);
+  disposeMounted();
+});
+
 test("normalizes NUL in controlled textarea values without colliding with element slots", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App(props: { note: string }) {

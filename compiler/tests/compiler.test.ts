@@ -519,6 +519,43 @@ describe("compiler", () => {
     expect(result.code.match(/const __sol_template_\d+ =/g)).toHaveLength(1);
   });
 
+  test("keeps exported components referenced only by stripped browser handlers", () => {
+    const result = compile(
+      `
+        import { $component, $rpcQuery } from "@soljs/sol";
+        export const Public = $component(function Public() {
+          return <p>PUBLIC_COMPONENT</p>;
+        });
+        const Secret = $component(function Secret() {
+          return <p>PRIVATE_COMPONENT</p>;
+        });
+        function secretFunction() { return "PRIVATE_FUNCTION"; }
+        class SecretClass { value = "PRIVATE_CLASS"; }
+        const secretValue = "PRIVATE_VALUE";
+        export const load = $rpcQuery(
+          "load",
+          { schema: value => value },
+          async () => [
+            Public,
+            Secret, secretFunction, SecretClass, secretValue,
+          ],
+        );
+      `,
+      "public-dependencies.sol.tsx",
+      { target: "client" },
+    );
+    expect(result.code).toContain("PUBLIC_COMPONENT");
+    for (const marker of [
+      "PRIVATE_COMPONENT",
+      "PRIVATE_FUNCTION",
+      "PRIVATE_CLASS",
+      "PRIVATE_VALUE",
+    ]) {
+      expect(result.code).not.toContain(marker);
+    }
+    expect(result.code).toContain('__sol_rpc_query_client("load")');
+  });
+
   test("keeps backend handlers, validators, dependencies, and secrets out of client modules", () => {
     const source = `
       import { $httpRoute, $rpcMutation, $rpcQuery } from "@soljs/sol";

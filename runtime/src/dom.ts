@@ -13,6 +13,7 @@ import {
 } from "./reactivity.ts";
 import {
   displayValue,
+  displayValues,
   getFactory,
   reportError,
   readonlyProps,
@@ -155,7 +156,7 @@ export function rawText(
     }
     const values = getValues();
     if (!Array.isArray(values)) throw new TypeError("rawText() values must be an array");
-    element.textContent = values.map(displayValue).join("");
+    element.textContent = displayValues(values);
     return;
   }
   if (!element || element.nodeType !== Node.ELEMENT_NODE || !RAW_TEXT_TAGS.has(element.tagName)) {
@@ -166,7 +167,7 @@ export function rawText(
     runtimeEffect(() => {
       const values = getValues();
       if (!Array.isArray(values)) throw new TypeError("rawText() values must be an array");
-      const value = values.map(displayValue).join("");
+      const value = displayValues(values);
       if (hydrating) {
         hydrating = false;
         if (element.textContent !== serverSafeRawText(element.tagName, value)) {

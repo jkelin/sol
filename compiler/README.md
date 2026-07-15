@@ -76,13 +76,15 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
 - `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
-  reusable Babel-to-code helpers, including validation for `arguments`, `new.target`, and named
-  self-references owned by erased function boundaries.
+  reusable Babel-to-code helpers, including nested-JSX detection and validation for `arguments`,
+  `new.target`, and named self-references owned by erased function boundaries.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
   conditionals, and child expressions into source-marker-independent, signature-indexed interned
   templates and reactive or one-shot runtime operations. Keyed-list parameters use deterministic
   nesting-local names so equivalent sibling components share template definitions while nested
-  callbacks remain distinct. Lowering also includes single-owner form bindings,
+  callbacks remain distinct. Unsupported expression shapes cannot leak nested JSX past lowering;
+  only dedicated conditional, list, boundary, and renderer forms accept it. Lowering also includes
+  single-owner form bindings,
   ASCII-case-insensitive unique DOM attribute targets and private-marker reservation, unique
   case-sensitive component properties, truthy-presence boolean expressions, property-backed
   text-control values with controlled file inputs rejected, canonical boolean-valued enumerated

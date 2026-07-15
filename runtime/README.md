@@ -73,7 +73,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   and HTTP paths, canonical request-segment matching that preserves encoded slashes, HTTP route
   decoding, schema validation, JSON POST endpoint matching, prepared endpoint indexes, JSON
   response envelopes with canonical array-index validation, snapshotted endpoint configs, validated
-  dispatch options, strict UTF-8 JSON decoding, and development-safe failures.
+  dispatch options, descriptor-snapshotted hook-free JSON serialization, strict UTF-8 JSON decoding,
+  and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
   before asynchronous rendering, enforcing the timeout across route preparation and render work,
   publishing managed head markup only after payload serialization,

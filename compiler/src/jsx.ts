@@ -1,6 +1,7 @@
 import * as t from "@babel/types";
 import {
   bindingRoot,
+  containsJsx,
   elementId,
   expressionAttribute,
   expressionCode,
@@ -408,7 +409,10 @@ export function compileBuiltinElement(
       compiler,
       namedAttribute(compiler, node, "target", true)!,
     );
-    if (t.isJSXElement(target) || t.isJSXFragment(target) || isDefinitelyPrimitive(target)) {
+    if (containsJsx(target)) {
+      codeFrame(compiler, target, "Nested JSX is not supported in this expression");
+    }
+    if (isDefinitelyPrimitive(target)) {
       codeFrame(compiler, target, "Portal target must be a DOM Element expression");
     }
     context.operations.push(
@@ -464,12 +468,10 @@ export function compileBuiltinElement(
     compiler,
     namedAttribute(compiler, node, "$promise", true)!,
   );
-  if (
-    t.isJSXElement(promise) ||
-    t.isJSXFragment(promise) ||
-    t.isRegExpLiteral(promise) ||
-    isDefinitelyPrimitive(promise)
-  ) {
+  if (containsJsx(promise)) {
+    codeFrame(compiler, promise, "Nested JSX is not supported in this expression");
+  }
+  if (t.isRegExpLiteral(promise) || isDefinitelyPrimitive(promise)) {
     codeFrame(compiler, promise, "Await $promise must be a promise expression");
   }
   const children = meaningfulChildren(node);
@@ -496,14 +498,6 @@ export function compileBuiltinElement(
       `__sol_await(__sol_view.regions[${index}], () => (${expressionCode(promise, scope)}), (__sol_value, __sol_frame) => (${renderer})(__sol_frame), ${optionalErrorFactory(compiler, node, bindings, scope)}, __sol_cleanups, __sol_frame, ${JSON.stringify(nextAsyncSite(compiler))});`,
     ),
   );
-}
-
-function containsJsx(node: t.Node): boolean {
-  let found = false;
-  t.traverseFast(node, (child) => {
-    if (t.isJSXElement(child) || t.isJSXFragment(child)) found = true;
-  });
-  return found;
 }
 
 function rawTextValues(
@@ -560,9 +554,10 @@ export function compileProviderElement(
     return false;
   validateBuiltinAttributes(compiler, node, new Set(["data"]));
   const data = jsxAttributeExpression(compiler, namedAttribute(compiler, node, "data", true)!);
+  if (containsJsx(data)) {
+    codeFrame(compiler, data, "Nested JSX is not supported in this expression");
+  }
   if (
-    t.isJSXElement(data) ||
-    t.isJSXFragment(data) ||
     isDefinitelyPrimitive(data) ||
     t.isArrayExpression(data) ||
     t.isFunctionExpression(data) ||
@@ -1082,6 +1077,9 @@ export function compileRenderableFactory(
     useRuntimeHelper(compiler, "__sol_empty_block");
     return "(__sol_frame) => __sol_empty_block(__sol_frame)";
   }
+  if (containsJsx(expression)) {
+    codeFrame(compiler, expression, "Nested JSX is not supported in this expression");
+  }
   useRuntimeHelper(compiler, "__sol_value_block");
   return `(__sol_frame) => __sol_value_block(() => (${expressionCode(expression, scope)}), __sol_frame)`;
 }
@@ -1095,6 +1093,9 @@ export function compileExpressionChild(
 ): void {
   const map = mapDetails(compiler, expression);
   if (map) {
+    if (containsJsx(map.collection)) {
+      codeFrame(compiler, map.collection, "Nested JSX is not supported in this expression");
+    }
     useRuntimeHelper(compiler, "__sol_list");
     const scopeValues = new Set(scope.values());
     let listDepth = 0;
@@ -1126,6 +1127,9 @@ export function compileExpressionChild(
   }
 
   if (t.isConditionalExpression(expression)) {
+    if (containsJsx(expression.test)) {
+      codeFrame(compiler, expression.test, "Nested JSX is not supported in this expression");
+    }
     useRuntimeHelper(compiler, "__sol_when");
     const index = region(context);
     context.operations.push(
@@ -1139,6 +1143,9 @@ export function compileExpressionChild(
   }
 
   if (t.isLogicalExpression(expression, { operator: "&&" })) {
+    if (containsJsx(expression.left)) {
+      codeFrame(compiler, expression.left, "Nested JSX is not supported in this expression");
+    }
     useRuntimeHelper(compiler, "__sol_when");
     useRuntimeHelper(compiler, "__sol_empty_block");
     const index = region(context);
@@ -1150,6 +1157,10 @@ export function compileExpressionChild(
       ),
     );
     return;
+  }
+
+  if (containsJsx(expression)) {
+    codeFrame(compiler, expression, "Nested JSX is not supported in this expression");
   }
 
   const index = region(context);

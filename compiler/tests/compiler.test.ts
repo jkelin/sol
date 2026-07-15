@@ -2149,6 +2149,38 @@ describe("compiler", () => {
     }
   });
 
+  test("rejects JSX nested inside unsupported child and property expressions", () => {
+    for (const child of [
+      "show || <span>Fallback</span>",
+      "show ?? <span>Fallback</span>",
+      "[<span>Fallback</span>]",
+      "({ fallback: <span>Fallback</span> })",
+      "consume(<span>Fallback</span>)",
+      "`fallback ${<span>Fallback</span>}`",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { let show = false; const consume = (value: unknown) => value; return <main>{${child}}</main>; });`,
+          "NestedJsx.tsx",
+        ),
+      ).toThrow("Nested JSX is not supported in this expression");
+    }
+
+    for (const source of [
+      `const App = $component(function App() { return <div title={<span>Bad</span>} />; });`,
+      `const Child = $component(function Child() { return <p>Child</p>; }); const App = $component(function App() { let show = false; return <Child value={show || <span>Bad</span>} />; });`,
+      `const App = $component(function App() { return <button onClick={() => <span>Bad</span>}>Click</button>; });`,
+      `import { Link } from "@soljs/sol"; const App = $component(function App() { let show = false; return <Link route={show || <span>Bad</span>}><a>Link</a></Link>; });`,
+      `import { createContext } from "@soljs/sol"; const Context = createContext({}); const App = $component(function App() { let show = false; return <Context.Provider data={show || <span>Bad</span>}><p>Child</p></Context.Provider>; });`,
+      `import { Portal } from "@soljs/sol"; const App = $component(function App() { let show = false; return <Portal target={show || <span>Bad</span>}><p>Child</p></Portal>; });`,
+      `import { Await } from "@soljs/sol"; const App = $component(function App() { let show = false; return <Await $promise={show || <span>Bad</span>}>{value => <p>{value}</p>}</Await>; });`,
+    ]) {
+      expect(() => compile(source, "NestedJsx.tsx")).toThrow(
+        "Nested JSX is not supported in this expression",
+      );
+    }
+  });
+
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {

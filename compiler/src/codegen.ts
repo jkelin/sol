@@ -18,6 +18,14 @@ export function normalizeJsxText(value: string): string {
     .join(" ");
 }
 
+export function containsJsx(node: t.Node): boolean {
+  let found = false;
+  t.traverseFast(node, (child) => {
+    if (t.isJSXElement(child) || t.isJSXFragment(child)) found = true;
+  });
+  return found;
+}
+
 export function rewriteIdentifiers(file: t.File, scope: Scope): void {
   traverse(file, {
     Identifier(path: NodePath<t.Identifier>) {
@@ -114,6 +122,13 @@ export function expressionAttribute(
 ): t.Expression {
   if (!t.isJSXExpressionContainer(attribute.value) || !t.isExpression(attribute.value.expression)) {
     codeFrame(context, attribute, "This JSX attribute requires an expression");
+  }
+  if (containsJsx(attribute.value.expression)) {
+    codeFrame(
+      context,
+      attribute.value.expression,
+      "Nested JSX is not supported in this expression",
+    );
   }
   return attribute.value.expression;
 }

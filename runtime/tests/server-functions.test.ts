@@ -163,6 +163,44 @@ describe("server declarations", () => {
     }
   });
 
+  test("rejects hidden RPC object properties without invoking toJSON hooks", async () => {
+    await Promise.all(
+      (["value", "accessor"] as const).map(async (kind) => {
+        let hookCalls = 0;
+        const hidden = Object.defineProperty({ safe: true }, "toJSON", {
+          enumerable: false,
+          ...(kind === "value"
+            ? { value: () => (hookCalls++, { admin: true }) }
+            : { get: () => (hookCalls++, () => ({ admin: true })) }),
+        });
+        let handlerCalls = 0;
+        const argumentQuery = rpcQueryServer(
+          `hidden-argument-${kind}`,
+          { schema: (args: readonly [object]) => args as [object] },
+          async (_value: object) => {
+            handlerCalls += 1;
+            return null;
+          },
+        );
+        const argumentFailure = await Promise.resolve(argumentQuery(hidden)).catch(
+          (error: unknown) => error,
+        );
+        expect(argumentFailure).toBeInstanceOf(TypeError);
+        expect(handlerCalls).toBe(0);
+        expect(hookCalls).toBe(0);
+
+        const resultQuery = rpcQueryServer(
+          `hidden-result-${kind}`,
+          { schema: (args: readonly []) => args as [] },
+          async () => hidden,
+        );
+        const resultFailure = await Promise.resolve(resultQuery()).catch((error: unknown) => error);
+        expect(resultFailure).toBeInstanceOf(TypeError);
+        expect(hookCalls).toBe(0);
+      }),
+    );
+  });
+
   test("dispatches query and mutation POST requests with JSON values", async () => {
     const query = rpcQueryServer(
       "when",

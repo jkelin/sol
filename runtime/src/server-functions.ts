@@ -116,14 +116,14 @@ function requestErrorStatus(error: unknown): 400 | 413 | 415 | undefined {
 
 function serializeJson(value: unknown, label: string): string {
   const ancestors = new Set<object>();
-  const visit = (item: unknown): void => {
+  const visit = (item: unknown): string => {
     if (
       item === null ||
       typeof item === "string" ||
       typeof item === "boolean" ||
       (typeof item === "number" && Number.isFinite(item))
     ) {
-      return;
+      return JSON.stringify(item);
     }
     if (typeof item !== "object") {
       throw new TypeError(`${label} must contain only JSON-serializable values`);
@@ -136,13 +136,15 @@ function serializeJson(value: unknown, label: string): string {
       throw new TypeError(`${label} must contain only JSON arrays, objects, and primitives`);
     }
     ancestors.add(item);
-    const keys = Reflect.ownKeys(item);
+    const descriptors = Object.getOwnPropertyDescriptors(item);
+    const keys = Reflect.ownKeys(descriptors);
     if (keys.some((key) => typeof key === "symbol")) {
       throw new TypeError(`${label} must not contain symbol-keyed properties`);
     }
+    let serialized: string;
     if (Array.isArray(item)) {
-      let indexedValues = 0;
-      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(item))) {
+      const values: string[] = [];
+      for (const [key, descriptor] of Object.entries(descriptors)) {
         if (key === "length") continue;
         if (arrayIndex(key, item.length) === undefined) {
           throw new TypeError(`${label} arrays must not contain custom properties`);
@@ -153,30 +155,30 @@ function serializeJson(value: unknown, label: string): string {
         if (!descriptor.enumerable) {
           throw new TypeError(`${label} arrays must contain enumerable indexed values`);
         }
-        visit(descriptor.value);
-        indexedValues += 1;
+        values.push(visit(descriptor.value));
       }
-      if (indexedValues !== item.length) {
+      if (values.length !== item.length) {
         throw new TypeError(`${label} must not contain sparse arrays`);
       }
+      serialized = `[${values.join(",")}]`;
     } else {
-      for (const key of Object.keys(item)) {
-        const descriptor = Object.getOwnPropertyDescriptor(item, key)!;
+      const properties: string[] = [];
+      for (const [key, descriptor] of Object.entries(descriptors)) {
         if (!("value" in descriptor)) {
           throw new TypeError(`${label} must not contain accessor properties`);
         }
-        visit(descriptor.value);
+        if (!descriptor.enumerable) {
+          throw new TypeError(`${label} objects must contain enumerable properties`);
+        }
+        properties.push(`${JSON.stringify(key)}:${visit(descriptor.value)}`);
       }
+      serialized = `{${properties.join(",")}}`;
     }
     ancestors.delete(item);
+    return serialized;
   };
   try {
-    visit(value);
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) {
-      throw new TypeError(`${label} must be JSON-serializable`);
-    }
-    return serialized;
+    return visit(value);
   } catch (error) {
     if (error instanceof TypeError && error.message.startsWith(label)) throw error;
     throw new TypeError(`${label} must be JSON-serializable`, { cause: error });

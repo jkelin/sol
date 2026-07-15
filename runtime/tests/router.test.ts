@@ -257,6 +257,15 @@ test("validates navigation options", () => {
 test("matches and navigates beneath a configured deployment base", async () => {
   await configureRouterBase("/sol/");
   try {
+    const deployedHtml = await renderToStringAsync(Route, undefined, {
+      url: "https://example.test/sol/plain",
+    });
+    const logicalHtml = await renderToStringAsync(Route, undefined, {
+      url: "https://example.test/plain",
+    });
+    expect(deployedHtml).toContain('data-page="plain"');
+    expect(logicalHtml).toContain('data-page="plain"');
+
     router.navigate("/second?source=base#details");
     expect(window.location.pathname).toBe("/sol/second");
     expect(router.pathname).toBe("/second");
@@ -272,6 +281,11 @@ test("matches and navigates beneath a configured deployment base", async () => {
     window.dispatchEvent(new window.Event("popstate"));
     expect(router.pathname).toBe("/second");
     expect(router.route?.path).toBe("/second");
+
+    window.history.pushState(null, "", "/plain");
+    window.dispatchEvent(new window.Event("popstate"));
+    expect(router.pathname).toBe("/plain");
+    expect(router.route).toBeNull();
   } finally {
     await configureRouterBase("/");
     router.navigate("/");

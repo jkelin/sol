@@ -1,5 +1,5 @@
 import { renderToStringAsync } from "sol";
-import { dispatchServerEndpoint } from "sol/compiler-runtime";
+import { dispatchServerEndpoint, logicalPathname } from "sol/compiler-runtime";
 import type {
   RequestHandler,
   RequestHandlerOptions,
@@ -34,8 +34,14 @@ export function createRequestHandler(
   if (!options || typeof options !== "object" || Array.isArray(options)) {
     throw new TypeError("Solkit request handler options must be an object");
   }
-  const unexpected = Object.keys(options).find((key) => key !== "maxBodyBytes");
+  const unexpected = Object.keys(options).find(
+    (key) => key !== "logicalPaths" && key !== "maxBodyBytes",
+  );
   if (unexpected) throw new TypeError(`Unknown Solkit request handler option ${unexpected}`);
+  if (options.logicalPaths !== undefined && typeof options.logicalPaths !== "boolean") {
+    throw new TypeError("Solkit logicalPaths must be a boolean");
+  }
+  const logicalPaths = options.logicalPaths === true;
   const maxBodyBytes = options.maxBodyBytes;
   if (maxBodyBytes !== undefined && (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 0)) {
     throw new TypeError("Solkit maxBodyBytes must be a non-negative safe integer");
@@ -57,6 +63,9 @@ export function createRequestHandler(
     }
     const accept = request.headers.get("accept") ?? "";
     const pathname = new URL(request.url).pathname;
+    if (!logicalPaths && logicalPathname(pathname) === undefined) {
+      return new Response("Not Found", { status: 404 });
+    }
     const acceptsDocument =
       accept.includes("text/html") ||
       ((!accept || accept.includes("*/*")) && !/\/[^/]*\.[^/]+$/.test(pathname));

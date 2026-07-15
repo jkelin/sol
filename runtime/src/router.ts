@@ -43,6 +43,7 @@ export interface Router {
 
 interface RouterState {
   pathname: string;
+  matchesBase: boolean;
   search: string;
   hash: string;
   searchParams: URLSearchParams;
@@ -67,10 +68,14 @@ function readLocation(frame?: RenderFrame): RouterState {
   const location = frame?.url ?? (typeof window === "undefined" ? null : window.location);
   const search = location?.search ?? "";
   const pathname = location?.pathname ?? "/";
-  const logicalPath = frame ? pathname : (logicalPathname(pathname) ?? pathname);
+  const logicalPath = logicalPathname(pathname);
+  const applicationPath = logicalPath ?? pathname;
   return {
     pathname:
-      logicalPath.length > 1 && logicalPath.endsWith("/") ? logicalPath.slice(0, -1) : logicalPath,
+      applicationPath.length > 1 && applicationPath.endsWith("/")
+        ? applicationPath.slice(0, -1)
+        : applicationPath,
+    matchesBase: frame !== undefined || logicalPath !== undefined,
     search,
     hash: location?.hash ?? "",
     searchParams: new URLSearchParams(search),
@@ -177,6 +182,7 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
 }
 
 function resolveLocation(location: RouterState): RouterState | PromiseLike<RouterState> {
+  if (!location.matchesBase) return unmatchedState(location);
   const match = matchRoute(location.pathname, location.searchParams);
   if (!match) return unmatchedState(location);
   const result = resolveRoute(match.definition, match.params);
@@ -232,6 +238,10 @@ let resolutionId = 0;
 function synchronizeLocation(): void | Promise<void> {
   const currentResolution = ++resolutionId;
   const location = readLocation();
+  if (!location.matchesBase) {
+    setRouterState(unmatchedState(location));
+    return;
+  }
   const match = matchRoute(location.pathname, location.searchParams);
   if (!match) {
     setRouterState(unmatchedState(location));

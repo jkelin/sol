@@ -8,6 +8,7 @@ import {
   type HttpRouteInput,
   type ServerEndpoint,
 } from "../src/server-functions.ts";
+import { configureRouteBase } from "../src/route-base.ts";
 
 function rpcRequest(name: string, args: readonly unknown[]): Request {
   return new Request(`https://example.test/api/rpc/${name}`, {
@@ -143,16 +144,78 @@ describe("server declarations", () => {
         { status: 500 },
       );
     }) as typeof fetch;
+    configureRouteBase("/sol/");
     try {
       const query = rpcQueryClient<readonly [number], number>("failure");
       const failure = await query(1).catch((error: unknown) => error);
       expect(failure).toMatchObject({ name: "RangeError", message: "too far" });
-      expect(requestedPath).toBe("/api/rpc/failure");
+      expect(requestedPath).toBe("/sol/api/rpc/failure");
       expect(requestedInit?.method).toBe("POST");
       expect(new Headers(requestedInit?.headers).get("content-type")).toBe("application/json");
       expect(JSON.parse(String(requestedInit?.body))).toEqual([1]);
     } finally {
+      configureRouteBase("/");
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("dispatches RPC and HTTP endpoints beneath the configured route base", async () => {
+    const query = rpcQueryServer(
+      "based",
+      { schema: (args: readonly []) => args as [] },
+      async () => "rpc",
+    ) as unknown as ServerEndpoint;
+    const route = httpRouteServer(
+      { method: "GET", path: "/status", schema: (input: HttpRouteInput) => input },
+      async () => new Response("http"),
+    ) as unknown as ServerEndpoint;
+
+    configureRouteBase("/sol/");
+    try {
+      const rpc = await dispatchServerEndpoint(
+        [query, route],
+        new Request("https://example.test/sol/api/rpc/based", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "[]",
+        }),
+      );
+      const http = await dispatchServerEndpoint(
+        [query, route],
+        new Request("https://example.test/sol/status"),
+      );
+      const outside = await dispatchServerEndpoint(
+        [query, route],
+        new Request("https://example.test/api/rpc/based", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "[]",
+        }),
+      );
+
+      expect(await rpc?.json()).toEqual({ ok: true, value: "rpc" });
+      expect(await http?.text()).toBe("http");
+      expect(outside).toBeUndefined();
+    } finally {
+      configureRouteBase("/");
+    }
+  });
+
+  test("matches equivalent percent-escape casing in the configured route base", async () => {
+    const route = httpRouteServer(
+      { method: "GET", path: "/status", schema: (input: HttpRouteInput) => input },
+      async () => new Response("http"),
+    ) as unknown as ServerEndpoint;
+
+    configureRouteBase("/caf%c3%a9/");
+    try {
+      const response = await dispatchServerEndpoint(
+        [route],
+        new Request("https://example.test/caf%C3%A9/status"),
+      );
+      expect(await response?.text()).toBe("http");
+    } finally {
+      configureRouteBase("/");
     }
   });
 

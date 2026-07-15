@@ -86,9 +86,9 @@ nested documents with directory URLs such as `/docs/`; the logical `staticPaths`
 `/docs`.
 
 For a project site such as GitHub Pages, set Vite's root-relative `base` (for example `/sol/`).
-Solkit configures browser routing with that base before hydration. Literal application anchors
-should use `import.meta.env.BASE_URL`, while route state, `router.navigate()`, route handles, and
-`staticPaths` continue to use logical paths beginning at `/`.
+Solkit configures server-rendered route links and browser routing with that base before hydration.
+Literal application anchors should use `import.meta.env.BASE_URL`, while route state,
+`router.navigate()`, route handles, and `staticPaths` continue to use logical paths beginning at `/`.
 
 `nodeAdapter()` from `solkit/adapters/node` emits the equivalent Node.js HTTP launcher. Both
 adapters serve built static files from `dist/client`, dispatch `.sol` RPC and HTTP endpoints, and
@@ -111,7 +111,9 @@ assets. Public adapter implementations should validate these paths before writin
 
 `createRequestHandler(root, endpoints?, options?)` exposes the Fetch-style handler used by the Vite
 integration and generated launchers. `root` is the compiled application component, `endpoints` is
-the generated server manifest, and `options.maxBodyBytes` overrides the 1 MiB body limit. The returned `RequestHandler`
+the generated server manifest, and `options.maxBodyBytes` overrides the 1 MiB body limit. Dynamic
+handlers reject document URLs outside the configured deployment base. Static renderers set
+`options.logicalPaths` so authored paths can be rendered before deployment. The returned `RequestHandler`
 accepts a standard `Request` plus a `RenderContext` containing the full
 HTML `template`; it dispatches endpoints, handles GET and HEAD document requests, and returns a standard `Response`.
 Templates must contain exactly one `<!--solkit-head-->` outlet and one `<!--solkit-body-->` outlet.

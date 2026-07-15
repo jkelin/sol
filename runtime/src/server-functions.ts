@@ -1,4 +1,5 @@
 import { isObject, isPromiseLike } from "./reactivity.ts";
+import { deployedPath, logicalPathname } from "./route-base.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 
 const ENDPOINT = Symbol.for("sol.server.endpoint");
@@ -256,7 +257,7 @@ function clientRpc<Input extends RpcArgs, Data>(
   validateRpcName(name);
   const callable = async (...args: Input): Promise<Data> => {
     const payload = serializeJson(args, `RPC ${name} arguments`);
-    const path = `${RPC_PREFIX}${name}`;
+    const path = deployedPath(`${RPC_PREFIX}${name}`);
     const response = await fetch(path, {
       method: "POST",
       headers: { accept: RPC_CONTENT_TYPE, "content-type": RPC_CONTENT_TYPE },
@@ -579,7 +580,8 @@ export async function dispatchServerEndpoint(
 ): Promise<Response | undefined> {
   const maxBodyBytes = bodyLimit(options);
   const url = new URL(request.url);
-  const pathname = url.pathname.replaceAll(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
+  const pathname = logicalPathname(url.pathname);
+  if (pathname === undefined) return undefined;
   const rpcPath = endpoints.filter(
     (endpoint): endpoint is RpcEndpoint => endpoint.kind !== "http" && endpoint.path === pathname,
   );

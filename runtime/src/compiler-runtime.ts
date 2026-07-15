@@ -49,7 +49,7 @@ export {
   type RouteValues,
 } from "./routes.ts";
 export { transition } from "./transitions.ts";
-export { configureRouteBase } from "./route-base.ts";
+export { configureRouteBase, logicalPathname } from "./route-base.ts";
 export { mutationInFrame, queryInFrame, requestSource } from "./queries.ts";
 export {
   dispatchServerEndpoint,

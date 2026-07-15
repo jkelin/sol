@@ -9,6 +9,7 @@ export interface RenderContext {
 export type RequestHandler = (request: Request, context: RenderContext) => Promise<Response>;
 
 export interface RequestHandlerOptions {
+  readonly logicalPaths?: boolean;
   readonly maxBodyBytes?: number;
 }
 

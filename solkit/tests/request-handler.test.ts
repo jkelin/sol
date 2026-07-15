@@ -2,6 +2,7 @@ import { expect, mock, test } from "bun:test";
 import {
   block,
   component,
+  configureRouteBase,
   instantiate,
   template,
   rpcQueryServer,
@@ -39,6 +40,30 @@ test("renders the request URL into an SSR document and supports HEAD", async () 
     template: templateHtml,
   });
   expect(await head.text()).toBe("");
+});
+
+test("rejects dynamic document URLs outside the configured route base", async () => {
+  configureRouteBase("/sol/");
+  try {
+    const handle = createRequestHandler(Root);
+    const outside = await handle(new Request("https://example.test/articles/one"), {
+      template: templateHtml,
+    });
+    expect(outside.status).toBe(404);
+
+    const deployed = await handle(new Request("https://example.test/sol/articles/one"), {
+      template: templateHtml,
+    });
+    expect(deployed.status).toBe(200);
+
+    const staticHandle = createRequestHandler(Root, [], { logicalPaths: true });
+    const logical = await staticHandle(new Request("https://example.test/articles/one"), {
+      template: templateHtml,
+    });
+    expect(await logical.text()).toContain("/articles/one");
+  } finally {
+    configureRouteBase("/");
+  }
 });
 
 test("validates request and document boundaries", async () => {

@@ -1,5 +1,9 @@
 let routeBase = "/";
 
+function canonicalPercentEscapes(pathname: string): string {
+  return pathname.replaceAll(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
+}
+
 export function configureRouteBase(base: unknown): void {
   if (
     typeof base !== "string" ||
@@ -27,10 +31,11 @@ export function configureRouteBase(base: unknown): void {
   }
   const normalized = new URL(base, "https://sol.invalid").pathname;
   if (normalized !== base) throw new TypeError("Route base must not contain dot segments");
-  routeBase = base;
+  routeBase = canonicalPercentEscapes(base);
 }
 
 export function logicalPathname(pathname: string): string | undefined {
+  pathname = canonicalPercentEscapes(pathname);
   if (routeBase === "/") return pathname;
   const prefix = routeBase.slice(0, -1);
   if (pathname === prefix || pathname === routeBase) return "/";

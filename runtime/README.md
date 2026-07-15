@@ -38,9 +38,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs.
-- `server-functions.ts` implements named RPC clients and server definitions, HTTP route decoding,
-  schema validation, JSON POST endpoint matching, JSON response envelopes, and development-safe
-  failures.
+- `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
+  and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
+  envelopes, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, safe parsed-value validation, URL generation, and route handles.
@@ -119,7 +119,8 @@ it automatically; custom hydration entries should await it before `hydrate()` wh
 route schemas can affect shell, Head, or route output.
 Solkit also calls `configureRouterBase(import.meta.env.BASE_URL)` before hydration. Custom Vite
 entries deployed below `/` can do the same; router state remains expressed in logical application
-paths while browser history retains the configured base.
+paths while browser history retains the configured base. Browser locations outside that base remain
+unmatched rather than being interpreted as logical application paths.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or

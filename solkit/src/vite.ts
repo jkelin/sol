@@ -188,17 +188,18 @@ await hydrate(Root, target);
 document.documentElement.dataset.solkitHydrated = "true";`;
       }
       if (id === RESOLVED_SERVER_ENTRY) {
-        const staticPaths = staticBuild
-          ? `import { configureRouteBase } from "sol/compiler-runtime";
-import { staticPaths } from ${JSON.stringify(options.entry)};
-configureRouteBase(${JSON.stringify(config.base)});
-export { staticPaths };`
+        const staticPathImport = staticBuild
+          ? `import { staticPaths } from ${JSON.stringify(options.entry)};`
           : "";
+        const staticPathExport = staticBuild ? "export { staticPaths };" : "";
         return `import { createRequestHandler } from "solkit";
+import { configureRouteBase } from "sol/compiler-runtime";
 import endpoints from "virtual:sol/server-endpoints";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
-export const handle = createRequestHandler(Root, endpoints, { maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });
-${staticPaths}`;
+${staticPathImport}
+configureRouteBase(${JSON.stringify(config.base)});
+export const handle = createRequestHandler(Root, endpoints, { logicalPaths: ${staticBuild}, maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });
+${staticPathExport}`;
       }
       return null;
     },

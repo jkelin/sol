@@ -103,7 +103,8 @@ the limit and oversized requests receive a structured 413 response. Static HTTP 
 canonicalized to URL pathname encoding, while query, fragment, backslash, control, and dot-segment
 syntax is rejected. Server dispatch options must be a plain object containing only a boolean
 `development` flag and a non-negative safe-integer `maxBodyBytes`, preventing malformed truthy
-values from enabling diagnostic error details.
+values from enabling diagnostic error details. Option values are snapshotted from data-property
+descriptors, so accessors cannot change validation results or run while dispatch begins.
 
 Public interfaces validate inputs before mutating runtime state. Keep that validation intact when moving implementation details between modules.
 

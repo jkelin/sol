@@ -9,10 +9,11 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
 
   for (const statement of ast.program.body) {
     if (t.isImportDeclaration(statement)) {
-      if (statement.source.value === "sol") {
+      if (statement.importKind !== "type" && statement.source.value === "sol") {
         for (const specifier of statement.specifiers) {
           if (
             t.isImportSpecifier(specifier) &&
+            specifier.importKind !== "type" &&
             t.isIdentifier(specifier.imported) &&
             (specifier.imported.name === "signal" || specifier.imported.name === "computed")
           ) {
@@ -32,7 +33,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
           compiler.componentNames.add(specifier.local.name);
           compiler.componentBindings.add(specifier.local);
         }
-      } else if (statement.source.value === "sol") {
+      } else if (statement.importKind !== "type" && statement.source.value === "sol") {
         for (const specifier of statement.specifiers) {
           if (t.isImportNamespaceSpecifier(specifier)) {
             compiler.declarationHelperNamespaceImports.add(specifier.local);

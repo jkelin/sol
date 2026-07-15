@@ -450,30 +450,41 @@ function dispatchOptions(options: unknown): Required<ServerDispatchOptions> {
     throw new TypeError("Server dispatch options must be a plain object");
   }
   let prototype: object | null;
-  let keys: readonly PropertyKey[];
+  let descriptors: PropertyDescriptorMap;
   try {
     prototype = Object.getPrototypeOf(options);
-    keys = Reflect.ownKeys(options);
+    descriptors = Object.getOwnPropertyDescriptors(options);
   } catch {
     throw new TypeError("Server dispatch options must be a plain object");
   }
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError("Server dispatch options must be a plain object");
   }
-  const unexpected = keys.find((key) => key !== "development" && key !== "maxBodyBytes");
+  const unexpected = Reflect.ownKeys(descriptors).find(
+    (key) => key !== "development" && key !== "maxBodyBytes",
+  );
   if (unexpected !== undefined) {
     throw new TypeError(`Server dispatch options contain unknown property ${String(unexpected)}`);
   }
-  const value = options as Record<PropertyKey, unknown>;
-  if (value.development !== undefined && typeof value.development !== "boolean") {
+  const optionValue = (key: keyof ServerDispatchOptions): unknown => {
+    const descriptor = descriptors[key];
+    if (!descriptor) return undefined;
+    if (!("value" in descriptor)) {
+      throw new TypeError(`Server dispatch option ${key} must be a data property`);
+    }
+    return descriptor.value;
+  };
+  const development = optionValue("development");
+  const configuredBodyBytes = optionValue("maxBodyBytes");
+  if (development !== undefined && typeof development !== "boolean") {
     throw new TypeError("development must be a boolean");
   }
-  const maxBodyBytes = value.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  const maxBodyBytes = configuredBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   if (!Number.isSafeInteger(maxBodyBytes) || (maxBodyBytes as number) < 0) {
     throw new TypeError("maxBodyBytes must be a non-negative safe integer");
   }
   return {
-    development: value.development ?? false,
+    development: development ?? false,
     maxBodyBytes: maxBodyBytes as number,
   };
 }

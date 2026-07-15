@@ -28,6 +28,8 @@ declarations, type-only imports remain type-only, and queried or fragment-bearin
 of a mixed import retains the route module's full JavaScript, stylesheet, and side-effect semantics.
 Namespace imports and direct re-exports of route modules are rejected because they cannot preserve
 the lazy implementation boundary; use named imports and an explicit local export instead.
+String-named route imports use the same metadata projection and re-export guard as identifier-named
+routes. Whole-declaration type-only imports from `sol` never register compiler helpers.
 Handle-only projections contain metadata only. Bare imports and the ordinary side of mixed imports
 continue to execute the original module once, preserving authored initialization without pulling
 route schemas, components, stylesheets, or their transitive module effects through handle imports.
@@ -90,9 +92,10 @@ dependencies; route handles referenced by endpoint code are projected again as m
   content, while generated handle and endpoint projections expose only their projected source so
   lazy or server-only implementation text cannot leak into eager maps. Unchanged modules avoid
   projection-map allocation. File inspection is cached across route imports, collision checks, and
-  manifests; endpoint manifests omit route-only files and deduplicate aliased endpoint identities.
-  Endpoint projection precomputes binding dependencies and top-level statement facts once before
-  closing over the declarations and initialization effects required by the server endpoints.
+  manifests; route and endpoint manifests omit files without their respective declaration kind,
+  and endpoint manifests deduplicate aliased endpoint identities. Endpoint projection precomputes
+  binding dependencies and top-level statement facts once, then incrementally closes only newly
+  needed bindings over the declarations and initialization effects required by server endpoints.
 
 ## How it works
 

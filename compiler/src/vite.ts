@@ -62,8 +62,9 @@ interface InspectedRouteFile {
 }
 
 function routeManifest(inspections: readonly InspectedRouteFile[], root: string): string {
-  const files = inspections.map((inspection) => inspection.file);
-  const declarations = inspections.map((inspection) => inspection.routes);
+  const routeFiles = inspections.filter((inspection) => inspection.routes.length > 0);
+  const files = routeFiles.map((inspection) => inspection.file);
+  const declarations = routeFiles.map((inspection) => inspection.routes);
   const loaders = files.map((file, index) => {
     const specifier = `/@fs/${normalizePath(file)}`;
     return `const __sol_load_route_module_${index} = () => import(${JSON.stringify(specifier)});`;
@@ -130,6 +131,15 @@ ${exports.join("\n")}`;
 interface Projection {
   readonly code: string;
   readonly map?: SourceMap | string;
+}
+
+function moduleExportName(name: t.Identifier | t.StringLiteral): string {
+  return t.isIdentifier(name) ? name.name : name.value;
+}
+
+function setsIntersect(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  for (const name of left) if (right.has(name)) return true;
+  return false;
 }
 
 function sourceMapJson(map: SourceMap | string): RawSourceMap {
@@ -278,9 +288,13 @@ function dependencyProjection(source: string, filename: string): string {
     });
     bindingDependencies.set(name, dependencies);
   }
-  const closure = (initial: ReadonlySet<string>): Set<string> => {
-    const names = new Set(initial);
-    const queue = [...initial];
+  const addClosure = (names: Set<string>, additions: Iterable<string>): void => {
+    const queue: string[] = [];
+    for (const name of additions) {
+      if (names.has(name)) continue;
+      names.add(name);
+      queue.push(name);
+    }
     while (queue.length) {
       for (const dependency of bindingDependencies.get(queue.pop()!) ?? []) {
         if (names.has(dependency)) continue;
@@ -288,10 +302,11 @@ function dependencyProjection(source: string, filename: string): string {
         queue.push(dependency);
       }
     }
-    return names;
   };
-  const routeOwned = closure(routeRoots);
-  const needed = closure(roots);
+  const routeOwned = new Set<string>();
+  addClosure(routeOwned, routeRoots);
+  const needed = new Set<string>();
+  addClosure(needed, roots);
   const effects = new Set<t.Statement>();
   interface StatementFacts {
     readonly declaredNames: readonly string[];
@@ -343,18 +358,14 @@ function dependencyProjection(source: string, filename: string): string {
         declaredNames.some((name) => routeOwned.has(name)) &&
         !declaredNames.some((name) => needed.has(name));
       if (routeOwnedDeclaration) continue;
-      const required =
-        [...mutations].some((name) => needed.has(name)) ||
-        [...references].some((name) => needed.has(name));
+      const required = setsIntersect(mutations, needed) || setsIntersect(references, needed);
       const authoredDeclarationEffect =
         authoredEffect && !declaredNames.some((name) => routeOwned.has(name));
       if (!required && !authoredDeclarationEffect) continue;
       effects.add(statement);
-      for (const name of references) needed.add(name);
-      for (const name of mutations) needed.add(name);
-      for (const name of declaredNames) needed.add(name);
-      const expanded = closure(needed);
-      for (const name of expanded) needed.add(name);
+      addClosure(needed, references);
+      addClosure(needed, mutations);
+      addClosure(needed, declaredNames);
       changed = true;
     }
   }
@@ -469,8 +480,8 @@ async function projectRouteImports(
           t.isExportNamespaceSpecifier(specifier) ||
           (t.isExportSpecifier(specifier) &&
             specifier.exportKind !== "type" &&
-            t.isIdentifier(specifier.local) &&
-            routeNames.has(specifier.local.name)),
+            (t.isIdentifier(specifier.local) || t.isStringLiteral(specifier.local)) &&
+            routeNames.has(moduleExportName(specifier.local))),
       );
       if (exportsRoute) {
         throw new Error(
@@ -490,8 +501,8 @@ async function projectRouteImports(
         (!t.isImportSpecifier(specifier) || specifier.importKind !== "type") &&
         ((t.isImportDefaultSpecifier(specifier) && routeNames.has("default")) ||
           (t.isImportSpecifier(specifier) &&
-            t.isIdentifier(specifier.imported) &&
-            routeNames.has(specifier.imported.name))),
+            (t.isIdentifier(specifier.imported) || t.isStringLiteral(specifier.imported)) &&
+            routeNames.has(moduleExportName(specifier.imported)))),
     );
     if (!handles.length) continue;
     const ordinary = statement.specifiers.filter((specifier) => !handles.includes(specifier));
@@ -529,8 +540,14 @@ function declarationHelperBindings(ast: t.File): {
   const names = new Map<string, DeclarationHelper>();
   const namespaces = new Set<string>();
   for (const statement of ast.program.body) {
-    if (!t.isImportDeclaration(statement) || statement.source.value !== "sol") continue;
+    if (
+      !t.isImportDeclaration(statement) ||
+      statement.importKind === "type" ||
+      statement.source.value !== "sol"
+    )
+      continue;
     for (const specifier of statement.specifiers) {
+      if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;
       if (t.isImportNamespaceSpecifier(specifier)) {
         namespaces.add(specifier.local.name);
         continue;
@@ -603,10 +620,7 @@ function manifestExportedNames(ast: t.File): Map<string, string[]> {
         t.isIdentifier(specifier.local) &&
         (t.isIdentifier(specifier.exported) || t.isStringLiteral(specifier.exported))
       ) {
-        add(
-          specifier.local.name,
-          t.isIdentifier(specifier.exported) ? specifier.exported.name : specifier.exported.value,
-        );
+        add(specifier.local.name, moduleExportName(specifier.exported));
       }
     }
   }

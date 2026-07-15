@@ -686,6 +686,26 @@ describe("compiler", () => {
     ).toThrow("$rpcQuery() declarations must be exported");
   });
 
+  test("does not compile declarations through type-only Sol imports", () => {
+    const named = compile(
+      `import type { $route } from "sol";
+       const page = $route({ path: "/named-type" }, Page);
+       export { page };`,
+      "named-type.sol.ts",
+    );
+    expect(named.code).toContain("const page = $route");
+    expect(named.code).not.toContain("__sol_route");
+
+    const namespace = compile(
+      `import type * as Sol from "sol";
+       const page = Sol.$route({ path: "/namespace-type" }, Page);
+       export { page };`,
+      "namespace-type.sol.ts",
+    );
+    expect(namespace.code).toContain("Sol.$route");
+    expect(namespace.code).not.toContain("__sol_route");
+  });
+
   test("accepts identifier default exports for routes and server endpoints", () => {
     const routeResult = compile(
       `import { $component, $route } from "sol";
@@ -2341,6 +2361,39 @@ test("returns null for unchanged TSX modules", async () => {
   expect(result).toBeNull();
 });
 
+test("ignores type-only Sol helpers in virtual manifests", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-type-only-helpers-"));
+  try {
+    await writeFile(
+      join(root, "named.sol.ts"),
+      `import type { $route, $rpcQuery } from "sol";
+       const page = $route({ path: "/named-type" }, Page);
+       const endpoint = $rpcQuery("typed", { schema: value => value }, async () => 1);
+       export { page, endpoint };`,
+    );
+    await writeFile(
+      join(root, "namespace.sol.ts"),
+      `import type * as Sol from "sol";
+       const page = Sol.$route({ path: "/namespace-type" }, Page);
+       export { page };`,
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const routes = await (plugin.load as (id: string) => Promise<string>)("\0virtual:sol/routes");
+    const endpoints = await (plugin.load as (id: string) => Promise<string>)(
+      "\0virtual:sol/server-endpoints",
+    );
+    expect(routes).not.toContain("named-type");
+    expect(routes).not.toContain("namespace-type");
+    expect(endpoints).not.toContain("named.sol.ts");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("preserves queried and type-only imports from route modules", async () => {
   const root = await mkdtemp(join(tmpdir(), "sol-route-import-kinds-"));
   try {
@@ -2418,6 +2471,8 @@ test("deduplicates endpoint aliases in the virtual manifest", async () => {
     );
     expect(manifest).toContain("[...new Set(");
     expect(manifest).not.toContain("page.sol.ts?sol-endpoints");
+    const routes = await (plugin.load as (id: string) => Promise<string>)("\0virtual:sol/routes");
+    expect(routes).not.toContain("api.sol.ts");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2448,7 +2503,7 @@ test("discovers and projects string-named route exports", async () => {
 
     const transform = plugin.transform as unknown as {
       handler: (
-        this: { resolve(): Promise<null> },
+        this: { resolve(specifier: string): Promise<{ id: string } | null> },
         source: string,
         id: string,
         options: { ssr: boolean },
@@ -2462,6 +2517,24 @@ test("discovers and projects string-named route exports", async () => {
       { ssr: false },
     );
     expect(projected.code).toContain('as "string-route"');
+
+    const context = { resolve: async () => ({ id: routeFile }) };
+    const imported = await transform.handler.call(
+      context,
+      `import { "string-route" as page } from ${JSON.stringify(routeFile)}; console.log(page);`,
+      join(root, "consumer.ts"),
+      { ssr: false },
+    );
+    expect(imported.code).toContain(`${routeFile}?sol-route-handles`);
+    const reexported = await transform.handler
+      .call(
+        context,
+        `export { "string-route" as routed } from ${JSON.stringify(routeFile)};`,
+        join(root, "reexport.ts"),
+        { ssr: false },
+      )
+      .catch((error: unknown) => error);
+    expect(String(reexported)).toContain("route re-exports");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

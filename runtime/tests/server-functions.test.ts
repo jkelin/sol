@@ -650,10 +650,12 @@ describe("server declarations", () => {
   });
 
   test("validates dispatch options before handling a request", async () => {
+    let invoked = false;
     const endpoint = rpcQueryServer(
       "secret",
       { schema: (args: readonly []) => args as [] },
       async () => {
+        invoked = true;
         throw new Error("SECRET_DIAGNOSTIC");
       },
     ) as unknown as ServerEndpoint;
@@ -679,6 +681,21 @@ describe("server declarations", () => {
       expect(failure).toBeInstanceOf(TypeError);
       expect(failure).not.toBeInstanceOf(Response);
     }
+    let reads = 0;
+    const changingDevelopment = Object.defineProperty({}, "development", {
+      enumerable: true,
+      get() {
+        reads++;
+        return reads < 3 ? false : "bypassed";
+      },
+    }) as ServerDispatchOptions;
+    const accessorFailure = await dispatchServerEndpoint(
+      [endpoint],
+      request.clone(),
+      changingDevelopment,
+    ).catch((error: unknown) => error);
+    expect(accessorFailure).toBeInstanceOf(TypeError);
+    expect(invoked).toBe(false);
   });
 
   test("rejects non-JSON RPC arguments and results", async () => {

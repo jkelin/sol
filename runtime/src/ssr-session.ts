@@ -1,4 +1,5 @@
 import type { Block } from "./rendering.ts";
+import { isPromiseLike } from "./reactivity.ts";
 
 export const HYDRATION_VERSION = 1;
 
@@ -44,14 +45,6 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
     resolve = done;
   });
   return { promise, resolve };
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
 }
 
 export class SsrSession {

@@ -2339,6 +2339,19 @@ test("SSR preserves Await promise-like validation", async () => {
     });
   `);
   await expectRejection(renderToStringAsync(module.App as Component), "promise-like");
+
+  const callableModule = await loadCompiled(`
+    import { Await } from "sol";
+    export const App = $component(function App() {
+      const callable = Object.assign(() => {}, {
+        then(resolve: (value: string) => unknown) {
+          resolve("callable result");
+        },
+      }) as unknown as PromiseLike<string>;
+      return <Await $promise={callable}>{value => <main>{value}</main>}</Await>;
+    });
+  `);
+  expect(await renderToStringAsync(callableModule.App as Component)).toContain(">callable result<");
 });
 
 test("SSR and hydration preserve Await, Suspense, and ErrorBoundary failures", async () => {

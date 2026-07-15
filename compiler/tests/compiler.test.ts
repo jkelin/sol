@@ -844,6 +844,34 @@ describe("compiler", () => {
     expect(result.code.match(/__sol_attribute\(/g)?.length).toBe(2);
   });
 
+  test("recognizes reactive helpers through transparent TypeScript wrappers", () => {
+    for (const [wrapper, signal, computed] of [
+      ["as", "$signal(1) as number", "$computed(() => count * 2) as number"],
+      ["satisfies", "$signal(1) satisfies number", "$computed(() => count * 2) satisfies number"],
+      ["non-null", "$signal(1)!", "$computed(() => count * 2)!"],
+    ]) {
+      const result = compile(
+        `
+        import { $component, $computed, $signal } from "sol";
+        const App = $component(function App() {
+          const count = ${signal};
+          const doubled = ${computed};
+          return <p>{count}:{doubled}</p>;
+        });
+      `,
+        `WrappedReactive-${wrapper}.tsx`,
+      );
+
+      expect(result.code.match(/__sol_signal\(/g)?.length).toBe(1);
+      expect(result.code.match(/__sol_computed\(/g)?.length).toBe(1);
+      expect(result.code).toContain("const count = __sol_signal(1);");
+      expect(result.code).toContain(
+        "const doubled = __sol_computed(() => count.value * 2, __sol_frame);",
+      );
+      expect(result.code).toContain("count.value * 2");
+    }
+  });
+
   test("infers value and checked bindings for every supported form control", () => {
     const result = compile(
       `

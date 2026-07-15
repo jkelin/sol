@@ -4,7 +4,7 @@ import { generate, traverse } from "./ast.ts";
 import {
   bindingRoot,
   expressionCode,
-  isHelperCall,
+  reactiveHelperCall,
   referencedNames,
   referencesReactive,
   statementCode,
@@ -320,9 +320,9 @@ export function compileSetup(
           );
         }
       }
-      const kind: ReactiveKind = isHelperCall(compiler, initializer, "$computed")
+      const kind: ReactiveKind = reactiveHelperCall(compiler, initializer, "$computed")
         ? "computed"
-        : isHelperCall(compiler, initializer, "$signal")
+        : reactiveHelperCall(compiler, initializer, "$signal")
           ? "signal"
           : t.isAwaitExpression(initializer)
             ? "signal"
@@ -333,7 +333,11 @@ export function compileSetup(
               : "signal";
       declarationKinds.set(declaration, kind);
       bindings.set(declaration.id.name, kind);
-      if (kind === "computed" && initializer && !isHelperCall(compiler, initializer, "$computed")) {
+      if (
+        kind === "computed" &&
+        initializer &&
+        !reactiveHelperCall(compiler, initializer, "$computed")
+      ) {
         validateDerivedInitializer(compiler, initializer);
       }
     }
@@ -373,20 +377,22 @@ export function compileSetup(
         declaration.init && t.isExpression(declaration.init)
           ? declaration.init
           : t.identifier("undefined");
-      if (kind === "signal" && isHelperCall(compiler, initializer, "$signal")) {
+      const signalCall = reactiveHelperCall(compiler, initializer, "$signal");
+      const computedCall = reactiveHelperCall(compiler, initializer, "$computed");
+      if (kind === "signal" && signalCall) {
         generated.push(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(initializer, "__sol_signal", scope)};`,
+            `const ${identifier.name} = ${reactiveCallCode(signalCall, "__sol_signal", scope)};`,
           ),
         );
-      } else if (kind === "computed" && isHelperCall(compiler, initializer, "$computed")) {
+      } else if (kind === "computed" && computedCall) {
         generated.push(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(initializer, "__sol_computed", scope, "__sol_frame")};`,
+            `const ${identifier.name} = ${reactiveCallCode(computedCall, "__sol_computed", scope, "__sol_frame")};`,
           ),
         );
       } else if (kind === "computed") {

@@ -24,7 +24,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
-  and primary-failure-preserving teardown.
+  shared object-or-callable promise-like detection, and primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-safe value cloning, validation normalization,
   and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
@@ -37,7 +37,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   including dynamic form-control serialization.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
-- `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
+- `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
+  signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes and preserving descriptor guarantees.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC

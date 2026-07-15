@@ -149,14 +149,16 @@ export function validateReservedIdentifier(
   }
 }
 
-export function isHelperCall(
+export function reactiveHelperCall(
   compiler: CompilerContext,
   expression: t.Expression | null | undefined,
   name: "$signal" | "$computed",
-): expression is t.CallExpression {
-  return (
-    t.isCallExpression(expression) && compiler.reactiveHelperCalls.get(expression) === name.slice(1)
-  );
+): t.CallExpression | undefined {
+  if (!expression) return undefined;
+  const call = unwrapTransparentExpression(expression);
+  return t.isCallExpression(call) && compiler.reactiveHelperCalls.get(call) === name.slice(1)
+    ? call
+    : undefined;
 }
 
 export function referencesReactive(

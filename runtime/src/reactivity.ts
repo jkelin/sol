@@ -268,7 +268,11 @@ export function isObject(value: unknown): value is object {
 }
 
 export function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
-  return isObject(value) && typeof (value as { then?: unknown }).then === "function";
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
 }
 
 function isReactiveTarget(value: object): boolean {

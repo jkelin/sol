@@ -23,7 +23,7 @@ The implementation is complete when every Sol API and compiler convention it use
 - **Dependency-driven updates:** the compiler discovers direct reactive reads. Use `$computed(() => ...)` when a helper hides a dependency from the initializer.
 - **Owned blocks:** conditional branches, keyed rows, routes, async work, and transitions own their effects and dispose them with their mounted DOM block.
 - **Specialized composition:** general component children are not part of Sol's first version. Prefer explicit typed props; built-ins such as `Suspense`, `Await`, `ErrorBoundary`, `Head`, `Link`, and context providers have compiler-defined child contracts.
-- **DOM-oriented JSX:** events use JSX handlers, while `class`, `className`, and `classNames` are equivalent. `$bind` provides two-way form-control binding.
+- **DOM-oriented JSX:** events use JSX handlers, while `class`, `className`, and `classNames` are equivalent and accept strings, numbers, acyclic arrays, and plain data-property maps. `$bind` provides two-way form-control binding.
 
 Translate React designs into Sol's setup-and-operations model rather than reproducing hook or rerender patterns.
 

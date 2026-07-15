@@ -165,7 +165,7 @@ The `$form` property connects the controller to the form's submit, input, and fo
 
 Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()` when both methods exist, making async refinements work without a separate controller API.
 
-`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, nested arrays, and object maps. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
+`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, acyclic nested arrays, and plain data-property object maps; unsupported values fail descriptively. Dynamic text replaces U+0000 with U+FFFD consistently across mounting, SSR, and hydration. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 
 ## Queries and mutations
 
@@ -408,7 +408,8 @@ without replacing the DOM when element or region markers, compiler signatures, d
 the async call sequence differ. Hydration mismatches bypass application async and error boundaries.
 
 The render option supplies a five-second default timeout. `Suspense` can override it for one server
-boundary with `timeoutMs`. A timed-out boundary emits its fallback; hydration claims that fallback,
+boundary with `timeoutMs`. Render and hydration failures wake pending work immediately and preserve
+the original error. A timed-out boundary emits its fallback; hydration claims that fallback,
 then reruns only unfinished work in the browser. Async work outside Suspense rejects the server render
 when it exceeds the render timeout.
 

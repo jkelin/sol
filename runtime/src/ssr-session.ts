@@ -57,6 +57,7 @@ export class SsrSession {
   private rootPending = 0;
   private boundaryPending = 0;
   private completion = deferred();
+  private readonly failureSignal = deferred();
   private failed = false;
   private failure: unknown;
   private readonly boundaryControls = new Map<
@@ -178,6 +179,7 @@ export class SsrSession {
     if (this.failed) return;
     this.failed = true;
     this.failure = error;
+    this.failureSignal.resolve();
   }
 
   async wait(timeoutMs: number): Promise<void> {
@@ -195,7 +197,7 @@ export class SsrSession {
       }, timeoutMs);
     });
     try {
-      await Promise.race([this.completion.promise, rootTimeout]);
+      await Promise.race([this.completion.promise, this.failureSignal.promise, rootTimeout]);
       if (this.failed) throw this.failure;
     } finally {
       if (timer) clearTimeout(timer);
@@ -266,6 +268,7 @@ export class HydrationSession {
   private boundaryIndex = 0;
   private pending = 0;
   private completion = deferred();
+  private readonly failureSignal = deferred();
   private readonly commitCallbacks: Array<() => void> = [];
   private failed = false;
   private failure: unknown;
@@ -369,10 +372,13 @@ export class HydrationSession {
     if (this.failed) return;
     this.failed = true;
     this.failure = error;
+    this.failureSignal.resolve();
   }
 
   async wait(): Promise<void> {
-    if (this.pending > 0) await this.completion.promise;
+    if (this.pending > 0) {
+      await Promise.race([this.completion.promise, this.failureSignal.promise]);
+    }
     if (this.failed) throw this.failure;
     if (this.templates.size > 0) {
       throw new HydrationMismatchError(

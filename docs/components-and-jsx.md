@@ -39,7 +39,9 @@ retain their native names and namespaces. Component prop names remain case-sensi
 <button classNames={["control", { "control--active": count > 0 }]}>Count</button>
 ```
 
-Only use one class alias on an element. The compiler normalizes dynamic values and updates the DOM class list when its reactive inputs change.
+Only use one class alias on an element. Dynamic classes accept strings, numbers, acyclic nested arrays, and plain object maps made only of data properties. Unsupported values, accessors, symbols, and cyclic arrays throw descriptive errors. The compiler normalizes accepted values and updates the DOM class list when its reactive inputs change.
+
+Dynamic text replaces U+0000 with U+FFFD, matching browser HTML parsing across mounting, SSR, and hydration, including raw-text elements.
 
 ## Component composition
 

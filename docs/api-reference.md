@@ -11,7 +11,7 @@ order: 10
 - `mount(component, target)` mounts one compiled component into a validated DOM target.
 - `Head` mounts owned JSX children into `document.head` without a body wrapper or deduplication.
 - `renderToStringAsync(component, props?, { timeoutMs?, onHead? })` serializes body markup and reports compiler-managed Head markup through the required `onHead` callback when present, after the hydration payload has serialized successfully.
-- `class`, `className`, and `classNames` are equivalent on intrinsic elements.
+- `class`, `className`, and `classNames` are equivalent on intrinsic elements and accept strings, numbers, acyclic arrays, and plain data-property maps.
 - `createRef<T>()` creates a mutable, non-reactive `{ current: T | null }` DOM ref; intrinsic `ref` also accepts callback and structurally compatible object refs.
 - `Portal` renders JSX, text, and primitive children into a required reactive `Element` target without recreating them during retargeting.
 - `GlobalPortal` renders the same child types directly under `document.body` without an element wrapper.

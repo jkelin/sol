@@ -49,12 +49,12 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
-  including dynamic form-control serialization and the raw-text closing-tag transform shared with
-  hydration validation.
+  including dynamic form-control serialization, collision-safe normalized text, and the raw-text
+  closing-tag transform shared with hydration validation.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
-  signatures, boundary state, and timeouts.
+  signatures, boundary state, timeouts, and first-failure wakeups for pending waiters.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes, rejecting hidden lossy built-in extensions and
   untagged non-finite payload numbers plus duplicate object keys, while preserving descriptor
@@ -80,7 +80,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting, reactive or one-shot text rendering, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, consistent text-control
-  and class normalization, server-safe raw-text hydration comparison, server child-block ownership,
+  and U+0000 normalization, validated acyclic class normalization, server-safe raw-text hydration
+  comparison, server child-block ownership,
   and failure-safe prepare/commit reconciliation for conditional and keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.

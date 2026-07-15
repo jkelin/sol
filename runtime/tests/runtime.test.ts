@@ -13,9 +13,11 @@ import {
   type Signal,
 } from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
+import { hydrate } from "../src/hydrate.ts";
 import { mount, rootFrame, type Block } from "../src/rendering.ts";
 import type { ServerRegion } from "../src/server-rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
+import { HydrationSession, SsrSession } from "../src/ssr-session.ts";
 import { transition } from "../src/transitions.ts";
 import {
   attribute,
@@ -47,6 +49,15 @@ import {
 
 let window: Window;
 let formDisposals: Array<() => void>;
+
+async function rejection(promise: PromiseLike<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected promise to reject");
+}
 
 beforeEach(() => {
   window = new Window();
@@ -854,6 +865,15 @@ describe("reactivity", () => {
       ]),
     ).toBe("todo-row ledger-line 0 todo-row--completed 2");
     expect(normalizeClass(0)).toBe("0");
+    for (const value of [() => undefined, Symbol("class"), new Date(), /class/]) {
+      expect(() => normalizeClass(value as never)).toThrow(TypeError);
+      expect(() => normalizeClass(value as never)).toThrow("Class values");
+    }
+    const cyclic: unknown[] = [];
+    cyclic.push(cyclic);
+    expect(() => normalizeClass(cyclic as never)).toThrow(
+      "Class value arrays cannot contain cycles",
+    );
   });
 
   test("tracks primitives, computed values, and batches writes", () => {
@@ -1240,6 +1260,98 @@ describe("reactivity", () => {
 });
 
 describe("compiled DOM runtime", () => {
+  test("wakes failed server and hydration sessions while work remains pending", async () => {
+    const serverFailure = new Error("server session failed");
+    const server = new SsrSession();
+    server.beginRoot();
+    server.fail(serverFailure);
+    expect(await rejection(server.wait(25))).toBe(serverFailure);
+
+    const hydrationFailure = new Error("hydration session failed");
+    const hydration = new HydrationSession({
+      version: 1,
+      templates: [],
+      async: [],
+      boundaries: [],
+    });
+    void hydration.track(new Promise<never>(() => undefined));
+    hydration.fail(hydrationFailure);
+    const hydrationTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("hydration failure did not wake waiters")), 25);
+    });
+    expect(await rejection(Promise.race([hydration.wait(), hydrationTimeout]))).toBe(
+      hydrationFailure,
+    );
+  });
+
+  test("normalizes NUL text without colliding with server element slots", async () => {
+    const authored = "before\0sol:element:0\0after";
+    const expected = "before\uFFFDsol:element:0\uFFFDafter";
+    const textCases = [
+      [
+        "tnulnoelement",
+        template("<p><!--sol:s:0--><!--sol:e:0--></p>", "tnulnoelement", {
+          elements: [],
+          regionCount: 1,
+          propertyValueElements: [],
+        }),
+      ],
+      [
+        "tnulelement",
+        template('<p data-sol-e="0"><!--sol:s:0--><!--sol:e:0--></p>', "tnulelement", {
+          elements: ["p"],
+          regionCount: 1,
+          propertyValueElements: [],
+        }),
+      ],
+    ] as const;
+    await Promise.all(
+      textCases.map(async ([signature, definition]) => {
+        const App = component((_props, frame) => {
+          const view = instantiate(definition, frame);
+          const cleanups: Array<() => void> = [];
+          text(view.regions[0]!, () => authored, cleanups);
+          return block(view.fragment, cleanups);
+        });
+        const html = await renderToStringAsync(App);
+        expect(html).toContain(expected);
+        expect(html).not.toContain("\0");
+
+        const hydratedTarget = document.createElement("main");
+        hydratedTarget.innerHTML = html;
+        const disposeHydrated = await hydrate(App, hydratedTarget);
+        expect(hydratedTarget.querySelector("p")?.textContent).toBe(expected);
+        disposeHydrated();
+
+        const mountedTarget = document.createElement("main");
+        const disposeMounted = mount(App, mountedTarget);
+        expect(mountedTarget.querySelector("p")?.textContent, signature).toBe(expected);
+        disposeMounted();
+      }),
+    );
+
+    const rawDefinition = template('<textarea data-sol-e="0"></textarea>', "tnulrawtext", {
+      elements: ["textarea"],
+      regionCount: 0,
+      propertyValueElements: [0],
+    });
+    const RawApp = component((_props, frame) => {
+      const view = instantiate(rawDefinition, frame);
+      const cleanups: Array<() => void> = [];
+      rawText(view.elements[0]!, () => [authored], cleanups);
+      return block(view.fragment, cleanups);
+    });
+    const rawHtml = await renderToStringAsync(RawApp);
+    expect(rawHtml).toContain(expected);
+    expect(rawHtml).not.toContain("\0");
+
+    const rawTarget = document.createElement("main");
+    rawTarget.innerHTML = rawHtml;
+    const disposeRaw = await hydrate(RawApp, rawTarget);
+    expect(rawTarget.querySelector("textarea")?.textContent).toBe(expected);
+    disposeRaw();
+  });
+
   test("validates and brands compiled route records", () => {
     const Empty = component(() => block(document.createDocumentFragment()));
     const definition = route({ path: "/entry/:id" }, Empty, {

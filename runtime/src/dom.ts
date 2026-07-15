@@ -43,7 +43,8 @@ type RenderFactory = (frame: RenderFrame) => Block;
 const RAW_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE"]);
 
 function displayValue(value: unknown): string {
-  return value == null || typeof value === "boolean" ? "" : String(value);
+  const displayed = value == null || typeof value === "boolean" ? "" : String(value);
+  return displayed.replaceAll("\0", "\uFFFD");
 }
 
 export type ClassValue =
@@ -57,6 +58,7 @@ export type ClassValue =
 
 export function normalizeClass(value: ClassValue): string {
   const classes: string[] = [];
+  const activeArrays = new Set<ClassValue[]>();
   const append = (part: ClassValue): void => {
     if (part == null || typeof part === "boolean" || part === "") return;
     if (typeof part === "string" || typeof part === "number") {
@@ -64,14 +66,37 @@ export function normalizeClass(value: ClassValue): string {
       return;
     }
     if (Array.isArray(part)) {
-      for (const item of part) append(item);
+      if (activeArrays.has(part)) {
+        throw new TypeError("Class value arrays cannot contain cycles");
+      }
+      activeArrays.add(part);
+      try {
+        for (const item of part) append(item);
+      } finally {
+        activeArrays.delete(part);
+      }
       return;
     }
     if (typeof part === "object") {
-      for (const className of Object.keys(part)) {
-        if (part[className]) classes.push(className);
+      const prototype = Object.getPrototypeOf(part) as unknown;
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new TypeError("Class values must contain only arrays and plain objects");
       }
+      for (const key of Reflect.ownKeys(part)) {
+        if (typeof key !== "string") {
+          throw new TypeError("Class maps must contain only string-named data properties");
+        }
+        const descriptor = Reflect.getOwnPropertyDescriptor(part, key);
+        if (!descriptor || !("value" in descriptor)) {
+          throw new TypeError("Class maps must contain only string-named data properties");
+        }
+        if (descriptor.enumerable && descriptor.value) classes.push(key);
+      }
+      return;
     }
+    throw new TypeError(
+      "Class values must contain only strings, numbers, booleans, arrays, and plain objects",
+    );
   };
   append(value);
   return classes.join(" ");

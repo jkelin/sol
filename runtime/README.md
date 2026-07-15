@@ -45,7 +45,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   envelopes with canonical array-index validation, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
-- `routes.ts` implements typed route matching, safe parsed-value validation, URL generation, and route handles.
+- `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
+  generation, and route handles.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
   application paths.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned document-head mounting and reactive raw text.

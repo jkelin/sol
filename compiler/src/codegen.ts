@@ -191,22 +191,28 @@ export function referencedNames(expression: t.Expression): Set<string> {
   return names;
 }
 
+export function unwrapTransparentExpression(expression: t.Expression): t.Expression {
+  let current = expression;
+  while (
+    t.isTSAsExpression(current) ||
+    t.isTSTypeAssertion(current) ||
+    t.isTSNonNullExpression(current) ||
+    t.isTSSatisfiesExpression(current) ||
+    t.isTypeCastExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 export function bindingRoot(expression: t.Expression): string | undefined {
-  let current: t.Expression = expression;
+  let current = unwrapTransparentExpression(expression);
   for (;;) {
     if (
       (t.isMemberExpression(current) || t.isOptionalMemberExpression(current)) &&
       t.isExpression(current.object)
     ) {
-      current = current.object;
-    } else if (
-      t.isTSAsExpression(current) ||
-      t.isTSTypeAssertion(current) ||
-      t.isTSNonNullExpression(current) ||
-      t.isTSSatisfiesExpression(current) ||
-      t.isTypeCastExpression(current)
-    ) {
-      current = current.expression;
+      current = unwrapTransparentExpression(current.object);
     } else {
       break;
     }

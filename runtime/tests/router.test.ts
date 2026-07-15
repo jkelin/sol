@@ -98,6 +98,13 @@ const unicodeRoute = route({ path: "/café" }, Plain, {
   queryParameters: [],
   specificity: [1],
 });
+const prototypeRoute = route({ path: "/:__proto__" }, Plain, {
+  pattern: "^/([^/]+)$",
+  parameterNames: ["__proto__"],
+  pathnameParameterNames: ["__proto__"],
+  queryParameters: [],
+  specificity: [0],
+});
 const routes = [
   route({ path: "/" }, First, {
     pattern: "^/$",
@@ -121,6 +128,7 @@ const routes = [
     specificity: [1],
   }),
   unicodeRoute,
+  prototypeRoute,
   route({ path: "/a!" }, Plain, {
     pattern: "^/a!$",
     parameterNames: [],
@@ -159,6 +167,7 @@ test("route transitions overlap, freeze outgoing state, and clean rapid navigati
     "/café",
     "/plain",
     "/second",
+    "/:__proto__",
     "/",
   ]);
   const target = document.createElement("main");
@@ -241,6 +250,13 @@ test("matches canonical-equivalent path encodings and Unicode prefixes", () => {
   router.navigate("/bad%");
   expect(router.route).toBeNull();
   expect(unicodeRoute.isActivePrefix).toBe(false);
+});
+
+test("preserves prototype-named route parameters", () => {
+  router.navigate("/prototype-value");
+  expect(router.route?.path).toBe("/:__proto__");
+  expect(Object.hasOwn(router.params, "__proto__")).toBe(true);
+  expect(router.params.__proto__).toBe("prototype-value");
 });
 
 test("validates navigation options", () => {

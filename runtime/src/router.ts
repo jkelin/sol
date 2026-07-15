@@ -20,6 +20,7 @@ import {
 } from "./rendering.ts";
 import {
   canonicalizePathname,
+  defineRouteValue,
   resolveRoute,
   type NavigateOptions,
   type RawRouteParams,
@@ -158,7 +159,7 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
     if (!match) continue;
     const params: Record<string, string | undefined> = {};
     for (const [index, name] of definition.compiled.pathnameParameterNames.entries()) {
-      params[name] = decodeParameter(match[index + 1] ?? "");
+      defineRouteValue(params, name, decodeParameter(match[index + 1] ?? ""));
     }
     if (searchParams) {
       let queryMatches = true;
@@ -166,13 +167,15 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
         const value = searchParams.getAll(queryParameter.key).at(-1);
         if (
           value !== undefined &&
-          queryParameter.name in params &&
+          Object.hasOwn(params, queryParameter.name) &&
           params[queryParameter.name] !== value
         ) {
           queryMatches = false;
           break;
         }
-        if (!(queryParameter.name in params)) params[queryParameter.name] = value;
+        if (!Object.hasOwn(params, queryParameter.name)) {
+          defineRouteValue(params, queryParameter.name, value);
+        }
       }
       if (!queryMatches) continue;
     }

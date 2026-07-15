@@ -21,6 +21,19 @@ export type RouteValue = string | number;
 export type RawRouteParams = Readonly<Record<string, string | undefined>>;
 export type RouteValues = Readonly<Record<string, RouteValue | undefined>>;
 
+export function defineRouteValue(
+  target: Record<string, string | number | undefined>,
+  name: string,
+  value: string | number | undefined,
+): void {
+  Object.defineProperty(target, name, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
 type RouteSchemaParameterCheck<Path extends string, Values extends RouteValues> =
   Exclude<keyof Values, keyof RouteParams<Path>> extends never
     ? Exclude<keyof RouteParams<Path>, keyof Values> extends never
@@ -148,13 +161,22 @@ function validateRouteValues(
     throw new TypeError("Route schema output must not contain symbol properties");
   }
   const paramKeys = ownKeys as string[];
-  const missing = pathnameParameterNames.find((name) => !Object.hasOwn(values, name));
+  const descriptors = Object.getOwnPropertyDescriptors(values);
+  const missing = pathnameParameterNames.find((name) => descriptors[name] === undefined);
   if (missing) throw new TypeError(`Route schema output is missing parameter ${missing}`);
   const unexpected = paramKeys.find((name) => !parameterNames.includes(name));
   if (unexpected)
     throw new TypeError(`Route schema output contains unknown parameter ${unexpected}`);
+  const validated: Record<string, string | number | undefined> = {};
   for (const name of parameterNames) {
-    const value = (values as Record<string, unknown>)[name];
+    const descriptor = descriptors[name];
+    if (!descriptor) continue;
+    if (!("value" in descriptor) || !descriptor.enumerable) {
+      throw new TypeError(
+        `Route schema output parameter ${name} must be an enumerable data property`,
+      );
+    }
+    const value = descriptor.value as unknown;
     if (
       typeof value !== "string" &&
       typeof value !== "number" &&
@@ -164,8 +186,9 @@ function validateRouteValues(
         `Route schema output parameter ${name} must be a string, number, or undefined query value`,
       );
     }
+    defineRouteValue(validated, name, value);
   }
-  return Object.freeze({ ...values }) as RouteValues;
+  return Object.freeze(validated) as RouteValues;
 }
 
 export type RouteResolution =

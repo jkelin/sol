@@ -1717,8 +1717,13 @@ describe("compiler", () => {
 
     for (const statement of [
       "props.value = 2;",
+      "(props as any).value = 2;",
+      "props!.value = 2;",
+      "(props satisfies { value: number }).value = 2;",
       "delete props.value;",
+      "delete (props as any).value;",
       "Object.defineProperty(props, 'value', { value: 2 });",
+      "Object.defineProperty(props as any, 'value', { value: 2 });",
       "Reflect.defineProperty(props, 'value', { value: 2 });",
       "Object.setPrototypeOf(props, null);",
       "Reflect.setPrototypeOf(props, null);",

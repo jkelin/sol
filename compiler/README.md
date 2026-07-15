@@ -38,7 +38,8 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
   canonical compiled matching metadata.
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
-- `codegen.ts` owns identifier rewriting and reusable Babel-to-code helpers.
+- `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
+  reusable Babel-to-code helpers.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
   conditionals, and child expressions into interned templates and runtime operations.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly

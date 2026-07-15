@@ -8,6 +8,7 @@ import {
   referencedNames,
   referencesReactive,
   statementCode,
+  unwrapTransparentExpression,
   validateReservedIdentifier,
   type ReactiveKind,
 } from "./codegen.ts";
@@ -163,10 +164,14 @@ export function validatePropWrites(
   if (!propsName) return;
   const clonedComponent = t.functionExpression(null, [], t.cloneNode(body, true));
   const file = t.file(t.program([t.expressionStatement(clonedComponent)]));
-  const isDirectPropMember = (path: NodePath, expression: t.Expression): boolean =>
-    t.isMemberExpression(expression) &&
-    t.isIdentifier(expression.object, { name: propsName }) &&
-    !path.scope.hasBinding(propsName);
+  const isDirectPropMember = (path: NodePath, expression: t.Expression): boolean => {
+    if (!t.isMemberExpression(expression) && !t.isOptionalMemberExpression(expression))
+      return false;
+    const object = t.isExpression(expression.object)
+      ? unwrapTransparentExpression(expression.object)
+      : expression.object;
+    return t.isIdentifier(object, { name: propsName }) && !path.scope.hasBinding(propsName);
+  };
   const reject = (node: t.Node): never =>
     codeFrame(
       compiler,
@@ -197,7 +202,7 @@ export function validatePropWrites(
       if (
         !target ||
         !t.isExpression(target) ||
-        !t.isIdentifier(target, { name: propsName }) ||
+        !t.isIdentifier(unwrapTransparentExpression(target), { name: propsName }) ||
         path.scope.hasBinding(propsName)
       )
         return;

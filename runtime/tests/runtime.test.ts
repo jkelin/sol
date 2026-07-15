@@ -973,6 +973,63 @@ describe("compiled DOM runtime", () => {
       "unknown property extra",
     );
 
+    let accessorCalls = 0;
+    const invalidSchemaValues = [
+      Object.defineProperty({}, "id", { value: "42", enumerable: false }),
+      Object.defineProperty({}, "id", {
+        enumerable: true,
+        get() {
+          accessorCalls += 1;
+          return "42";
+        },
+      }),
+    ];
+    const invalidSchemaFailures = await Promise.all(
+      invalidSchemaValues.map(async (schemaValues) => {
+        const invalid = route(
+          { path: "/invalid/:id", schema: () => schemaValues as { id: string } },
+          Empty,
+          {
+            pattern: "^/invalid/([^/]+)$",
+            parameterNames: ["id"],
+            pathnameParameterNames: ["id"],
+            queryParameters: [],
+            specificity: [1, 0],
+          },
+        );
+        return Promise.resolve()
+          .then(() => resolveRoute(invalid, { id: "42" }))
+          .catch((error: unknown) => error);
+      }),
+    );
+    for (const failure of invalidSchemaFailures) {
+      expect(failure).toBeInstanceOf(TypeError);
+    }
+    expect(accessorCalls).toBe(0);
+
+    const prototypeName = route(
+      {
+        path: "/prototype/:__proto__",
+        schema: () => ({ ["__proto__"]: "preserved" }) as { __proto__: string },
+      },
+      Empty,
+      {
+        pattern: "^/prototype/([^/]+)$",
+        parameterNames: ["__proto__"],
+        pathnameParameterNames: ["__proto__"],
+        queryParameters: [],
+        specificity: [1, 0],
+      },
+    );
+    const prototypeResolution = await resolveRoute(prototypeName, {
+      ["__proto__"]: "raw",
+    });
+    expect(prototypeResolution.matched).toBe(true);
+    if (prototypeResolution.matched) {
+      expect(Object.hasOwn(prototypeResolution.values, "__proto__")).toBe(true);
+      expect(prototypeResolution.values.__proto__).toBe("preserved");
+    }
+
     const repeated = route({ path: "/blog/:id?selected=:id" }, Empty, {
       pattern: "^/blog/([^/]+)$",
       parameterNames: ["id"],

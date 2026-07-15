@@ -2,7 +2,7 @@ import { parse as parseJavaScript } from "@babel/parser";
 import type * as t from "@babel/types";
 import type { Code, Content, Heading, Root } from "mdast";
 import { readFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename } from "node:path";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { codeToTokens, type BundledLanguage } from "shiki";
@@ -423,7 +423,7 @@ export async function markdownModule(
   for (const node of tree.children) body += await renderNodeAsync(node, state);
   const imports = mergeImports(state.liveBlocks, file);
   const liveSources = state.liveBlocks.map((block) => block.moduleBody).join("\n");
-  const uiModule = `/@fs/${join(dirname(file), "..", "components", "ui", "index.ts").replaceAll("\\", "/")}`;
+  const uiModule = "/src/components/ui/index.ts";
   const liveComponents = state.liveBlocks
     .map((block, index) => {
       const linesName = block.linesName;

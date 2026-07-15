@@ -30,7 +30,7 @@ Production builds omit devtools and prerender the landing page plus every canoni
 - `src/docs.sol.tsx` contains the desktop/mobile documentation shell, route handles, navigation, and adjacent-page links.
 - `src/urls.ts` prefixes literal internal links with Vite's deployment base and emits trailing-slash directory URLs for prerendered pages.
 - `src/components/ui/` contains Sol-native, shadcn-inspired leaf components. Each component owns its typed variant recipe and runtime validation; the layer intentionally does not use React, Radix, or `components.json`.
-- `src/docs/*.md` contains every documentation page and validated live Sol fences.
+- `../docs/*.md` contains every documentation page and validated live Sol fence; `../docs/SKILL.md` is the installable SolJS agent skill and is excluded from the website registry.
 - `src/markdown/compile.ts` validates frontmatter and examples, parses Remark/GFM nodes, tokenizes source with Shiki, and generates Sol JSX.
 - `src/markdown/vite.ts` compiles Markdown modules, pre-highlights landing examples with Shiki, generates the ordered virtual documentation registry, and invalidates it during development.
 - `src/styles.css` contains Tailwind v4 tokens, global Sunblock surfaces, documentation typography, and motion classes.

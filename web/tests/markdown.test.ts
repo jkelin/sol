@@ -10,7 +10,7 @@ import { counterSource } from "../src/code-samples.ts";
 import { registrySource, validateDocuments } from "../src/markdown/registry.ts";
 import { compileModule } from "../src/markdown/vite.ts";
 
-const file = "C:/project/web/src/docs/example.md";
+const file = "C:/project/docs/example.md";
 const frontmatter = `---
 title: Example
 description: A valid documentation page.
@@ -76,7 +76,9 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
     );
     expect(generated.code).toContain("const __LiveExample0 = $component");
     expect(generated.code).toContain("<Demo />");
-    expect(generated.code).toContain("CodePanel");
+    expect(generated.code).toContain(
+      'import { CodePanel, ExampleViewToggle, type ExampleMode } from "/src/components/ui/index.ts";',
+    );
   });
 
   test("rejects raw HTML and unsupported live boundaries", async () => {
@@ -114,6 +116,7 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
     expect(source).toContain('"slug":"getting-started"');
     expect(source).toContain('"slug":"queries-and-mutations"');
     expect(source).toContain('"slug":"api-reference"');
+    expect(source).not.toContain("SKILL.md");
     expect(source.indexOf('"getting-started"')).toBeLessThan(source.indexOf('"api-reference"'));
   });
 

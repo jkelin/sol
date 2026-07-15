@@ -1,10 +1,9 @@
 import { compile } from "@sol/compiler";
-import { join } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath, transformWithOxc } from "vite";
 import { counterSource, formSource, listSource } from "../code-samples.ts";
 import { highlightCode, markdownModule } from "./compile.ts";
-import { registrySource } from "./registry.ts";
+import { documentationRoot, registrySource } from "./registry.ts";
 
 const virtualId = "virtual:sol-docs";
 const resolvedVirtualId = `\0/node_modules/${virtualId}.tsx`;
@@ -23,6 +22,15 @@ export async function compileModule(
 
 export function solMarkdown(): Plugin {
   let config: ResolvedConfig;
+  const isDocumentationPage = (file: string): boolean => {
+    const normalizedFile = normalizePath(file);
+    const docsRoot = normalizePath(documentationRoot(config.root));
+    return (
+      normalizedFile.startsWith(`${docsRoot}/`) &&
+      normalizedFile.endsWith(".md") &&
+      !normalizedFile.endsWith("/SKILL.md")
+    );
+  };
   const invalidate = (server: ViteDevServer): void => {
     const module = server.moduleGraph.getModuleById(resolvedVirtualId);
     if (module) server.moduleGraph.invalidateModule(module);
@@ -67,12 +75,11 @@ export const formLines = ${JSON.stringify(formLines)};`,
       return compileModule(generated.code, `${file}.tsx`);
     },
     configureServer(server) {
-      const docsRoot = normalizePath(join(config.root, "src", "docs"));
       const added = (file: string): void => {
-        if (normalizePath(file).startsWith(docsRoot) && file.endsWith(".md")) invalidate(server);
+        if (isDocumentationPage(file)) invalidate(server);
       };
       const removed = (file: string): void => {
-        if (normalizePath(file).startsWith(docsRoot) && file.endsWith(".md")) invalidate(server);
+        if (isDocumentationPage(file)) invalidate(server);
       };
       server.watcher.on("add", added);
       server.watcher.on("unlink", removed);
@@ -82,7 +89,7 @@ export const formLines = ${JSON.stringify(formLines)};`,
       };
     },
     handleHotUpdate(context) {
-      if (context.file.endsWith(".md")) invalidate(context.server);
+      if (isDocumentationPage(context.file)) invalidate(context.server);
     },
   };
 }

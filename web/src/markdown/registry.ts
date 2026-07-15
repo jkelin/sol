@@ -2,11 +2,15 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readDocument, type DocMetadata } from "./compile.ts";
 
-async function markdownFiles(root: string): Promise<string[]> {
-  const directory = join(root, "src", "docs");
+export function documentationRoot(websiteRoot: string): string {
+  return join(websiteRoot, "..", "docs");
+}
+
+async function markdownFiles(websiteRoot: string): Promise<string[]> {
+  const directory = documentationRoot(websiteRoot);
   const entries = await readdir(directory, { withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && entry.name !== "SKILL.md")
     .map((entry) => join(directory, entry.name))
     .toSorted((left, right) => left.localeCompare(right));
 }
@@ -36,8 +40,8 @@ export function validateDocuments(
   });
 }
 
-export async function registrySource(root: string): Promise<string> {
-  const files = await markdownFiles(root);
+export async function registrySource(websiteRoot: string): Promise<string> {
+  const files = await markdownFiles(websiteRoot);
   const parsed = await Promise.all(files.map(readDocument));
   validateDocuments(
     parsed.map((document) => document.metadata),

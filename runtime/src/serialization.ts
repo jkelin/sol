@@ -60,6 +60,11 @@ function ownDataEntries(value: object): [string, unknown][] {
   });
 }
 
+function rejectCustomProperties(value: object, allowed: readonly string[] = []): void {
+  const custom = Object.keys(value).find((key) => !allowed.includes(key));
+  if (custom) unsupported(value, `built-in with custom properties ${JSON.stringify(custom)}`);
+}
+
 function isBuiltInError(value: Error): boolean {
   const prototypes = [
     Error.prototype,
@@ -69,7 +74,6 @@ function isBuiltInError(value: Error): boolean {
     SyntaxError.prototype,
     TypeError.prototype,
     URIError.prototype,
-    ...(typeof AggregateError === "undefined" ? [] : [AggregateError.prototype]),
   ];
   return prototypes.includes(Object.getPrototypeOf(value) as Error);
 }
@@ -128,11 +132,13 @@ export function serializeGraph(value: unknown): string {
       if (Object.getPrototypeOf(candidate) !== Date.prototype) {
         return unsupported(candidate, "custom-prototype data");
       }
+      rejectCustomProperties(candidate);
       objects[index] = { type: "date", value: encode(candidate.getTime()) };
     } else if (candidate instanceof RegExp) {
       if (Object.getPrototypeOf(candidate) !== RegExp.prototype) {
         return unsupported(candidate, "custom-prototype data");
       }
+      rejectCustomProperties(candidate, ["lastIndex"]);
       objects[index] = {
         type: "regexp",
         source: candidate.source,
@@ -143,11 +149,13 @@ export function serializeGraph(value: unknown): string {
       if (Object.getPrototypeOf(candidate) !== URL.prototype) {
         return unsupported(candidate, "custom-prototype data");
       }
+      rejectCustomProperties(candidate);
       objects[index] = { type: "url", value: candidate.href };
     } else if (candidate instanceof Map) {
       if (Object.getPrototypeOf(candidate) !== Map.prototype) {
         return unsupported(candidate, "custom-prototype data");
       }
+      rejectCustomProperties(candidate);
       objects[index] = {
         type: "map",
         values: [...candidate].map(([key, entry]) => [encode(key), encode(entry)]),
@@ -156,9 +164,11 @@ export function serializeGraph(value: unknown): string {
       if (Object.getPrototypeOf(candidate) !== Set.prototype) {
         return unsupported(candidate, "custom-prototype data");
       }
+      rejectCustomProperties(candidate);
       objects[index] = { type: "set", values: [...candidate].map(encode) };
     } else if (candidate instanceof Error) {
       if (!isBuiltInError(candidate)) return unsupported(candidate, "custom-prototype data");
+      rejectCustomProperties(candidate, ["stack", "message", "cause", "name"]);
       const cause = Object.getOwnPropertyDescriptor(candidate, "cause");
       objects[index] = {
         type: "error",

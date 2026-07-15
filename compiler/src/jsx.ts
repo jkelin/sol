@@ -988,18 +988,17 @@ export function compileBlockBody(
     regionCount: context.nextRegion,
     operations: context.operations,
   };
-  let templateIndex = compiler.templates.findIndex(
-    (template) =>
-      template.html === compiledTemplate.html &&
-      template.regionCount === compiledTemplate.regionCount &&
-      template.elementTags.length === compiledTemplate.elementTags.length &&
-      template.elementTags.every((tag, index) => tag === compiledTemplate.elementTags[index]) &&
-      template.operations.length === compiledTemplate.operations.length &&
-      template.operations.every(
-        (operation, index) => operation === compiledTemplate.operations[index],
-      ),
-  );
-  if (templateIndex < 0) templateIndex = compiler.templates.push(compiledTemplate) - 1;
+  const templateSignature = JSON.stringify([
+    compiledTemplate.html,
+    compiledTemplate.regionCount,
+    compiledTemplate.elementTags,
+    compiledTemplate.operations,
+  ]);
+  let templateIndex = compiler.templateIndexes.get(templateSignature);
+  if (templateIndex === undefined) {
+    templateIndex = compiler.templates.push(compiledTemplate) - 1;
+    compiler.templateIndexes.set(templateSignature, templateIndex);
+  }
   if (context.operations.length === 0) {
     return `
       const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);

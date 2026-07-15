@@ -993,6 +993,27 @@ function instrumentAwaitExpressions(
     path.skip();
   };
   traverse(file, {
+    VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
+      if (!t.isObjectPattern(path.node.id) || !t.isExpression(path.node.init)) return;
+      path.node.init = t.callExpression(t.identifier("__sol_route_object"), [
+        path.node.init,
+        t.identifier("__sol_frame"),
+      ]);
+    },
+    AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
+      if (!t.isObjectPattern(path.node.left) || !t.isExpression(path.node.right)) return;
+      path.node.right = t.callExpression(t.identifier("__sol_route_object"), [
+        path.node.right,
+        t.identifier("__sol_frame"),
+      ]);
+    },
+    SpreadElement(path: NodePath<t.SpreadElement>) {
+      if (!path.parentPath?.isObjectExpression() || !t.isExpression(path.node.argument)) return;
+      path.node.argument = t.callExpression(t.identifier("__sol_route_object"), [
+        path.node.argument,
+        t.identifier("__sol_frame"),
+      ]);
+    },
     MemberExpression(path: NodePath<t.MemberExpression>) {
       instrumentRouteRead(path);
     },

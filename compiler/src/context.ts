@@ -41,6 +41,7 @@ export interface CompilerContext {
   filename: string;
   source: string;
   templates: CompiledTemplate[];
+  templateIndexes: Map<string, number>;
   componentNames: Set<string>;
   componentBindings: Set<t.Identifier>;
   componentElements: WeakSet<t.JSXElement>;

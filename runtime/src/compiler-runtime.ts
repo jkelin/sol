@@ -44,6 +44,7 @@ export {
   resolveRoute,
   route,
   routeHref,
+  routeObject,
   routeRead,
   type NavigateOptions,
   type RawRouteParams,

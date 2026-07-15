@@ -138,6 +138,29 @@ describe("SSR graph serialization", () => {
     }
   });
 
+  test("rejects built-in state that cannot round trip", () => {
+    const values: object[] = [
+      new Date(),
+      /value/g,
+      new URL("https://example.com"),
+      new Map(),
+      new Set(),
+      new Error("failure"),
+    ];
+    for (const value of values) {
+      Object.defineProperty(value, "custom", {
+        configurable: true,
+        enumerable: true,
+        value: "lost",
+        writable: true,
+      });
+      expect(() => serializeGraph(value)).toThrow("custom properties");
+    }
+    expect(() => serializeGraph(new AggregateError([new Error("nested")], "failure"))).toThrow(
+      "custom-prototype",
+    );
+  });
+
   test("rejects non-enumerable accessors and subclassed built-ins", () => {
     const hiddenAccessor = {};
     Object.defineProperty(hiddenAccessor, "secret", { get: () => "hidden" });

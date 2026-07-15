@@ -26,8 +26,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
   primary-failure-preserving teardown.
-- `forms.ts` implements form controllers, descriptor-safe value cloning, validation normalization,
-  disposal-safe submission state, and frame-explicit ownership for async component setup.
+- `forms.ts` implements form controllers, descriptor-safe value cloning, reset-boundary validation,
+  validation normalization, disposal-safe submission state, and frame-explicit ownership for async
+  component setup.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
   setup-lifetime enforcement, polling, eviction, Suspense participation, request-isolated server
   caches, hydration replay, and compiler-authored diagnostic source attachment.
@@ -44,14 +45,16 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
   signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
-  array entries without scanning unused indexes and preserving descriptor guarantees.
+  array entries without scanning unused indexes, rejecting lossy built-in extensions, and
+  preserving descriptor guarantees.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
   envelopes with canonical array-index validation, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
-  generation, route handles, and frame-explicit reads used after async setup resumes.
+  generation, route handles, and frame-explicit reads and object views used after async setup
+  resumes.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
   application paths.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned

@@ -49,6 +49,12 @@ function cloneFormValue<T>(value: T): T {
   return clone as T;
 }
 
+function assertFormValues(value: unknown, detail: "defaultValues" | "reset values"): void {
+  if (!isObject(value) || Array.isArray(value)) {
+    throw new TypeError(`$form() ${detail} must be an object`);
+  }
+}
+
 export function validationFailure(error: unknown): ValidationFailure | undefined {
   if (!isObject(error) || !("issues" in error)) return undefined;
   const issues = (error as { issues?: unknown }).issues;
@@ -125,9 +131,7 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
 ): FormController<TValues> {
   if (!isObject(config) || Array.isArray(config))
     throw new TypeError("$form() expects a config object");
-  if (!isObject(config.defaultValues) || Array.isArray(config.defaultValues)) {
-    throw new TypeError("$form() defaultValues must be an object");
-  }
+  assertFormValues(config.defaultValues, "defaultValues");
   if (typeof onSubmit !== "function") throw new TypeError("$form() expects a submit function");
   const schema = config.schema;
   if (!hasParser(schema)) {
@@ -260,6 +264,7 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
     },
     reset(nextValues?: TValues): void {
       if (disposed) return;
+      if (nextValues !== undefined) assertFormValues(nextValues, "reset values");
       validationId += 1;
       values.value = cloneFormValue(nextValues ?? defaults);
       clearErrors();

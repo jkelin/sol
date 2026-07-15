@@ -11,6 +11,7 @@ import {
   component,
   instantiate,
   route,
+  routeObject,
   routeRead,
   template,
   text,
@@ -242,19 +243,24 @@ test("preserves request route state after async component setup resumes", async 
     );
     const active = routeRead(asyncRoute, "isActive", frame);
     const activePrefix = routeRead(asyncRoute, "isActivePrefix", frame);
+    const { params: destructuredParams } = routeObject(router, frame) as typeof router;
+    const spreadRoute = { ...(routeObject(asyncRoute, frame) as typeof asyncRoute) };
     text(
       view.regions[0]!,
-      () => `${String(routerId)}:${String(definitionId)}:${String(active)}:${String(activePrefix)}`,
+      () =>
+        `${String(routerId)}:${String(definitionId)}:${String(active)}:${String(activePrefix)}:${String(destructuredParams.id)}:${String(spreadRoute.params.id)}`,
       [],
     );
     return block(view.fragment);
   });
 
-  const html = await renderToStringAsync(Shell, undefined, {
-    url: "https://example.test/async/7",
-  });
+  const [first, second] = await Promise.all([
+    renderToStringAsync(Shell, undefined, { url: "https://example.test/async/7" }),
+    renderToStringAsync(Shell, undefined, { url: "https://example.test/async/8" }),
+  ]);
 
-  expect(html).toContain("<p><!--sol:s:0-->7:7:true:true<!--sol:e:0--></p>");
+  expect(first).toContain("<p><!--sol:s:0-->7:7:true:true:7:7<!--sol:e:0--></p>");
+  expect(second).toContain("<p><!--sol:s:0-->8:8:true:true:8:8<!--sol:e:0--></p>");
 });
 
 test("tracks native hash-only navigation", () => {

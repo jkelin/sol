@@ -24,6 +24,7 @@ export function compile(
     filename,
     source,
     templates: [],
+    templateIndexes: new Map(),
     componentNames: new Set(),
     componentBindings: new Set(),
     componentElements: new WeakSet(),

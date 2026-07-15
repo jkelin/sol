@@ -156,6 +156,18 @@ export type RouterReadKey =
 
 export type RouteReadKey = RouterReadKey | "isActive" | "isActivePrefix";
 
+const ROUTE_READ_KEYS = new Set<RouteReadKey>([
+  "pathname",
+  "search",
+  "hash",
+  "searchParams",
+  "params",
+  "query",
+  "route",
+  "isActive",
+  "isActivePrefix",
+]);
+
 const routePrefixes = new WeakMap<RouteRuntimeDefinition, string>();
 const routerValues = new WeakSet<object>();
 
@@ -210,6 +222,23 @@ export function routeRead(
     value = (candidate as Record<RouteReadKey, unknown>)[key];
   }
   return continuation ? continuation(value) : value;
+}
+
+export function routeObject(candidate: unknown, frame: RenderFrame): unknown {
+  if (
+    !candidate ||
+    typeof candidate !== "object" ||
+    (!routePrefixes.has(candidate as RouteRuntimeDefinition) && !routerValues.has(candidate))
+  ) {
+    return candidate;
+  }
+  return new Proxy(candidate, {
+    get(target, key, receiver) {
+      return typeof key === "string" && ROUTE_READ_KEYS.has(key as RouteReadKey)
+        ? routeRead(target, key as RouteReadKey, frame)
+        : Reflect.get(target, key, receiver);
+    },
+  });
 }
 
 function validateRouteValues(

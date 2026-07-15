@@ -1050,6 +1050,28 @@ describe("compiler", () => {
     );
   });
 
+  test("keeps route destructuring and object spreads frame-bound after awaits", () => {
+    const result = compile(
+      `
+      import { $component, router } from "sol";
+      import { detail } from "./routes.ts";
+      const App = $component(async function App() {
+        function read() {
+          const { pathname, params } = router;
+          const route = { ...detail };
+          return pathname + params.id + route.params.id;
+        }
+        await Promise.resolve();
+        return <p>{read()}</p>;
+      });
+    `,
+      "AsyncRoutePatterns.tsx",
+    );
+
+    expect(result.code).toContain("} = __sol_route_object(router, __sol_frame)");
+    expect(result.code).toContain("...__sol_route_object(detail, __sol_frame)");
+  });
+
   test("instruments optional and computed context reads", () => {
     const result = compile(
       `

@@ -433,6 +433,21 @@ describe("forms", () => {
     expect(form.values.title).toBe("default");
     expect(submissions).toEqual([]);
   });
+
+  test("rejects invalid reset values without changing controller state", () => {
+    const form = ownedForm(
+      {
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "before" },
+      },
+      noopSubmit,
+    );
+
+    for (const invalid of [null, [], "after"]) {
+      expect(() => form.reset(invalid as never)).toThrow("values must be an object");
+      expect(form.values).toEqual({ title: "before" });
+    }
+  });
 });
 
 describe("transitions", () => {

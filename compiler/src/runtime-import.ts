@@ -37,6 +37,7 @@ const RUNTIME_HELPERS = [
   ["queryInFrame", "__sol_query"],
   ["mutationInFrame", "__sol_mutation"],
   ["route", "__sol_route"],
+  ["routeObject", "__sol_route_object"],
   ["routeRead", "__sol_route_read"],
   ["suspense", "__sol_suspense"],
   ["template", "__sol_template"],

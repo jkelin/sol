@@ -1967,6 +1967,30 @@ describe("compiler", () => {
     expect(result.code).not.toContain("<!--sol:s:");
   });
 
+  test("folds safe static raw-text children into templates", () => {
+    const result = compile(
+      `const App = $component(function App() {
+        return <main>
+          <title>Static & title</title>
+          <textarea>{"Static textarea"}</textarea>
+          <style>{".ready { color: green; }"}</style>
+          <script>{"globalThis.ready = true;"}</script>
+        </main>;
+      });`,
+      "StaticRawText.tsx",
+    );
+    expect(result.code).not.toContain("__sol_raw_text");
+    expect(result.code).not.toContain("data-sol-e");
+    expect(result.code).toContain("<title>Static &amp; title</title>");
+    expect(result.code).toContain("<textarea>Static textarea</textarea>");
+
+    const hazardous = compile(
+      `const App = $component(function App() { return <script>{"</script><p>unsafe</p>"}</script>; });`,
+      "HazardousRawText.tsx",
+    );
+    expect(hazardous.code).toContain("__sol_raw_text");
+  });
+
   test("validates the compiler-specialized Head interface", () => {
     const cases = [
       {

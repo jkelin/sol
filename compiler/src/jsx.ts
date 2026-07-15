@@ -23,7 +23,7 @@ import {
   type TemplateContext,
 } from "./context.ts";
 import { codeFrame, mappedCode, unmappedCode } from "./diagnostics.ts";
-import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
+import { escapeAttribute, escapeText, normalizeHtmlString, VOID_ELEMENTS } from "./html.ts";
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
@@ -479,13 +479,18 @@ function rawTextValues(
   node: t.JSXElement,
   tag: string,
   scope: Scope,
-): string[] {
+): { codes: string[]; staticValue?: string } {
   const values: string[] = [];
+  let staticValue = "";
+  let isStatic = true;
   for (const child of node.children) {
     if (t.isJSXText(child)) {
       const value =
         tag === "script" || tag === "style" ? child.value : normalizeJsxText(child.value);
-      if (value) values.push(JSON.stringify(value));
+      if (value) {
+        values.push(JSON.stringify(value));
+        staticValue += value;
+      }
       continue;
     }
     if (t.isJSXSpreadChild(child)) {
@@ -497,11 +502,15 @@ function rawTextValues(
         codeFrame(compiler, child, "Raw-text element children must be text or expressions");
       }
       values.push(expressionCode(child.expression, scope));
+      if (t.isStringLiteral(child.expression)) staticValue += child.expression.value;
+      else if (t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0) {
+        staticValue += child.expression.quasis[0]!.value.cooked ?? "";
+      } else isStatic = false;
       continue;
     }
     codeFrame(compiler, child, "Raw-text element children must be text or expressions");
   }
-  return values;
+  return { codes: values, staticValue: isStatic ? staticValue : undefined };
 }
 
 export function compileProviderElement(
@@ -652,7 +661,15 @@ export function compileIntrinsicElement(
     );
   }
   validateUniqueAttributes(compiler, node, true);
-  const rawValues = RAW_TEXT_ELEMENTS.has(tag) ? rawTextValues(compiler, node, tag, scope) : [];
+  const rawText = RAW_TEXT_ELEMENTS.has(tag)
+    ? rawTextValues(compiler, node, tag, scope)
+    : { codes: [] };
+  const rawValues = rawText.codes;
+  const safeStaticRawText =
+    rawText.staticValue !== undefined &&
+    !rawText.staticValue.toLowerCase().includes(`</${tag.toLowerCase()}`)
+      ? rawText.staticValue
+      : undefined;
   const textareaValue = findIntrinsicAttribute(compiler, node, "value");
   if (tag === "textarea" && rawValues.length > 0 && (textareaValue || bindProperty === "value")) {
     codeFrame(
@@ -840,7 +857,7 @@ export function compileIntrinsicElement(
     }
   }
 
-  if (rawValues.length > 0) {
+  if (rawValues.length > 0 && safeStaticRawText === undefined) {
     useRuntimeHelper(compiler, "__sol_raw_text");
     propertyValueElement = true;
     deferredOperations.push(
@@ -859,7 +876,13 @@ export function compileIntrinsicElement(
   }
   context.html.push(`<${tag}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}>`);
   if (!VOID_ELEMENTS.has(tag)) {
-    if (!RAW_TEXT_ELEMENTS.has(tag)) {
+    if (safeStaticRawText !== undefined) {
+      context.html.push(
+        tag === "script" || tag === "style"
+          ? normalizeHtmlString(safeStaticRawText)
+          : escapeText(safeStaticRawText),
+      );
+    } else if (!RAW_TEXT_ELEMENTS.has(tag)) {
       for (const child of node.children) compileNode(compiler, child, context, bindings, scope);
     }
     context.html.push(`</${tag}>`);

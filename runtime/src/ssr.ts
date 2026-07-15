@@ -1,6 +1,12 @@
 import type { Component } from "./components.ts";
 import { clearServerQueryCache } from "./queries.ts";
-import { isObject, isPromiseLike, reactive, runDisposals } from "./reactivity.ts";
+import {
+  isObject,
+  isPromiseLike,
+  reactive,
+  rethrowWithDisposals,
+  runDisposals,
+} from "./reactivity.ts";
 import {
   assertComponentProps,
   getFactory,
@@ -131,6 +137,8 @@ export async function renderToStringAsync<Props extends object>(
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
   const root: ServerRegion = { kind: "server-region", index: -1, blocks: [] };
   let rendered: Block | undefined;
+  const disposals = [() => rendered?.dispose(), () => clearServerQueryCache(session)];
+  let result: string;
   try {
     const preparation = prepareServerRender(frame);
     if (isPromiseLike(preparation)) await preparation;
@@ -160,10 +168,11 @@ export async function renderToStringAsync<Props extends object>(
       }
     }
     const payload = serializeGraph(session.payload());
-    const result = `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
+    result = `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
     (onHead as ((html: string) => void) | undefined)?.(head);
-    return result;
-  } finally {
-    runDisposals([() => rendered?.dispose(), () => clearServerQueryCache(session)]);
+  } catch (error) {
+    rethrowWithDisposals(error, disposals, "Server render and teardown both failed");
   }
+  runDisposals(disposals);
+  return result;
 }

@@ -14,7 +14,7 @@ import {
 } from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
 import { hydrate } from "../src/hydrate.ts";
-import { mount, rootFrame, type Block } from "../src/rendering.ts";
+import { mount, resolvedBlock, rootFrame, type Block, type RenderFrame } from "../src/rendering.ts";
 import type { ServerRegion } from "../src/server-rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
 import { HydrationSession, SsrSession } from "../src/ssr-session.ts";
@@ -2215,6 +2215,72 @@ describe("compiled DOM runtime", () => {
         "Error: cleanup failed",
       ]);
     }
+  });
+
+  test("preserves a server render failure when teardown also fails", async () => {
+    const primary = new Error("primary server render failed");
+    const cleanup = new Error("server teardown failed");
+    let disposals = 0;
+    const Broken = component(() => {
+      const rendered: Block & { serverHtml(): string } = {
+        nodes: [],
+        mount(parent) {
+          (parent as ServerRegion).blocks.push(rendered);
+        },
+        move() {},
+        enter() {},
+        leave: () => undefined,
+        retire: () => undefined,
+        dispose() {
+          disposals += 1;
+          throw cleanup;
+        },
+        serverHtml() {
+          throw primary;
+        },
+      };
+      return rendered;
+    });
+
+    const failure = await rejection(renderToStringAsync(Broken));
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).cause).toBe(primary);
+    expect((failure as AggregateError).errors).toEqual([primary, cleanup]);
+    expect(disposals).toBe(1);
+  });
+
+  test("reports late async block teardown failures after disposal", async () => {
+    await Promise.all(
+      ([undefined, "hydrate", "server"] as const).map(async (mode) => {
+        let resolve!: (block: Block) => void;
+        const candidate = new Promise<Block>((resolveCandidate) => {
+          resolve = resolveCandidate;
+        });
+        const errors: unknown[] = [];
+        const frame = {
+          ...rootFrame(),
+          mode,
+          handleError: (error: unknown) => errors.push(error),
+        } as RenderFrame;
+        const pending = resolvedBlock(candidate, frame);
+        pending.dispose();
+        const cleanup = new Error(`late ${mode ?? "browser"} teardown failed`);
+        resolve({
+          nodes: [],
+          mount() {},
+          move() {},
+          enter() {},
+          leave: () => undefined,
+          retire: () => undefined,
+          dispose() {
+            throw cleanup;
+          },
+        });
+        await candidate;
+        await Promise.resolve();
+        expect(errors).toEqual([cleanup]);
+      }),
+    );
   });
 
   test("preserves a mount failure when teardown also fails", () => {

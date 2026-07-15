@@ -48,7 +48,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   compiled component factories,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   shared single-value and concatenate-then-normalize display conversion, asynchronous retirement
-  settlement, and error propagation.
+  settlement that reports late teardown failures in every render mode, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
   including shared HTML-string normalization, dynamic attribute and form-control serialization,
   collision-safe normalized text, U+0000 and lone-surrogate replacement that preserves valid
@@ -68,7 +68,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   response envelopes with canonical array-index validation, snapshotted endpoint configs, validated
   dispatch options, strict UTF-8 JSON decoding, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
-  before asynchronous rendering and publishing managed head markup only after payload serialization.
+  before asynchronous rendering, publishing managed head markup only after payload serialization,
+  and preserving the primary failure when request teardown also fails.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation from snapshotted destinations, route handles, descriptor-snapshotted route configs and

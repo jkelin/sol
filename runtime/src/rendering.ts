@@ -748,9 +748,14 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
     const finish = frame.suspense?.begin() ?? frame.ssr?.beginRoot();
     void Promise.resolve(candidate).then(
       (settled) => {
-        if (disposed) settled.dispose();
-        else resolved = settled;
-        finish?.();
+        try {
+          if (disposed) settled.dispose();
+          else resolved = settled;
+        } catch (error) {
+          reportError(frame, error);
+        } finally {
+          finish?.();
+        }
       },
       (error) => {
         if (!disposed) reportError(frame, error);
@@ -797,7 +802,7 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
             if (currentParent) settled.mount(currentParent, before);
           }
         } catch (error) {
-          if (!disposed) reportError(frame, error);
+          reportError(frame, error);
         } finally {
           finish?.();
         }
@@ -850,7 +855,7 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
           settledBlock.mount(marker.parentNode!, marker);
         }
       } catch (error) {
-        if (!disposed) reportError(frame, error);
+        reportError(frame, error);
       } finally {
         finish?.();
       }

@@ -100,6 +100,17 @@ describe("SSR graph serialization", () => {
     expect(() => serializeGraph(array)).toThrow("custom properties");
   });
 
+  test("rejects plain-object descriptors that cannot round trip", () => {
+    for (const descriptor of [
+      { value: 1, enumerable: false, configurable: true, writable: true },
+      { value: 1, enumerable: true, configurable: false, writable: true },
+      { value: 1, enumerable: true, configurable: true, writable: false },
+    ]) {
+      const value = Object.defineProperty({}, "field", descriptor);
+      expect(() => serializeGraph(value)).toThrow("property descriptor");
+    }
+  });
+
   test("rejects symbol keys on every supported built-in", () => {
     const values: object[] = [
       new Date(),

@@ -117,7 +117,8 @@ route schemas can affect shell, Head, or route output.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or
-host-specific values, and the embedded JSON escapes script-closing characters.
+host-specific values and plain-object properties with non-default descriptors, and the embedded JSON
+escapes script-closing characters.
 
 ## Document head
 

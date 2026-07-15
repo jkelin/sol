@@ -57,6 +57,11 @@ interface RouteMatch {
   params: RawRouteParams;
 }
 
+interface PreparedRoute {
+  readonly definition: RouteDefinition;
+  readonly matcher: RegExp;
+}
+
 function readLocation(frame?: RenderFrame): RouterState {
   const location = frame?.url ?? (typeof window === "undefined" ? null : window.location);
   const search = location?.search ?? "";
@@ -88,7 +93,7 @@ function setRouterState(next: RouterState): void {
     pattern: next.pattern,
     status: next.status,
     error: next.error,
-    routes: preparedRoutes.map((definition) => ({
+    routes: preparedRoutes.map(({ definition }) => ({
       path: definition.config.path,
       pattern: definition.compiled.pattern,
       parameterNames: definition.compiled.parameterNames,
@@ -109,7 +114,7 @@ function compareRoutes(left: RouteDefinition, right: RouteDefinition): number {
   return left.config.path.localeCompare(right.config.path);
 }
 
-function prepareRoutes(definitions: readonly RouteDefinition[]): readonly RouteDefinition[] {
+function prepareRoutes(definitions: readonly RouteDefinition[]): readonly PreparedRoute[] {
   const patterns = new Set<string>();
   for (const definition of definitions) {
     if (patterns.has(definition.compiled.pattern)) {
@@ -117,7 +122,10 @@ function prepareRoutes(definitions: readonly RouteDefinition[]): readonly RouteD
     }
     patterns.add(definition.compiled.pattern);
   }
-  return definitions.toSorted(compareRoutes);
+  return definitions.toSorted(compareRoutes).map((definition) => ({
+    definition,
+    matcher: new RegExp(definition.compiled.pattern),
+  }));
 }
 
 const preparedRoutes = prepareRoutes(routes);
@@ -136,8 +144,8 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
   } catch {
     return null;
   }
-  for (const definition of preparedRoutes) {
-    const match = new RegExp(definition.compiled.pattern).exec(pathname);
+  for (const { definition, matcher } of preparedRoutes) {
+    const match = matcher.exec(pathname);
     if (!match) continue;
     const params: Record<string, string | undefined> = {};
     for (const [index, name] of definition.compiled.pathnameParameterNames.entries()) {

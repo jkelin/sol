@@ -24,6 +24,33 @@ import { codeFrame, mappedCode } from "./diagnostics.ts";
 import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+const BOOLEAN_ATTRIBUTES = new Set([
+  "allowFullScreen",
+  "async",
+  "autofocus",
+  "autoplay",
+  "checked",
+  "controls",
+  "default",
+  "defer",
+  "disabled",
+  "formNoValidate",
+  "hidden",
+  "inert",
+  "isMap",
+  "itemScope",
+  "loop",
+  "multiple",
+  "muted",
+  "noModule",
+  "noValidate",
+  "open",
+  "playsInline",
+  "readOnly",
+  "required",
+  "reversed",
+  "selected",
+]);
 
 export function compileBinding(
   compiler: CompilerContext,
@@ -638,7 +665,13 @@ export function compileIntrinsicElement(
     } else if (staticValue === true) attributes.push(name);
     else if (typeof staticValue === "string")
       attributes.push(`${name}="${escapeAttribute(staticValue)}"`);
-    else if (staticValue === false) continue;
+    else if (
+      t.isJSXExpressionContainer(attribute.value) &&
+      t.isNumericLiteral(attribute.value.expression) &&
+      !BOOLEAN_ATTRIBUTES.has(name)
+    ) {
+      attributes.push(`${name}="${escapeAttribute(String(attribute.value.expression.value))}"`);
+    } else if (staticValue === false) continue;
     else {
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
       deferredOperations.push((element) =>

@@ -8,6 +8,7 @@ import { $form } from "../src/forms.ts";
 import { $computed, $signal, rethrowWithCleanups, type Signal } from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
 import { mount, rootFrame } from "../src/rendering.ts";
+import { renderToStringAsync } from "../src/ssr.ts";
 import { transition } from "../src/transitions.ts";
 import {
   attribute,
@@ -1186,6 +1187,26 @@ describe("compiled DOM runtime", () => {
     for (const cleanup of cleanups.toReversed()) cleanup();
   });
 
+  test("omits falsey numeric standard boolean attributes during server rendering", async () => {
+    const definition = template('<img data-sol-e="0"><div data-sol-e="1"></div>', "booleans", {
+      elements: ["img", "div"],
+      regionCount: 0,
+      propertyValueElements: [],
+    });
+    const Example = component((_props, frame) => {
+      const view = instantiate(definition, frame);
+      const cleanups: Array<() => void> = [];
+      attribute(view.elements[0]!, "isMap", () => 0, cleanups);
+      attribute(view.elements[1]!, "itemScope", () => 0, cleanups);
+      return block(view.fragment, cleanups);
+    });
+
+    const html = await renderToStringAsync(Example);
+
+    expect(html).not.toContain("isMap");
+    expect(html).not.toContain("itemScope");
+  });
+
   test("mounts once and patches text without rerunning setup", () => {
     const count = $signal(0);
     let setups = 0;
@@ -1284,6 +1305,27 @@ describe("compiled DOM runtime", () => {
     expect(failure).toBeInstanceOf(AggregateError);
     expect((failure as AggregateError).cause).toEqual(new Error("mount failed"));
     expect((failure as AggregateError).errors.map(String)).toContain("Error: cleanup failed");
+  });
+
+  test("disposes child-owned effects when child mounting fails", () => {
+    const source = $signal(0);
+    const observations: number[] = [];
+    const Broken = component(() => {
+      runtimeEffect(() => {
+        observations.push(source.value);
+      });
+      const lifecycle = blockLifecycle();
+      lifecycle.refMounts.push(() => {
+        throw new Error("child mount failed");
+      });
+      return block(document.createDocumentFragment(), [], lifecycle);
+    });
+    const view = instantiate(template("<div><!--sol:s:0--><!--sol:e:0--></div>"));
+
+    expect(() => child(view.regions[0]!, Broken, {}, [])).toThrow("child mount failed");
+    source.value = 1;
+
+    expect(observations).toEqual([0]);
   });
 
   test("validates mount boundaries", () => {
@@ -1496,6 +1538,7 @@ describe("compiled DOM runtime", () => {
     const label = $signal("First");
     let childSetups = 0;
     let childReads = 0;
+    let propReads = 0;
     const childTemplate = template("<span><!--sol:s:0--><!--sol:e:0--></span>");
     const Child = component((props: Readonly<{ label: string }>) => {
       childSetups += 1;
@@ -1515,7 +1558,17 @@ describe("compiled DOM runtime", () => {
     const Parent = component(() => {
       const view = instantiate(parentTemplate);
       const cleanups: (() => void)[] = [];
-      child(view.regions[0]!, Child, { label: () => label.value }, cleanups);
+      child(
+        view.regions[0]!,
+        Child,
+        {
+          label: () => {
+            propReads += 1;
+            return label.value;
+          },
+        },
+        cleanups,
+      );
       return block(view.fragment, cleanups);
     });
     const target = document.createElement("main");
@@ -1525,6 +1578,7 @@ describe("compiled DOM runtime", () => {
 
     expect(target.textContent).toBe("Second");
     expect(childSetups).toBe(1);
+    expect(propReads).toBe(2);
     dispose();
     label.value = "Ignored";
     expect(childReads).toBe(2);

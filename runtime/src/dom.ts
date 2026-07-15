@@ -4,6 +4,7 @@ import {
   batch,
   isObject,
   reactive,
+  rethrowWithCleanups,
   runDisposals,
   runtimeEffect,
   type Signal,
@@ -225,6 +226,8 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "formNoValidate",
   "hidden",
   "inert",
+  "isMap",
+  "itemScope",
   "loop",
   "multiple",
   "muted",
@@ -649,21 +652,32 @@ export function child<Props extends object>(
   frame: RenderFrame = rootFrame(),
 ): void {
   const state = reactive<Record<string, unknown>>({});
-  for (const [name, getter] of Object.entries(propGetters)) state[name] = getter();
   const props = readonlyProps(state) as Readonly<Props>;
   const renderFrame = frameForRegion(frame, region);
-  const mounted = resolvedBlock(getFactory(candidate)(props, renderFrame), renderFrame);
-  if (isServerRegion(region)) mountServerBlock(mounted, region);
-  else mounted.mount(region.end.parentNode!, region.end);
-  cleanups.push(() => mounted.dispose());
-  for (const [name, getter] of Object.entries(propGetters)) {
-    cleanups.push(
-      runtimeEffect(() => {
-        state[name] = getter();
-        devtoolsComponentPropsUpdated(props);
-      }),
+  const propCleanups: Cleanup[] = [];
+  let mounted: Block | undefined;
+  try {
+    for (const [name, getter] of Object.entries(propGetters)) {
+      let initialized = false;
+      propCleanups.push(
+        runtimeEffect(() => {
+          state[name] = getter();
+          if (initialized) devtoolsComponentPropsUpdated(props);
+          initialized = true;
+        }),
+      );
+    }
+    mounted = resolvedBlock(getFactory(candidate)(props, renderFrame), renderFrame);
+    if (isServerRegion(region)) mountServerBlock(mounted, region);
+    else mounted.mount(region.end.parentNode!, region.end);
+  } catch (error) {
+    const failedBlock = mounted;
+    rethrowWithCleanups(
+      error,
+      failedBlock ? [() => failedBlock.dispose(), ...propCleanups] : propCleanups,
     );
   }
+  cleanups.push(() => mounted!.dispose(), ...propCleanups);
 }
 
 function contextKey(context: Context<object>): symbol {

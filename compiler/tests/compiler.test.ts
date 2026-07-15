@@ -140,6 +140,31 @@ describe("compiler", () => {
     expect(result.code).toContain('data-on="true"');
   });
 
+  test("serializes static numeric intrinsic attributes", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       export const App = $component(function App() {
+         return <>
+           <input tabIndex={1} maxLength={12} disabled={0} checked={1} />
+           <img isMap={0} />
+           <div itemScope={0}>Item</div>
+         </>;
+       });`,
+      "numeric-attributes.tsx",
+    );
+
+    expect(result.code).toContain('tabIndex="1"');
+    expect(result.code).toContain('maxLength="12"');
+    expect(result.code).not.toContain('disabled="0"');
+    expect(result.code).not.toContain('checked="1"');
+    expect(result.code).not.toContain('isMap="0"');
+    expect(result.code).not.toContain('itemScope="0"');
+    expect(result.code).toContain('"disabled", () => (0)');
+    expect(result.code).toContain('"checked", () => (1)');
+    expect(result.code).toContain('"isMap", () => (0)');
+    expect(result.code).toContain('"itemScope", () => (0)');
+  });
+
   test("interns identical compiled templates", () => {
     const result = compile(
       `import { $component } from "sol";

@@ -237,6 +237,10 @@ test("matches canonical-equivalent path encodings and Unicode prefixes", () => {
 
   router.navigate("/a%21");
   expect(router.route?.path).toBe("/a!");
+
+  router.navigate("/bad%");
+  expect(router.route).toBeNull();
+  expect(unicodeRoute.isActivePrefix).toBe(false);
 });
 
 test("validates navigation options", () => {

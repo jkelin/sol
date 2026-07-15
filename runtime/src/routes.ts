@@ -373,7 +373,12 @@ export function route<
     },
     get isActivePrefix() {
       const rawPathname = routeRuntime?.getPathname();
-      const pathname = rawPathname ? canonicalizePathname(rawPathname) : undefined;
+      let pathname: string | undefined;
+      try {
+        pathname = rawPathname ? canonicalizePathname(rawPathname) : undefined;
+      } catch {
+        return false;
+      }
       if (!pathname) return false;
       return staticPrefix === "/"
         ? compiled.pathnameParameterNames.length > 0 || pathname === "/"

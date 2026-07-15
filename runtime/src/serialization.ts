@@ -46,10 +46,12 @@ function rejectAccessors(value: object): void {
 
 function ownDataEntries(value: object): [string, unknown][] {
   rejectAccessors(value);
-  return Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => [
-    key,
-    descriptor.value,
-  ]);
+  return Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => {
+    if (!descriptor.enumerable || !descriptor.configurable || !descriptor.writable) {
+      unsupported(value, `non-default property descriptor ${JSON.stringify(key)}`);
+    }
+    return [key, descriptor.value];
+  });
 }
 
 function isBuiltInError(value: Error): boolean {

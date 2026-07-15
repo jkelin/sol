@@ -2,6 +2,7 @@ import type { Component } from "./components.ts";
 import { clearServerQueryCache } from "./queries.ts";
 import { isObject, isPromiseLike, reactive, runDisposals } from "./reactivity.ts";
 import {
+  assertComponentProps,
   getFactory,
   prepareServerRender,
   readonlyProps,
@@ -83,9 +84,7 @@ export async function renderToStringAsync<Props extends object>(
   props?: Props,
   options: RenderToStringOptions = {},
 ): Promise<string> {
-  if (props != null && (!isObject(props) || Array.isArray(props))) {
-    throw new TypeError("renderToStringAsync() props must be an object");
-  }
+  assertComponentProps(props, "renderToStringAsync()");
   if (!isObject(options) || Array.isArray(options)) {
     throw new TypeError("renderToStringAsync() options must be an object");
   }

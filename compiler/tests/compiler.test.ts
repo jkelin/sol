@@ -216,6 +216,18 @@ describe("compiler", () => {
     expect(result.code.match(/__sol_instantiate\(__sol_template_0/g)).toHaveLength(2);
   });
 
+  test("interns identical dynamic templates without source-marker differences", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       export const First = $component(function First(props: { value: string }) { return <p>{props.value}</p>; });
+       export const Second = $component(function Second(props: { value: string }) { return <p>{props.value}</p>; });`,
+      "dynamic-templates.tsx",
+    );
+
+    expect(result.code.match(/const __sol_template_\d+ =/g)).toHaveLength(1);
+    expect(result.code.match(/__sol_instantiate\(__sol_template_0/g)).toHaveLength(2);
+  });
+
   test("does not import runtime helpers mentioned only in authored text", () => {
     const result = compile(
       `import { $component } from "sol";

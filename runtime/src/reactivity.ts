@@ -124,8 +124,7 @@ function track(target: object, key: PropertyKey): void {
 function flushEffects(): void {
   if (flushingEffects) return;
   flushingEffects = true;
-  let failed = false;
-  let failure: unknown;
+  const failures: unknown[] = [];
   try {
     while (pendingComputedEffects.size > 0 || pendingEffects.size > 0) {
       const effect =
@@ -136,16 +135,16 @@ function flushEffects(): void {
       try {
         effect.run();
       } catch (error) {
-        if (!failed) {
-          failed = true;
-          failure = error;
-        }
+        failures.push(error);
       }
     }
   } finally {
     flushingEffects = false;
   }
-  if (failed) throw failure;
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, "Multiple reactive effects failed");
+  }
 }
 
 function triggerMany(target: object, keys: Iterable<PropertyKey>): void {

@@ -67,9 +67,29 @@ describe("SSR graph serialization", () => {
     expect(restored.url.href).toBe(values.url.href);
     expect([...(restored.map.values().next().value as Set<number>)]).toEqual([1, 2]);
     expect(restored.error).toBeInstanceOf(Error);
+    expect(restored.error).toBeInstanceOf(TypeError);
     expect(restored.error.name).toBe("TypeError");
     expect(restored.error.message).toBe("failed");
     expect(restored.error.cause).toEqual({ code: 42 });
+  });
+
+  test("preserves every supported built-in Error prototype and custom name", () => {
+    const constructors = [
+      Error,
+      EvalError,
+      RangeError,
+      ReferenceError,
+      SyntaxError,
+      TypeError,
+      URIError,
+    ];
+    for (const Constructor of constructors) {
+      const error = new Constructor("failure");
+      error.name = "AuthoredName";
+      const restored = deserializeGraph(serializeGraph(error));
+      expect(restored).toBeInstanceOf(Constructor);
+      expect((restored as Error).name).toBe("AuthoredName");
+    }
   });
 
   test("escapes script-closing and Unicode separator data", () => {
@@ -231,5 +251,15 @@ describe("SSR graph serialization", () => {
         }),
       ),
     ).toThrow("unknown value tag");
+    expect(() =>
+      deserializeGraph(
+        encodedGraph({
+          type: "error",
+          kind: "AggregateError",
+          name: "Error",
+          message: "failure",
+        }),
+      ),
+    ).toThrow("invalid Error fields");
   });
 });

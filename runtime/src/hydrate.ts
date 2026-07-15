@@ -3,6 +3,7 @@ import { headHydrationClaims, rootHydrationClaim } from "./hydration-rendering.t
 import { isObject, isPromiseLike, reactive, rethrowWithDisposals } from "./reactivity.ts";
 import {
   activateMounts,
+  assertComponentProps,
   getFactory,
   readonlyProps,
   rootFrame,
@@ -65,9 +66,7 @@ export async function hydrate<Props extends object>(
   if (typeof ownerElement !== "function" || !(target instanceof ownerElement)) {
     throw new TypeError("hydrate() expects a DOM Element target");
   }
-  if (props != null && (!isObject(props) || Array.isArray(props))) {
-    throw new TypeError("hydrate() props must be an object");
-  }
+  assertComponentProps(props, "hydrate()");
   const factory = getFactory(candidate);
   const scripts = [...target.querySelectorAll<HTMLScriptElement>("script[data-sol-hydration]")];
   if (scripts.length !== 1) {

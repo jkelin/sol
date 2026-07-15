@@ -1,5 +1,14 @@
 type EncodedPrimitive = null | boolean | string | number;
 
+type EncodedErrorKind =
+  | "Error"
+  | "EvalError"
+  | "RangeError"
+  | "ReferenceError"
+  | "SyntaxError"
+  | "TypeError"
+  | "URIError";
+
 type EncodedValue = EncodedPrimitive | { readonly $: string; readonly v?: unknown };
 
 interface EncodedGraph {
@@ -26,6 +35,7 @@ type EncodedObject =
   | { readonly type: "set"; readonly values: readonly EncodedValue[] }
   | {
       readonly type: "error";
+      readonly kind: EncodedErrorKind;
       readonly name: string;
       readonly message: string;
       readonly cause?: EncodedValue;
@@ -65,18 +75,27 @@ function rejectCustomProperties(value: object, allowed: readonly string[] = []):
   if (custom) unsupported(value, `built-in with custom properties ${JSON.stringify(custom)}`);
 }
 
-function isBuiltInError(value: Error): boolean {
-  const prototypes = [
-    Error.prototype,
-    EvalError.prototype,
-    RangeError.prototype,
-    ReferenceError.prototype,
-    SyntaxError.prototype,
-    TypeError.prototype,
-    URIError.prototype,
-  ];
-  return prototypes.includes(Object.getPrototypeOf(value) as Error);
+function builtInErrorKind(value: Error): EncodedErrorKind | undefined {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === Error.prototype) return "Error";
+  if (prototype === EvalError.prototype) return "EvalError";
+  if (prototype === RangeError.prototype) return "RangeError";
+  if (prototype === ReferenceError.prototype) return "ReferenceError";
+  if (prototype === SyntaxError.prototype) return "SyntaxError";
+  if (prototype === TypeError.prototype) return "TypeError";
+  if (prototype === URIError.prototype) return "URIError";
+  return undefined;
 }
+
+const ERROR_CONSTRUCTORS: Record<EncodedErrorKind, ErrorConstructor> = {
+  Error,
+  EvalError,
+  RangeError,
+  ReferenceError,
+  SyntaxError,
+  TypeError,
+  URIError,
+};
 
 export function serializeGraph(value: unknown): string {
   const references = new Map<object, number>();
@@ -167,11 +186,13 @@ export function serializeGraph(value: unknown): string {
       rejectCustomProperties(candidate);
       objects[index] = { type: "set", values: [...candidate].map(encode) };
     } else if (candidate instanceof Error) {
-      if (!isBuiltInError(candidate)) return unsupported(candidate, "custom-prototype data");
+      const kind = builtInErrorKind(candidate);
+      if (!kind) return unsupported(candidate, "custom-prototype data");
       rejectCustomProperties(candidate, ["stack", "message", "cause", "name"]);
       const cause = Object.getOwnPropertyDescriptor(candidate, "cause");
       objects[index] = {
         type: "error",
+        kind,
         name: candidate.name,
         message: candidate.message,
         ...(cause ? { cause: encode(cause.value) } : {}),
@@ -357,8 +378,21 @@ function validateEncodedObject(value: unknown, objectCount: number, index: numbe
       }
       return;
     case "error":
-      validateKeys(object, ["type", "name", "message", "cause"], path);
-      if (typeof object.name !== "string" || typeof object.message !== "string") {
+      validateKeys(object, ["type", "kind", "name", "message", "cause"], path);
+      if (
+        typeof object.kind !== "string" ||
+        ![
+          "Error",
+          "EvalError",
+          "RangeError",
+          "ReferenceError",
+          "SyntaxError",
+          "TypeError",
+          "URIError",
+        ].includes(object.kind) ||
+        typeof object.name !== "string" ||
+        typeof object.message !== "string"
+      ) {
         invalidPayload(`${path} has invalid Error fields`);
       }
       if (Object.prototype.hasOwnProperty.call(object, "cause")) {
@@ -420,7 +454,8 @@ export function deserializeGraph(serialized: string): unknown {
         decoded[index] = new Set();
         break;
       case "error": {
-        const error = new Error(object.message);
+        const ErrorType = ERROR_CONSTRUCTORS[object.kind as EncodedErrorKind];
+        const error = new ErrorType(object.message);
         error.name = object.name;
         decoded[index] = error;
         break;

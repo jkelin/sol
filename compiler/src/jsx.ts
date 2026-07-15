@@ -20,7 +20,7 @@ import {
   type Scope,
   type TemplateContext,
 } from "./context.ts";
-import { codeFrame, mappedCode } from "./diagnostics.ts";
+import { codeFrame, mappedCode, unmappedCode } from "./diagnostics.ts";
 import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
@@ -992,7 +992,7 @@ export function compileBlockBody(
     compiledTemplate.html,
     compiledTemplate.regionCount,
     compiledTemplate.elementTags,
-    compiledTemplate.operations,
+    compiledTemplate.operations.map((operation) => unmappedCode(compiler, operation)),
   ]);
   let templateIndex = compiler.templateIndexes.get(templateSignature);
   if (templateIndex === undefined) {

@@ -1,7 +1,7 @@
 import { parse } from "@babel/parser";
 import MagicString from "magic-string";
 import type { CompilationState } from "./context.ts";
-import { generatedSourceMap } from "./diagnostics.ts";
+import { generatedSourceMap, unmappedCode } from "./diagnostics.ts";
 import { escapeTemplate } from "./html.ts";
 import { runtimeImport } from "./runtime-import.ts";
 import type { CompileResult } from "./types.ts";
@@ -15,9 +15,9 @@ export function emitCompilation(state: CompilationState): CompileResult {
       const metadata = {
         elements: template.elementTags,
         regionCount: template.regionCount,
-        propertyValueElements: propertyValueElements(template.operations),
+        propertyValueElements: propertyValueElements(compiler, template.operations),
       };
-      const signature = templateSignature(template.html, template.operations);
+      const signature = templateSignature(compiler, template.html, template.operations);
       return `const __sol_template_${index} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
     })
     .join("\n");
@@ -70,10 +70,13 @@ function identityHash(value: string, prefix: string): string {
   return `${prefix}${(hash >>> 0).toString(36)}`;
 }
 
-function propertyValueElements(operations: readonly string[]): number[] {
+function propertyValueElements(
+  compiler: CompilationState["compiler"],
+  operations: readonly string[],
+): number[] {
   const indexes = new Set<number>();
   for (const operation of operations) {
-    const code = operation.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
+    const code = unmappedCode(compiler, operation);
     const target = /__sol_view\.elements\[(\d+)\]/.exec(code);
     if (!target) continue;
     const kind = /__sol_([a-z_]+)\(/.exec(code)?.[1];
@@ -85,11 +88,17 @@ function propertyValueElements(operations: readonly string[]): number[] {
   return [...indexes].toSorted((left, right) => left - right);
 }
 
-function operationIdentity(operation: string): string {
-  const code = operation.replaceAll(/\/\*__sol_source_\d+__\*\//g, "");
-  return identityHash(code, "o");
+function operationIdentity(compiler: CompilationState["compiler"], operation: string): string {
+  return identityHash(unmappedCode(compiler, operation), "o");
 }
 
-function templateSignature(html: string, operations: readonly string[]): string {
-  return identityHash(`${html}\0${operations.map(operationIdentity).join("\0")}`, "t");
+function templateSignature(
+  compiler: CompilationState["compiler"],
+  html: string,
+  operations: readonly string[],
+): string {
+  return identityHash(
+    `${html}\0${operations.map((operation) => operationIdentity(compiler, operation)).join("\0")}`,
+    "t",
+  );
 }

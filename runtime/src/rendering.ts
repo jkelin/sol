@@ -611,13 +611,17 @@ export function renderComponent<Props extends object>(
   props?: Props,
   parentFrame?: RenderFrame,
 ): Block {
-  if (props != null && !isObject(props)) {
-    throw new TypeError("renderComponent() props must be an object");
-  }
+  assertComponentProps(props, "renderComponent()");
   const initialProps = readonlyProps(reactive({ ...props }) as Props & object);
   const frame = parentFrame ?? rootFrame();
   const rendered = resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
   return parentFrame ? rendered : activatedBlock(rendered, frame);
+}
+
+export function assertComponentProps(props: unknown, label: string): void {
+  if (props != null && (!isObject(props) || Array.isArray(props))) {
+    throw new TypeError(`${label} props must be an object`);
+  }
 }
 
 function activatedBlock(rendered: Block, frame: RenderFrame): Block {
@@ -676,7 +680,7 @@ export function mount<Props extends object>(
   if (!target || target.nodeType !== Node.ELEMENT_NODE) {
     throw new TypeError("mount() expects a DOM Element target");
   }
-  if (props != null && !isObject(props)) throw new TypeError("mount() props must be an object");
+  assertComponentProps(props, "mount()");
   const mounted = renderComponent(candidate, props);
   target.replaceChildren();
   mounted.mount(target);

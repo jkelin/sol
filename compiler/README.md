@@ -46,8 +46,9 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
 - `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax,
   redacts stripped server ranges from client source content, and creates the final source map.
-- `diagnostics.ts` creates authored code frames and preserves source-map origins while accepting the
-  client-safe source content emitted by `output.ts`.
+- `diagnostics.ts` creates authored code frames, owns source-marker insertion and canonical removal,
+  and preserves source-map origins while accepting the client-safe source content emitted by
+  `output.ts`.
 - `route-path.ts` validates route templates, rejects URL-normalized dot segments, and produces
   canonical matching metadata for compiled declarations and lazy manifests.
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
@@ -55,8 +56,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
   reusable Babel-to-code helpers.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
-  conditionals, and child expressions into signature-indexed interned templates and reactive or
-  one-shot runtime operations.
+  conditionals, and child expressions into source-marker-independent, signature-indexed interned
+  templates and reactive or one-shot runtime operations.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly
   mutations in dot or bracket syntax, and rewrites local state, derived values, props,
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned

@@ -156,8 +156,14 @@ export function contextMethod(
   return continuation ? continuation(value) : value;
 }
 
+function isOpaqueContextValue(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype !== Object.prototype && prototype !== null;
+}
+
 function contextProxy(source: () => object): object {
   const target = {};
+  const boundMethods = new WeakMap<object, WeakMap<Function, Function>>();
   const current = (): object => {
     const value = source();
     if (!isObject(value) || Array.isArray(value)) {
@@ -166,8 +172,27 @@ function contextProxy(source: () => object): object {
     return value;
   };
   return new Proxy(target, {
-    get: (_target, key, receiver) => Reflect.get(current(), key, receiver),
-    set: (_target, key, value, receiver) => Reflect.set(current(), key, value, receiver),
+    get: (_target, key, receiver) => {
+      const data = current();
+      const opaque = isOpaqueContextValue(data);
+      const value = Reflect.get(data, key, opaque ? data : receiver);
+      if (!opaque || typeof value !== "function") return value;
+      let methods = boundMethods.get(data);
+      if (!methods) {
+        methods = new WeakMap();
+        boundMethods.set(data, methods);
+      }
+      let bound = methods.get(value);
+      if (!bound) {
+        bound = value.bind(data) as Function;
+        methods.set(value, bound);
+      }
+      return bound;
+    },
+    set: (_target, key, value, receiver) => {
+      const data = current();
+      return Reflect.set(data, key, value, isOpaqueContextValue(data) ? data : receiver);
+    },
     deleteProperty: (_target, key) => Reflect.deleteProperty(current(), key),
     defineProperty: (_target, key, descriptor) => {
       const data = current();

@@ -8,6 +8,11 @@ export function mappedCode(compiler: CompilerContext, node: t.Node, code: string
   return `${marker}${code}`;
 }
 
+export function unmappedCode(compiler: CompilerContext, code: string): string {
+  const escapedPrefix = compiler.mappingMarkerPrefix.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return code.replaceAll(new RegExp(`/\\*${escapedPrefix}\\d+__\\*/`, "g"), "");
+}
+
 export function offsetPosition(source: string, offset: number): { line: number; column: number } {
   let line = 0;
   let lineStart = 0;

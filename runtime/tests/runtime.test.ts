@@ -723,6 +723,37 @@ describe("reactivity", () => {
     accessorValue.accessor = 2;
     expect(stored).toBe(2);
     expect(receivers).toEqual([value, value]);
+
+    const mapContext = $context<Map<string, string>>();
+    const mapBrand = Reflect.ownKeys(mapContext).find(
+      (candidate): candidate is symbol => typeof candidate === "symbol",
+    )!;
+    const mapKey = Reflect.get(mapContext, mapBrand) as symbol;
+    const map = new Map([["answer", "yes"]]);
+    const mapFrame = { ...rootFrame(), contexts: new Map([[mapKey, () => map]]) };
+    const providedMap = contextUse(mapContext, mapFrame, false) as Map<string, string>;
+    expect(providedMap.get("answer")).toBe("yes");
+    expect(providedMap.size).toBe(1);
+
+    class PrivateValue {
+      #label = "private";
+      get label() {
+        return this.#label;
+      }
+      read() {
+        return this.#label;
+      }
+    }
+    const classContext = $context<PrivateValue>();
+    const classBrand = Reflect.ownKeys(classContext).find(
+      (candidate): candidate is symbol => typeof candidate === "symbol",
+    )!;
+    const classKey = Reflect.get(classContext, classBrand) as symbol;
+    const instance = new PrivateValue();
+    const classFrame = { ...rootFrame(), contexts: new Map([[classKey, () => instance]]) };
+    const providedInstance = contextUse(classContext, classFrame, false) as PrivateValue;
+    expect(providedInstance.label).toBe("private");
+    expect(providedInstance.read()).toBe("private");
   });
 
   test("validates the public compiler boundary and class values", () => {
@@ -822,6 +853,29 @@ describe("reactivity", () => {
       expect((error as AggregateError).errors.map(String)).toEqual([
         "Error: callback failed",
         "Error: effect failed",
+      ]);
+    }
+  });
+
+  test("reports every effect failure from one flush", () => {
+    const source = $signal(0);
+    runtimeEffect(() => {
+      if (source.value > 0) throw new Error("first effect failed");
+    });
+    runtimeEffect(() => {
+      if (source.value > 0) throw new Error("second effect failed");
+    });
+
+    try {
+      batch(() => {
+        source.value = 1;
+      });
+      throw new Error("expected batch to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors.map(String)).toEqual([
+        "Error: first effect failed",
+        "Error: second effect failed",
       ]);
     }
   });
@@ -1711,11 +1765,14 @@ describe("compiled DOM runtime", () => {
 
   test("validates mount boundaries", () => {
     const target = document.createElement("main");
+    const Valid = component(() => block(document.createDocumentFragment()));
     expect(() => mount((() => undefined) as never, target)).toThrow("uncompiled component");
     expect(() => mount((() => undefined) as never, null as never)).toThrow("DOM Element target");
     expect(() => mount((() => undefined) as never, target, "bad props" as never)).toThrow(
       "props must be an object",
     );
+    expect(() => mount(Valid, target, [] as never)).toThrow("props must be an object");
+    expect(() => renderComponent(Valid, [] as never)).toThrow("props must be an object");
   });
 
   test("rejects calling the compiler-specialized Head handle directly", () => {

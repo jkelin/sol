@@ -25,7 +25,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
-  primary-failure-preserving teardown.
+  complete reactive-flush failure reporting and primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-safe value cloning, reset-boundary validation,
   validation normalization, disposal-safe submission state, and frame-explicit ownership for async
   component setup.
@@ -33,9 +33,10 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   setup-lifetime enforcement, polling, eviction, Suspense participation, request-isolated server
   caches, hydration replay, and compiler-authored diagnostic source attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and
-  Link handles, including integrity-safe context proxies and frame-explicit direct or extracted
-  context reads used by async compiled setup.
-- `rendering.ts` implements templates, block and setup lifecycle, compiled component factories,
+  Link handles, including integrity-safe context proxies, opaque branded-value method receivers,
+  and frame-explicit direct or extracted context reads used by async compiled setup.
+- `rendering.ts` implements templates, shared component-props validation, block and setup lifecycle,
+  compiled component factories,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
@@ -46,7 +47,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes, rejecting lossy built-in extensions, and
-  preserving descriptor guarantees.
+  preserving descriptor guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
   envelopes with canonical array-index validation, and development-safe failures.

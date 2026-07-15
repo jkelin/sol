@@ -274,7 +274,7 @@ Treat `@soljs/sol/compiler-runtime` as compiler-generated infrastructure. Author
 - `Route` renders the active route and accepts an optional pending component.
 - `Suspense` owns descendant async work, fallback timing, and an optional error renderer.
 - `Await` renders a promise result and may handle its rejection locally.
-- `ErrorBoundary` catches descendant setup and render failures.
+- `ErrorBoundary` catches descendant setup and render failures, including mounted route resolution and page failures.
 - `$bind={state}`, `$form={controller}`, and `$transition={definition}` are compiler-handled JSX directives rather than callable functions.
 
 ### Compiler, Vite, Solkit, and devtools

@@ -570,6 +570,16 @@ async function bodyBytes(request: Request, limit: number): Promise<Uint8Array> {
   return output;
 }
 
+const strictUtf8Decoder = new TextDecoder("utf-8", { fatal: true });
+
+function strictUtf8(bytes: Uint8Array, message: string): string {
+  try {
+    return strictUtf8Decoder.decode(bytes);
+  } catch {
+    throw requestError(message, 400);
+  }
+}
+
 async function decodedBody(
   request: Request,
   mode: "auto" | "bytes",
@@ -587,15 +597,14 @@ async function decodedBody(
   if (bytes.byteLength === 0) return undefined;
   if (mode === "bytes") return bytes.buffer;
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
-  const text = new TextDecoder().decode(bytes);
   if (contentType === "application/json" || contentType?.endsWith("+json")) {
     try {
-      return JSON.parse(text);
+      return JSON.parse(strictUtf8(bytes, "Malformed JSON request body"));
     } catch {
       throw requestError("Malformed JSON request body", 400);
     }
   }
-  if (contentType?.startsWith("text/")) return text;
+  if (contentType?.startsWith("text/")) return new TextDecoder().decode(bytes);
   throw requestError("Unsupported request body media type", 415);
 }
 
@@ -712,7 +721,10 @@ export async function dispatchServerEndpoint(
       if (contentType !== RPC_CONTENT_TYPE) {
         throw requestError("RPC requests must use application/json", 415);
       }
-      const payload = new TextDecoder().decode(await bodyBytes(request, maxBodyBytes));
+      const payload = strictUtf8(
+        await bodyBytes(request, maxBodyBytes),
+        "Malformed JSON RPC input",
+      );
       if (payload === "") throw requestError("Missing RPC input", 400);
       let args: unknown;
       try {

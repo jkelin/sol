@@ -1080,6 +1080,19 @@ describe("reactivity", () => {
     expect(state.value.frozen.nested).toBe(nested);
     expect(state.value.frozenArray).toBe(frozenArray);
     expect(state.value.frozenArray[0]).toBe(nested);
+
+    const lockedChild = { value: 2 };
+    const locked = Object.defineProperty({ ordinary: { value: 3 } }, "child", {
+      value: lockedChild,
+      configurable: false,
+      writable: false,
+      enumerable: true,
+    }) as { ordinary: { value: number }; readonly child: { value: number } };
+    const lockedState = $signal(locked);
+    expect(lockedState.value.child).toBe(lockedChild);
+    expect(lockedState.value.ordinary).not.toBe(locked.ordinary);
+    lockedState.value.ordinary.value = 4;
+    expect(locked.ordinary.value).toBe(4);
   });
 
   test("treats assigning a cached proxy back to its property as a no-op", () => {

@@ -395,6 +395,15 @@ export function reactive<T extends object>(target: T): T {
   const proxy = new Proxy(target, {
     get(object, key, receiver) {
       track(object, key);
+      const descriptor = Reflect.getOwnPropertyDescriptor(object, key);
+      if (
+        descriptor &&
+        "value" in descriptor &&
+        descriptor.configurable === false &&
+        descriptor.writable === false
+      ) {
+        return descriptor.value;
+      }
       const value = Reflect.get(object, key, receiver) as unknown;
       if (
         Array.isArray(object) &&

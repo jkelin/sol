@@ -12,6 +12,7 @@ import {
   configureServerRenderPreparation,
   configureRouteRuntime,
   instantiate,
+  reportError,
   renderComponent,
   template,
   type Block,
@@ -496,6 +497,22 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
   let activeLocation: string | undefined;
   let activeStatus: RouterState["status"] | undefined;
 
+  const fail = (error: unknown): void => {
+    const failedActive = active;
+    const failedOutgoing = outgoing;
+    active = undefined;
+    outgoing = undefined;
+    let reported = error;
+    try {
+      runDisposals([() => failedActive?.dispose(), () => failedOutgoing?.dispose()]);
+    } catch (cleanupError) {
+      reported = new AggregateError([error, cleanupError], "Route failure cleanup also failed", {
+        cause: error,
+      });
+    }
+    reportError(frame, reported);
+  };
+
   if (frame.mode === "server") {
     const location = readLocation(frame);
     const resolution = (frame.url && serverStates.get(frame.url)) ?? resolveLocation(location);
@@ -517,7 +534,6 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
   cleanups.push(
     runtimeEffect(() => {
       const location = state.value;
-      if (location.status === "error") throw location.error;
       const definition = location.definition;
       const locationKey = `${location.pathname}${location.search}`;
       if (
@@ -529,31 +545,41 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
       activeDefinition = definition ?? undefined;
       activeLocation = locationKey;
       activeStatus = location.status;
-      outgoing?.dispose();
-      outgoing = undefined;
-      if (active) {
-        const previous = active;
-        const finished = previous.retire();
-        if (finished) {
-          outgoing = previous;
-          void finished.then(() => {
-            if (outgoing === previous) outgoing = undefined;
-          });
-        }
+      if (location.status === "error") {
+        fail(location.error);
+        return;
       }
-      active =
-        location.status === "pending"
-          ? props.pending
-            ? renderRouteComponent(props.pending, frame, view.regions[0]!)
-            : undefined
-          : definition
-            ? renderRouteComponent(definition.component, frame, view.regions[0]!)
-            : undefined;
-      const region = view.regions[0]!;
-      if (isServerRegion(region)) throw new Error("Expected a browser route region");
-      active?.mount(region.end.parentNode!, region.end);
-      if (initialized) active?.enter();
-      initialized = true;
+      try {
+        const previousOutgoing = outgoing;
+        outgoing = undefined;
+        previousOutgoing?.dispose();
+        if (active) {
+          const previous = active;
+          const finished = previous.retire();
+          active = undefined;
+          if (finished) {
+            outgoing = previous;
+            void finished.then(() => {
+              if (outgoing === previous) outgoing = undefined;
+            });
+          }
+        }
+        active =
+          location.status === "pending"
+            ? props.pending
+              ? renderRouteComponent(props.pending, frame, view.regions[0]!)
+              : undefined
+            : definition
+              ? renderRouteComponent(definition.component, frame, view.regions[0]!)
+              : undefined;
+        const region = view.regions[0]!;
+        if (isServerRegion(region)) throw new Error("Expected a browser route region");
+        active?.mount(region.end.parentNode!, region.end);
+        if (initialized) active?.enter();
+        initialized = true;
+      } catch (error) {
+        fail(error);
+      }
     }),
     () => {
       runDisposals([() => active?.dispose(), () => outgoing?.dispose()]);

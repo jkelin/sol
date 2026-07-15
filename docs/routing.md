@@ -46,6 +46,6 @@ blogDetailRoute.navigate({ params: { id: 42, page: 2 } });
 
 ## Route outlet and global router
 
-Render `<Route />` in the application shell. The optional `pending` component appears while an async route schema resolves. The global `router` exposes pathname, search, hash, parsed parameters, the matched route, and `navigate(path, { replace? })` for destinations without a typed handle.
+Render `<Route />` in the application shell. The optional `pending` component appears while an async route schema resolves. Place an `ErrorBoundary` above the outlet to handle lazy route, schema, and page rendering failures; the failed outlet cleans up its active and retiring pages before the fallback mounts. The global `router` exposes pathname, search, hash, parsed parameters, the matched route, and `navigate(path, { replace? })` for destinations without a typed handle.
 
 Reading params from an inactive, pending, or invalid typed route throws instead of returning stale data.

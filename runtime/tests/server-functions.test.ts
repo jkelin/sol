@@ -649,6 +649,49 @@ describe("server declarations", () => {
       }),
     );
     expect(malformed?.status).toBe(400);
+
+    let httpInvoked = false;
+    const strictJson = httpRouteServer(
+      {
+        method: "POST",
+        path: "/api/strict-json",
+        schema: (input: HttpRouteInput) => input,
+      },
+      async () => {
+        httpInvoked = true;
+        return new Response("ok");
+      },
+    ) as unknown as ServerEndpoint;
+    const malformedUtf8 = await dispatchServerEndpoint(
+      [strictJson],
+      new Request("https://example.test/api/strict-json", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: new Uint8Array([0x7b, 0x22, 0x78, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]),
+      }),
+    );
+    expect(malformedUtf8?.status).toBe(400);
+    expect(httpInvoked).toBe(false);
+
+    let rpcInvoked = false;
+    const strictRpc = rpcQueryServer(
+      "strict-utf8",
+      { schema: (args: readonly [string]) => [args[0]] as [string] },
+      async (_value: string) => {
+        rpcInvoked = true;
+        return true;
+      },
+    ) as unknown as ServerEndpoint;
+    const malformedRpcUtf8 = await dispatchServerEndpoint(
+      [strictRpc],
+      new Request("https://example.test/api/rpc/strict-utf8", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: new Uint8Array([0x5b, 0x22, 0xff, 0x22, 0x5d]),
+      }),
+    );
+    expect(malformedRpcUtf8?.status).toBe(400);
+    expect(rpcInvoked).toBe(false);
   });
 
   test("keeps validation and development error details JSON-safe", async () => {

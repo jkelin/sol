@@ -9,8 +9,10 @@ import { transition } from "../src/transitions.ts";
 import {
   block,
   component,
+  errorBoundary,
   instantiate,
   lazyRoute,
+  renderComponent,
   route,
   routeObject,
   routeRead,
@@ -121,6 +123,10 @@ const Lazy = page("Lazy", false);
 const Slow = page("Slow", false);
 const Fast = page("Fast", false);
 const Pending = page("Pending", false);
+const pageFailure = new Error("Page render failed");
+const Throwing = component(() => {
+  throw pageFailure;
+});
 const unicodeRoute = route({ path: "/café" }, Plain, {
   pattern: "^/caf%C3%A9$",
   parameterNames: [],
@@ -222,6 +228,13 @@ const routes = [
     queryParameters: [],
     specificity: [1],
   }),
+  route({ path: "/throwing" }, Throwing, {
+    pattern: "^/throwing$",
+    parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
+    specificity: [1],
+  }),
   unicodeRoute,
   prototypeRoute,
   route({ path: "/a!" }, Plain, {
@@ -265,6 +278,34 @@ async function flushNavigation(): Promise<void> {
   await Promise.resolve();
 }
 
+const boundaryRouteTemplate = template("<!--sol:s:0--><!--sol:e:0-->", "boundary-route", {
+  elements: [],
+  regionCount: 1,
+  propertyValueElements: [],
+});
+const routeErrorTemplate = template(
+  "<p data-route-error><!--sol:s:0--><!--sol:e:0--></p>",
+  "route-error",
+  { elements: [], regionCount: 1, propertyValueElements: [] },
+);
+const BoundaryRoute = component((_props, frame) => {
+  const view = instantiate(boundaryRouteTemplate, frame);
+  const cleanups: Array<() => void> = [];
+  errorBoundary(
+    view.regions[0]!,
+    (childFrame) => renderComponent(Route, undefined, childFrame),
+    (error, fallbackFrame) => {
+      const fallback = instantiate(routeErrorTemplate, fallbackFrame);
+      const fallbackCleanups: Array<() => void> = [];
+      text(fallback.regions[0]!, () => String(error), fallbackCleanups);
+      return block(fallback.fragment, fallbackCleanups);
+    },
+    cleanups,
+    frame,
+  );
+  return block(view.fragment, cleanups);
+});
+
 test("loads the initial browser route before routerReady resolves", () => {
   expect(initialRoutePath).toBe("/initial-lazy");
   expect(initialLoadCalls).toBe(1);
@@ -283,6 +324,7 @@ test("route transitions overlap, freeze outgoing state, and clean rapid navigati
     "/second",
     "/slow-lazy",
     "/ssr-lazy",
+    "/throwing",
     "/:__proto__",
     "/",
   ]);
@@ -378,6 +420,29 @@ test("reports lazy route load failures and recovers on later navigation", async 
   await flushNavigation();
   expect(devtools.router.status).toBe("ready");
   expect(router.route?.path).toBe("/");
+});
+
+test("routes lazy and page failures through the mounted ErrorBoundary", async () => {
+  const lazyTarget = document.createElement("main");
+  const disposeLazy = mount(BoundaryRoute, lazyTarget);
+  router.navigate("/failed-lazy");
+  await flushNavigation();
+  expect(lazyTarget.querySelector("[data-route-error]")?.textContent).toContain(
+    "Route chunk failed",
+  );
+  disposeLazy();
+
+  router.navigate("/");
+  await flushNavigation();
+  const pageTarget = document.createElement("main");
+  const disposePage = mount(BoundaryRoute, pageTarget);
+  expect(() => router.navigate("/throwing")).not.toThrow();
+  expect(pageTarget.querySelector("[data-route-error]")?.textContent).toContain(
+    "Page render failed",
+  );
+  disposePage();
+  router.navigate("/");
+  await flushNavigation();
 });
 
 test("renders the matched route from an isolated server request URL", async () => {

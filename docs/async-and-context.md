@@ -35,4 +35,4 @@ Rejections are handled in this order:
 2. The owning `Suspense` error renderer.
 3. The nearest `ErrorBoundary`.
 
-`ErrorBoundary` also catches synchronous descendant setup and render failures. It does not intercept errors thrown by event handlers.
+`ErrorBoundary` also catches synchronous descendant setup and render failures, including failures from lazy route resolution and route page rendering beneath it. It does not intercept errors thrown by event handlers.

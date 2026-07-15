@@ -30,7 +30,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
-  complete reactive-flush failure reporting, transaction-local effect capture, and
+  Proxy-invariant-safe locked-property reads, complete reactive-flush failure reporting,
+  transaction-local effect capture, and
   primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-snapshotted configs, graph-preserving plain
   value snapshots, descriptor-safe value and validation-issue reads, reset-boundary validation,
@@ -62,7 +63,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   and HTTP paths, canonical request-segment matching that preserves encoded slashes, HTTP route
   decoding, schema validation, JSON POST endpoint matching, prepared endpoint indexes, JSON
   response envelopes with canonical array-index validation, snapshotted endpoint configs, validated
-  dispatch options, and development-safe failures.
+  dispatch options, strict UTF-8 JSON decoding, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
   before asynchronous rendering and publishing managed head markup only after payload serialization.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
@@ -89,7 +90,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   browser history or static document navigation, request URLs, SSR route rendering, initial
   asynchronous route readiness, deployment-base translation, trailing-slash directory URL
   normalization, shared empty route values, snapshotted navigation options, request-frame reads,
-  and hydration of the active route.
+  ErrorBoundary-owned browser failure cleanup, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.
@@ -113,7 +114,8 @@ diagnostics. On the server they validate the full argument tuple before directly
 handler. Browser declarations POST JSON argument tuples to `/api/rpc/:name`, decode JSON response
 envelopes through own data properties, and reject with reconstructed server errors without trusting
 inherited details. RPC arguments and results must be
-JSON-serializable. `$httpRoute()` validates decoded path parameters, repeated query values, headers,
+JSON-serializable, and RPC plus HTTP JSON bodies must contain valid UTF-8 before parsing or schema
+validation. `$httpRoute()` validates decoded path parameters, repeated query values, headers,
 and automatic JSON/text or explicit byte bodies before passing the still-readable original `Request`
 to a handler. Endpoint bodies are capped at 1 MiB by default; Solkit's `maxBodyBytes` option changes
 the limit and oversized requests receive a structured 413 response. Static HTTP path segments are

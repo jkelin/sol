@@ -9,7 +9,7 @@ Direct writable declarations inside `$component` become signals automatically. D
 
 ## Deep reactive values
 
-Arrays and plain objects are deep proxies. Nested assignments and mutating array methods remain reactive while Dates, collections, frozen objects, and class instances keep their identity.
+Arrays and plain objects are deep proxies. Nested assignments and mutating array methods remain reactive while Dates, collections, frozen objects, class instances, and values stored in locked non-writable properties keep their identity.
 
 ```sol live preview=AssemblyQueue title="Deep object and array updates"
 import { $component } from "@soljs/sol";

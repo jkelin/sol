@@ -82,8 +82,8 @@ checkbox/radio input types regardless of casing and `value` for other supported 
 textarea controlled by `value` or `$bind` cannot also have children. Signal arrays and plain-object
 values are deep proxies, so nested assignments and mutating array methods are reactive. A select
 controlled by `value` or `$bind` cannot also contain an option with `selected`, including through an
-`optgroup`. Dates,
-collections, and class instances retain their original identity.
+`optgroup`. Locked non-writable object properties retain their exact stored identity, as do Dates,
+collections, and class instances.
 
 Intrinsic HTML attribute identity is ASCII-case-insensitive, so differently cased duplicates are
 rejected and form-control semantics match the browser. `data-sol-e` and `data-sol-hydration` are
@@ -371,7 +371,8 @@ Suspense keeps its fallback visible until all async work owned by that boundary 
 boundaries account for their own work. Without Suspense, an async component or Await leaves an empty
 region until it is ready. Rejections are handled by the nearest Await `error` renderer, then the
 owning Suspense `error` renderer, then ErrorBoundary. ErrorBoundary also catches synchronous
-descendant setup/render failures; event-handler errors are not intercepted.
+descendant setup/render failures and failures from a mounted route's lazy resolution or page render;
+event-handler errors are not intercepted.
 
 ## Server rendering and hydration
 
@@ -444,7 +445,8 @@ export const savePost = $rpcMutation(
 
 Queries and mutations both use `POST /api/rpc/:name` with `application/json` argument tuples and
 JSON response envelopes. Arguments, handler results, and exposed error details must therefore be
-JSON-serializable. Pass these functions to `$query` and `$mutation` like any other async operation.
+JSON-serializable. JSON request bodies must also be valid UTF-8; malformed byte sequences receive a
+400 response before schema validation or handler invocation. Pass these functions to `$query` and `$mutation` like any other async operation.
 Devtools shows the declared RPC name alongside cache keys, arguments, results, timing, and authored
 locations.
 

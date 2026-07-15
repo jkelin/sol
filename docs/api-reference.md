@@ -47,6 +47,7 @@ order: 10
 - Server declarations and `$route()` must be exported top-level constants in `.sol.ts` or `.sol.tsx` files.
 - HTTP handlers receive the schema output and original `Request`, and must return a `Response`.
 - Static HTTP path segments are URL-canonicalized. Paths reject query or fragment syntax, backslashes, control characters, dot segments, trailing or empty segments, and authored percent escapes; use `:parameter` for decoded dynamic segments.
+- RPC and automatic HTTP JSON bodies require valid UTF-8; malformed byte sequences return 400 before schema validation or handler invocation.
 - RPC and HTTP request bodies are limited to 1 MiB by default. Configure another non-negative byte limit with `solkit({ entry, adapter, maxBodyBytes })`; oversized requests return 413.
 
 ## Routing
@@ -61,7 +62,7 @@ order: 10
 - `$context<T>()` creates `Provider`, `use()`, and `useOptional()`.
 - `Suspense` owns async fallback and error rendering.
 - `Await` renders a promise result and may own a local error renderer.
-- `ErrorBoundary` catches descendant setup and rendering failures.
+- `ErrorBoundary` catches descendant setup and rendering failures, including mounted route resolution and page failures.
 
 ## Transitions
 

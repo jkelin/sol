@@ -92,7 +92,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read
   instrumentation; constructor results retain the conservative frame-aware fallback because a
   constructor may return a route-backed object.
-- `html.ts` owns intrinsic-element metadata and escaping for static templates.
+- `html.ts` owns intrinsic-element metadata and browser-compatible escaping for static templates,
+  including U+0000 replacement before text or attribute emission.
 - `runtime-import.ts` validates generated syntax with a lightweight identifier walk, resolves
   referenced compiler-runtime identifiers, and emits one minimal import; output adds
   a target-specific endpoint import only for modules containing server declarations.

@@ -165,7 +165,7 @@ The `$form` property connects the controller to the form's submit, input, and fo
 
 Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()` when both methods exist, making async refinements work without a separate controller API.
 
-`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, acyclic nested arrays, and plain data-property object maps; unsupported values fail descriptively. Dynamic text replaces U+0000 with U+FFFD consistently across mounting, SSR, and hydration. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
+`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, acyclic nested arrays, and plain data-property object maps; unsupported values fail descriptively. Text, primitive branches, and compiler-folded string attributes replace U+0000 with U+FFFD consistently across mounting, SSR, and hydration. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 
 ## Queries and mutations
 
@@ -279,6 +279,8 @@ const List = $component(function List() {
 ```
 
 The runtime adds the phase classes temporarily and waits for the CSS animations or transitions they create. Leave animations keep their DOM mounted until every transitioned descendant finishes. Re-adding the same conditional branch or keyed-list key cancels its leave and reuses the existing DOM. Route pages use the same directive on their intrinsic root. Reduced-motion preferences and browsers without `Element.getAnimations()` fall back to immediate insertion and removal.
+
+Asynchronous retirement and cleanup failures are reported through the owning ErrorBoundary or async error owner instead of becoming unhandled promise rejections.
 
 Compiled list calls accept exactly one synchronous, non-generator inline callback with an item and
 an optional index identifier. Component, list, and async renderer function boundaries are lowered

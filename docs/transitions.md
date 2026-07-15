@@ -28,6 +28,8 @@ const TransitionDemo = $component(function TransitionDemo() {
 
 Transitions run only for updates after the first render. Leave animations keep their DOM mounted until every transitioned descendant finishes. Re-adding the same conditional branch or keyed-list key cancels its leave and reuses the existing DOM.
 
+Asynchronous retirement and cleanup failures are sent to the owning ErrorBoundary or async error owner instead of surfacing as unhandled promise rejections.
+
 Reduced-motion preferences and browsers without `Element.getAnimations()` fall back to immediate insertion and removal.
 
 ## CSS phases

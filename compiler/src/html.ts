@@ -16,7 +16,11 @@ export const VOID_ELEMENTS = new Set([
 ]);
 
 export function escapeText(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return value
+    .replaceAll("\0", "\uFFFD")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 export function escapeAttribute(value: string): string {

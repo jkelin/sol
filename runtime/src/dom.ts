@@ -12,11 +12,14 @@ import {
   type Signal,
 } from "./reactivity.ts";
 import {
+  displayValue,
   getFactory,
+  reportError,
   readonlyProps,
   resolvedBlock,
   rootFrame,
   routeRuntime,
+  settleRetirement,
   type Block,
   type Cleanup,
   type Region,
@@ -41,11 +44,6 @@ import { HydrationMismatchError } from "./ssr-session.ts";
 type ContextRecord = Context<object> & { readonly [CONTEXT]: symbol };
 type RenderFactory = (frame: RenderFrame) => Block;
 const RAW_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "TEXTAREA", "TITLE"]);
-
-function displayValue(value: unknown): string {
-  const displayed = value == null || typeof value === "boolean" ? "" : String(value);
-  return displayed.replaceAll("\0", "\uFFFD");
-}
 
 export type ClassValue =
   | string
@@ -568,11 +566,30 @@ export function when(
       }
       if (finished) {
         leaving.set(previousCondition, previous);
-        void finished.then(() => {
-          if (leaving.get(previousCondition) !== previous) return;
-          leaving.delete(previousCondition);
-          previous.dispose();
-        });
+        settleRetirement(
+          finished,
+          () => {
+            if (leaving.get(previousCondition) !== previous) return;
+            leaving.delete(previousCondition);
+            previous.dispose();
+          },
+          (error) => {
+            let reported = error;
+            if (leaving.get(previousCondition) === previous) {
+              leaving.delete(previousCondition);
+              try {
+                previous.dispose();
+              } catch (disposalError) {
+                reported = new AggregateError(
+                  [error, disposalError],
+                  "Conditional transition and teardown both failed",
+                  { cause: error },
+                );
+              }
+            }
+            reportError(renderFrame, reported);
+          },
+        );
       } else if (transitionFailure === undefined) {
         previous.dispose();
       }
@@ -755,12 +772,32 @@ export function list<T>(
         continue;
       }
       leavingRows.set(key, row);
-      void finished.then(() => {
-        if (leavingRows.get(key) !== row) return;
-        leavingRows.delete(key);
-        order = order.filter((candidate) => !sameKey(candidate, key));
-        row.block.dispose();
-      });
+      settleRetirement(
+        finished,
+        () => {
+          if (leavingRows.get(key) !== row) return;
+          leavingRows.delete(key);
+          order = order.filter((candidate) => !sameKey(candidate, key));
+          row.block.dispose();
+        },
+        (error) => {
+          let reported = error;
+          if (leavingRows.get(key) === row) {
+            leavingRows.delete(key);
+            order = order.filter((candidate) => !sameKey(candidate, key));
+            try {
+              row.block.dispose();
+            } catch (disposalError) {
+              reported = new AggregateError(
+                [error, disposalError],
+                "List transition and teardown both failed",
+                { cause: error },
+              );
+            }
+          }
+          reportError(renderFrame, reported);
+        },
+      );
     }
     order =
       removedKeys.size > 0

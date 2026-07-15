@@ -1590,6 +1590,50 @@ test("server rendering keeps hostile raw-text closing tags inside their elements
   dispose();
 });
 
+test("normalizes NUL in folded templates, attributes, and primitive branches", async () => {
+  const module = await loadCompiled(`
+    export const WithoutElement = $component(function WithoutElement(props: { visible: boolean }) {
+      return <p>{"folded\\0sol:element:0\\0text"}{props.visible ? "branch\\0sol:element:0\\0text" : null}</p>;
+    });
+    export const WithElement = $component(function WithElement(props: { id: string; visible: boolean }) {
+      return <main id={props.id} title={"attribute\\0sol:element:0\\0value"}>
+        {props.visible ? "branch\\0sol:element:0\\0text" : null}
+      </main>;
+    });
+  `);
+  const expectedFolded = "folded\uFFFDsol:element:0\uFFFDtext";
+  const expectedBranch = "branch\uFFFDsol:element:0\uFFFDtext";
+  const expectedAttribute = "attribute\uFFFDsol:element:0\uFFFDvalue";
+  const cases: Array<[Component<Record<string, unknown>>, string, Record<string, unknown>]> = [
+    [module.WithoutElement as Component<Record<string, unknown>>, "p", { visible: true }],
+    [
+      module.WithElement as Component<Record<string, unknown>>,
+      "main",
+      { id: "owned", visible: true },
+    ],
+  ];
+  await Promise.all(
+    cases.map(async ([candidate, selector, props]) => {
+      const html = await renderToStringAsync(candidate, props);
+      expect(html).not.toContain("\0");
+      const target = document.createElement("div");
+      target.innerHTML = html;
+      const disposeHydrated = await hydrate(candidate, target, props);
+      const hydrated = target.querySelector(selector)!;
+      expect(hydrated.textContent).toContain(expectedBranch);
+      if (selector === "p") expect(hydrated.textContent).toContain(expectedFolded);
+      else expect(hydrated.getAttribute("title")).toBe(expectedAttribute);
+      const hydratedText = hydrated.textContent;
+      disposeHydrated();
+
+      const mounted = document.createElement("div");
+      const disposeMounted = mount(candidate, mounted, props);
+      expect(mounted.querySelector(selector)?.textContent).toBe(hydratedText);
+      disposeMounted();
+    }),
+  );
+});
+
 test("server rendering selects options whose values are dynamic", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

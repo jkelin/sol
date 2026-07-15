@@ -416,8 +416,9 @@ export function emptyBlock(frame?: RenderFrame): Block {
   return block(document.createDocumentFragment());
 }
 
-function displayValue(value: unknown): string {
-  return value == null || typeof value === "boolean" ? "" : String(value);
+export function displayValue(value: unknown): string {
+  const displayed = value == null || typeof value === "boolean" ? "" : String(value);
+  return displayed.replaceAll("\0", "\uFFFD");
 }
 
 function escapeText(value: string): string {
@@ -436,6 +437,27 @@ export function valueBlock(getValue: () => unknown, frame?: RenderFrame): Block 
     textNode.data = displayValue(getValue());
   });
   return block(fragment, [cleanup]);
+}
+
+export function settleRetirement(
+  finished: Promise<void>,
+  onFinished: () => void,
+  onError: (error: unknown) => void,
+): void {
+  const report = (error: unknown): void => {
+    try {
+      onError(error);
+    } catch (reportFailure) {
+      surfaceAsyncError(reportFailure);
+    }
+  };
+  void finished.then(() => {
+    try {
+      onFinished();
+    } catch (error) {
+      report(error);
+    }
+  }, report);
 }
 
 export function component<Props extends object>(

@@ -14,6 +14,7 @@ import {
   instantiate,
   reportError,
   renderComponent,
+  settleRetirement,
   template,
   type Block,
   type Region,
@@ -559,9 +560,13 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
           active = undefined;
           if (finished) {
             outgoing = previous;
-            void finished.then(() => {
-              if (outgoing === previous) outgoing = undefined;
-            });
+            settleRetirement(
+              finished,
+              () => {
+                if (outgoing === previous) outgoing = undefined;
+              },
+              fail,
+            );
           }
         }
         active =

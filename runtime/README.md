@@ -47,7 +47,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `rendering.ts` implements templates, shared component-props validation, block and setup lifecycle,
   compiled component factories,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
-  and error propagation.
+  shared display-value normalization, asynchronous retirement settlement, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
   including dynamic form-control serialization, collision-safe normalized text, and the raw-text
   closing-tag transform shared with hydration validation.
@@ -80,7 +80,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting, reactive or one-shot text rendering, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, consistent text-control
-  and U+0000 normalization, validated acyclic class normalization, server-safe raw-text hydration
+  and shared U+0000 normalization, validated acyclic class normalization, server-safe raw-text hydration
   comparison, server child-block ownership,
   and failure-safe prepare/commit reconciliation for conditional and keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
@@ -91,7 +91,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   browser history or static document navigation, request URLs, SSR route rendering, initial
   asynchronous route readiness, deployment-base translation, trailing-slash directory URL
   normalization, shared empty route values, snapshotted navigation options, request-frame reads,
-  ErrorBoundary-owned browser failure cleanup, and hydration of the active route.
+  ErrorBoundary-owned browser and asynchronous retirement failure cleanup, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.

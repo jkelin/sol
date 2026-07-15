@@ -123,6 +123,15 @@ const Lazy = page("Lazy", false);
 const Slow = page("Slow", false);
 const Fast = page("Fast", false);
 const Pending = page("Pending", false);
+const routeRetirement = deferred<void>();
+const RejectingRetirement = component((_props, frame) => {
+  const view = instantiate(
+    template('<section data-page="rejecting-retirement">Retiring</section>', "trejectretire"),
+    frame,
+  );
+  const rendered = block(view.fragment);
+  return { ...rendered, retire: () => routeRetirement.promise };
+});
 const pageFailure = new Error("Page render failed");
 const Throwing = component(() => {
   throw pageFailure;
@@ -235,6 +244,13 @@ const routes = [
     queryParameters: [],
     specificity: [1],
   }),
+  route({ path: "/rejecting-retirement" }, RejectingRetirement, {
+    pattern: "^/rejecting-retirement$",
+    parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
+    specificity: [1],
+  }),
   unicodeRoute,
   prototypeRoute,
   route({ path: "/a!" }, Plain, {
@@ -321,6 +337,7 @@ test("route transitions overlap, freeze outgoing state, and clean rapid navigati
     "/fast-lazy",
     "/initial-lazy",
     "/plain",
+    "/rejecting-retirement",
     "/second",
     "/slow-lazy",
     "/ssr-lazy",
@@ -441,6 +458,25 @@ test("routes lazy and page failures through the mounted ErrorBoundary", async ()
     "Page render failed",
   );
   disposePage();
+  router.navigate("/");
+  await flushNavigation();
+});
+
+test("routes asynchronous page retirement failures through ErrorBoundary", async () => {
+  router.navigate("/rejecting-retirement");
+  await flushNavigation();
+  const target = document.createElement("main");
+  const dispose = mount(BoundaryRoute, target);
+  const retirementFailure = new Error("route retirement rejected");
+
+  router.navigate("/plain");
+  routeRetirement.reject(retirementFailure);
+  await flushNavigation();
+
+  expect(target.querySelector("[data-route-error]")?.textContent).toContain(
+    "route retirement rejected",
+  );
+  dispose();
   router.navigate("/");
   await flushNavigation();
 });

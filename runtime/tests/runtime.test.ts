@@ -59,6 +59,34 @@ async function rejection(promise: PromiseLike<unknown>): Promise<unknown> {
   throw new Error("Expected promise to reject");
 }
 
+function deferredPromise(): {
+  promise: Promise<void>;
+  resolve(): void;
+  reject(error: unknown): void;
+} {
+  let resolve!: () => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function retiringBlock(finished: Promise<void>, disposalError?: Error): Block {
+  const fragment = document.createDocumentFragment();
+  fragment.append(document.createTextNode("retiring"));
+  const rendered = block(fragment);
+  return {
+    ...rendered,
+    leave: () => finished,
+    dispose() {
+      rendered.dispose();
+      if (disposalError) throw disposalError;
+    },
+  };
+}
+
 beforeEach(() => {
   window = new Window();
   formDisposals = [];
@@ -1350,6 +1378,85 @@ describe("compiled DOM runtime", () => {
     const disposeRaw = await hydrate(RawApp, rawTarget);
     expect(rawTarget.querySelector("textarea")?.textContent).toBe(expected);
     disposeRaw();
+  });
+
+  test("reports asynchronous conditional and list retirement failures", async () => {
+    const failures: unknown[] = [];
+    const frame = { ...rootFrame(), handleError: (error: unknown) => failures.push(error) };
+
+    const conditionalView = instantiate(
+      template("<!--sol:s:0--><!--sol:e:0-->", "tasyncconditional", {
+        elements: [],
+        regionCount: 1,
+        propertyValueElements: [],
+      }),
+    );
+    const condition = $signal(true);
+    const conditionalFinish = deferredPromise();
+    const conditionalFailure = new Error("conditional async dispose failed");
+    const conditionalCleanups: Array<() => void> = [];
+    when(
+      conditionalView.regions[0]!,
+      () => condition.value,
+      () => retiringBlock(conditionalFinish.promise, conditionalFailure),
+      () => block(document.createDocumentFragment()),
+      conditionalCleanups,
+      frame,
+    );
+    condition.value = false;
+    conditionalFinish.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(failures).toEqual([conditionalFailure]);
+
+    const listView = instantiate(
+      template("<!--sol:s:0--><!--sol:e:0-->", "tasynclist", {
+        elements: [],
+        regionCount: 1,
+        propertyValueElements: [],
+      }),
+    );
+    const items = $signal([1]);
+    const listFinish = deferredPromise();
+    const listFailure = new Error("list async dispose failed");
+    const listCleanups: Array<() => void> = [];
+    list(
+      listView.regions[0]!,
+      () => items.value,
+      (item) => item,
+      () => retiringBlock(listFinish.promise, listFailure),
+      listCleanups,
+      frame,
+    );
+    items.value = [];
+    listFinish.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(failures).toEqual([conditionalFailure, listFailure]);
+
+    const rejectedView = instantiate(
+      template("<!--sol:s:0--><!--sol:e:0-->", "tasyncrejection", {
+        elements: [],
+        regionCount: 1,
+        propertyValueElements: [],
+      }),
+    );
+    const rejectedCondition = $signal(true);
+    const rejectedFinish = deferredPromise();
+    const transitionFailure = new Error("conditional leave rejected");
+    when(
+      rejectedView.regions[0]!,
+      () => rejectedCondition.value,
+      () => retiringBlock(rejectedFinish.promise),
+      () => block(document.createDocumentFragment()),
+      [],
+      frame,
+    );
+    rejectedCondition.value = false;
+    rejectedFinish.reject(transitionFailure);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(failures).toEqual([conditionalFailure, listFailure, transitionFailure]);
   });
 
   test("validates and brands compiled route records", () => {

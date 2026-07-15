@@ -207,6 +207,7 @@ const fastRequest = deferred<unknown>();
 const slowMetadata = staticMetadata("/slow-lazy");
 const fastMetadata = staticMetadata("/fast-lazy");
 const failedMetadata = staticMetadata("/failed-lazy");
+const pendingMetadata = staticMetadata("/pending-lazy");
 const ssrMetadata = staticMetadata("/ssr-lazy");
 const initialMetadata = staticMetadata("/initial-lazy");
 let ssrLoadCalls = 0;
@@ -265,6 +266,7 @@ const routes = [
   lazyRoute("/slow-lazy", slowMetadata, () => slowRequest.promise),
   lazyRoute("/fast-lazy", fastMetadata, () => fastRequest.promise),
   failedDefinition,
+  lazyRoute("/pending-lazy", pendingMetadata, () => new Promise<never>(() => undefined)),
   lazyRoute("/ssr-lazy", ssrMetadata, async () => {
     ssrLoadCalls += 1;
     return route({ path: "/ssr-lazy" }, Lazy, ssrMetadata);
@@ -336,6 +338,7 @@ test("route transitions overlap, freeze outgoing state, and clean rapid navigati
     "/failed-lazy",
     "/fast-lazy",
     "/initial-lazy",
+    "/pending-lazy",
     "/plain",
     "/rejecting-retirement",
     "/second",
@@ -509,6 +512,22 @@ test("rejects server rendering when a lazy route import fails", () => {
       url: "https://example.test/failed-lazy",
     }),
   ).rejects.toBe(failedLoad);
+});
+
+test("times out while preparing a never-settling lazy server route", async () => {
+  const watchdog = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("render preparation watchdog expired")), 100);
+  });
+  const failure = await Promise.race([
+    renderToStringAsync(Route, undefined, {
+      url: "https://example.test/pending-lazy",
+      timeoutMs: 5,
+    }).catch((error: unknown) => error),
+    watchdog,
+  ]);
+
+  expect(failure).toBeInstanceOf(Error);
+  expect((failure as Error).message).toContain("server rendering timed out after 5ms");
 });
 
 test("preserves request route state after async component setup resumes", async () => {

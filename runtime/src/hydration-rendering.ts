@@ -2,6 +2,7 @@ import type { Block, BlockLifecycle, Region, RenderView, TemplateDefinition } fr
 import { HydrationMismatchError, type HydrationSession } from "./ssr-session.ts";
 import { rethrowWithDisposals, runCleanups, runDisposals, runtimeEffect } from "./reactivity.ts";
 import { cancelTransitions, runTransitions } from "./transitions.ts";
+import { isDomNode } from "./dom-realm.ts";
 
 export interface HydrationClaim {
   readonly start?: Comment;
@@ -310,7 +311,8 @@ export function hydratedBlock(
       claimedPlacement = false;
       if (mounted && fragment.start.parentNode === parent) return;
     }
-    const moving = document.createDocumentFragment();
+    const moving =
+      parent.ownerDocument?.createDocumentFragment() ?? document.createDocumentFragment();
     for (const node of nodes()) moving.append(node);
     parent.insertBefore(moving, before);
     mounted = true;
@@ -320,7 +322,7 @@ export function hydratedBlock(
       return nodes();
     },
     mount(parent, before) {
-      if (!(parent instanceof Node)) mismatch("cannot mount a hydrated block on the server");
+      if (!isDomNode(parent)) mismatch("cannot mount a hydrated block on the server");
       move(parent, before);
       if (lifecycleQueued) return;
       lifecycleQueued = true;
@@ -338,7 +340,7 @@ export function hydratedBlock(
       }
     },
     move(parent, before) {
-      if (!(parent instanceof Node)) mismatch("cannot move a hydrated block on the server");
+      if (!isDomNode(parent)) mismatch("cannot move a hydrated block on the server");
       move(parent, before);
     },
     enter() {

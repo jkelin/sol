@@ -12,6 +12,7 @@ import {
 } from "./rendering.ts";
 import { deserializeGraph } from "./serialization.ts";
 import { HydrationMismatchError, HydrationSession, type HydrationPayload } from "./ssr-session.ts";
+import { isDomElement } from "./dom-realm.ts";
 
 function hydrationPayload(value: unknown): HydrationPayload {
   if (!isObject(value) || Array.isArray(value)) {
@@ -49,7 +50,8 @@ function hydrationPayload(value: unknown): HydrationPayload {
 
 function templateSignatures(target: Element): string[] {
   const signatures: string[] = [];
-  const walker = document.createTreeWalker(target, NodeFilter.SHOW_COMMENT);
+  const showComment = target.ownerDocument.defaultView?.NodeFilter.SHOW_COMMENT ?? 128;
+  const walker = target.ownerDocument.createTreeWalker(target, showComment);
   while (walker.nextNode()) {
     const match = /^sol:block:start:(t[a-z0-9]+)$/.exec((walker.currentNode as Comment).data);
     if (match) signatures.push(match[1]!);
@@ -62,8 +64,7 @@ export async function hydrate<Props extends object>(
   target: Element,
   props?: Props,
 ): Promise<() => void> {
-  const ownerElement = target?.ownerDocument?.defaultView?.Element ?? globalThis.Element;
-  if (typeof ownerElement !== "function" || !(target instanceof ownerElement)) {
+  if (!isDomElement(target)) {
     throw new TypeError("hydrate() expects a DOM Element target");
   }
   assertComponentProps(props, "hydrate()");
@@ -121,7 +122,7 @@ export async function hydrate<Props extends object>(
         node && node !== headClaim.end;
         node = node.nextSibling
       ) {
-        if (!(node instanceof Element)) continue;
+        if (!isDomElement(node)) continue;
         node.removeAttribute("data-sol-e");
         for (const element of node.querySelectorAll("[data-sol-e]")) {
           element.removeAttribute("data-sol-e");

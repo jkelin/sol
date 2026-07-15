@@ -34,7 +34,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   transaction-local effect capture, and
   primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-snapshotted configs, plain-object root
-  enforcement, graph-preserving plain value snapshots, descriptor-safe value and validation-issue
+  enforcement, graph-preserving writable data snapshots, descriptor-safe value and validation-issue
   reads, reset-boundary validation, validation normalization, disposal-safe submission state, and
   frame-explicit ownership for async component setup.
 - `queries.ts` implements descriptor-snapshotted cached query and mutation controllers, request
@@ -71,11 +71,13 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   response envelopes with canonical array-index validation, snapshotted endpoint configs, validated
   dispatch options, strict UTF-8 JSON decoding, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
-  before asynchronous rendering, publishing managed head markup only after payload serialization,
+  before asynchronous rendering, enforcing the timeout across route preparation and render work,
+  publishing managed head markup only after payload serialization,
   preserving directly recorded template order without reparsing final markup, serializing successful
   hydration payloads in one graph traversal while retaining async-site diagnostics on failure, and
   preserving the primary failure when request teardown also fails.
-- `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
+- `hydrate.ts` validates hydration payloads, claims a compiled tree across DOM realms, and returns its disposer.
+- `dom-realm.ts` centralizes owner-realm DOM node, element, and select classification.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation from snapshotted destinations, exact parameter-name checking, route handles,
   descriptor-snapshotted route configs and compiled metadata, retryable lazy-route descriptors,

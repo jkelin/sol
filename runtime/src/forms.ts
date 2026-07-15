@@ -53,8 +53,15 @@ function cloneFormValue<T>(value: T, clones = new WeakMap<object, unknown>()): T
   }
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-    if ("value" in descriptor) descriptor.value = cloneFormValue(descriptor.value, clones);
-    Object.defineProperty(clone, key, descriptor);
+    if (!("value" in descriptor)) {
+      throw new TypeError("$form() values must contain only data properties");
+    }
+    Object.defineProperty(clone, key, {
+      configurable: !(Array.isArray(value) && key === "length"),
+      enumerable: descriptor.enumerable,
+      value: cloneFormValue(descriptor.value, clones),
+      writable: true,
+    });
   }
   return clone as T;
 }

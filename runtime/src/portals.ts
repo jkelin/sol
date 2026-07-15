@@ -1,4 +1,5 @@
 import { runtimeEffect } from "./reactivity.ts";
+import { isDomElement } from "./dom-realm.ts";
 import type { JSX } from "./jsx-runtime.ts";
 import type { Block, BlockLifecycle, Cleanup, RenderFactory, RenderFrame } from "./rendering.ts";
 
@@ -20,14 +21,10 @@ export const GlobalPortal = (() => {
 }) as (props: Readonly<GlobalPortalProps>) => JSX.Element;
 
 function validateTarget(target: unknown, name: "Portal" | "GlobalPortal"): Element {
-  const ownerDocument = (target as { ownerDocument?: Document } | null)?.ownerDocument;
-  const ownerElement = ownerDocument?.defaultView?.Element;
-  const ambientElement = typeof Element === "undefined" ? undefined : Element;
-  const constructor = ownerElement ?? ambientElement;
-  if (!constructor || !(target instanceof constructor)) {
+  if (!isDomElement(target)) {
     throw new TypeError(`${name} target must be a DOM Element`);
   }
-  return target as Element;
+  return target;
 }
 
 function mountPortal(

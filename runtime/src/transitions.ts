@@ -54,7 +54,7 @@ function prefersReducedMotion(): boolean {
 function transitionedElements(nodes: readonly Node[]): Element[] {
   const elements: Element[] = [];
   for (const node of nodes) {
-    if (!(node instanceof Element)) continue;
+    if (!isDomElement(node)) continue;
     if (transitionGetters.has(node)) elements.push(node);
     for (const descendant of node.querySelectorAll("*")) {
       if (transitionGetters.has(descendant)) elements.push(descendant);
@@ -111,4 +111,5 @@ export function runTransitions(
   }
   return finished.length > 0 ? Promise.all(finished).then(() => undefined) : undefined;
 }
+import { isDomElement } from "./dom-realm.ts";
 import { isServerElement, type ServerElement } from "./server-rendering.ts";

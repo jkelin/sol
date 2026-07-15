@@ -42,6 +42,7 @@ import {
 } from "./server-rendering.ts";
 import { claimHydratedText, regionHydrationClaim } from "./hydration-rendering.ts";
 import { HydrationMismatchError } from "./ssr-session.ts";
+import { isHtmlSelectElement } from "./dom-realm.ts";
 
 type ContextRecord = Context<object> & { readonly [CONTEXT]: symbol };
 type RenderFactory = (frame: RenderFrame) => Block;
@@ -518,8 +519,7 @@ export function bindValue(
     setServerValue(element, property, property === "checked" ? Boolean(getValue()) : getValue());
     return;
   }
-  const eventName =
-    property === "checked" || element instanceof HTMLSelectElement ? "change" : "input";
+  const eventName = property === "checked" || isHtmlSelectElement(element) ? "change" : "input";
   let hydrating = element.hasAttribute("data-sol-e");
   const stopEffect = runtimeEffect(() => {
     const next = getValue();

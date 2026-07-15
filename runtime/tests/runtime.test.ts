@@ -320,6 +320,48 @@ describe("forms", () => {
     expect(form.values.left).not.toBe(resetChild);
   });
 
+  test("clones frozen form values into writable controller-owned data", () => {
+    type Values = { nested: { title: string } };
+    const defaults = Object.freeze({
+      nested: Object.freeze({ title: "before" }),
+    }) as unknown as Values;
+    const form = ownedForm(
+      { schema: (value: Values) => value, defaultValues: defaults },
+      noopSubmit,
+    );
+
+    form.values.nested.title = "after";
+    expect(form.values.nested.title).toBe("after");
+    expect(defaults.nested.title).toBe("before");
+
+    const reset = Object.freeze({
+      nested: Object.freeze({ title: "reset" }),
+    }) as unknown as Values;
+    form.reset(reset);
+    form.values.nested.title = "updated";
+    expect(form.values.nested.title).toBe("updated");
+    expect(reset.nested.title).toBe("reset");
+  });
+
+  test("rejects accessor-backed form values without invoking them", () => {
+    let reads = 0;
+    const defaults = Object.defineProperty({}, "title", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "hidden";
+      },
+    }) as { title: string };
+
+    expect(() =>
+      ownedForm(
+        { schema: (value: { title: string }) => value, defaultValues: defaults },
+        noopSubmit,
+      ),
+    ).toThrow("data properties");
+    expect(reads).toBe(0);
+  });
+
   test("submits transformed Valibot output and resets controller-owned values", async () => {
     const schema = v.object({
       title: v.pipe(
@@ -2658,6 +2700,31 @@ describe("compiled DOM runtime", () => {
       expect(localTarget.textContent).toBe("Cross realm");
       owner.dispose();
       expect(localTarget.textContent).toBe("");
+    } finally {
+      foreignWindow.close();
+    }
+  });
+
+  test("hydrates and disposes a target from another DOM realm", async () => {
+    const definition = template('<p data-sol-e="0">Hydrated</p>', "tcrossrealm", {
+      elements: ["p"],
+      regionCount: 0,
+      propertyValueElements: [],
+    });
+    const App = component((_props, frame) => {
+      const view = instantiate(definition, frame);
+      return block(view.fragment);
+    });
+    const foreignWindow = new Window();
+    try {
+      const target = foreignWindow.document.body as unknown as Element;
+      target.innerHTML = await renderToStringAsync(App);
+      const paragraph = target.querySelector("p");
+
+      const dispose = await hydrate(App, target);
+      expect(target.querySelector("p") === paragraph).toBe(true);
+      dispose();
+      expect(target.querySelector("p")).toBeNull();
     } finally {
       foreignWindow.close();
     }

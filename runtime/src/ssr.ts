@@ -91,7 +91,20 @@ export async function renderToStringAsync<Props extends object>(
   let result: string;
   try {
     const preparation = prepareServerRender(frame);
-    if (isPromiseLike(preparation)) await preparation;
+    if (isPromiseLike(preparation)) {
+      let preparationTimer: ReturnType<typeof setTimeout> | undefined;
+      const preparationTimeout = new Promise<never>((_, reject) => {
+        preparationTimer = setTimeout(
+          () => reject(new Error(`Sol server rendering timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      });
+      try {
+        await Promise.race([Promise.resolve(preparation), preparationTimeout]);
+      } finally {
+        if (preparationTimer) clearTimeout(preparationTimer);
+      }
+    }
     rendered = resolvedBlock(getFactory(candidate)(initialProps, frame), frame);
     mountServerBlock(rendered, root);
     await session.wait(timeoutMs);

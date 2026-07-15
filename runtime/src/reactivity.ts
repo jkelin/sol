@@ -64,11 +64,23 @@ export function runCleanups(cleanups: readonly Cleanup[]): void {
 }
 
 export function rethrowWithCleanups(error: unknown, cleanups: readonly Cleanup[]): never {
+  return rethrowWithDisposals(
+    error,
+    [() => runCleanups(cleanups)],
+    "Render and cleanup both failed",
+  );
+}
+
+export function rethrowWithDisposals(
+  error: unknown,
+  disposals: readonly Cleanup[],
+  message: string,
+): never {
   try {
-    runCleanups(cleanups);
-  } catch (cleanupError) {
+    runDisposals(disposals);
+  } catch (disposalError) {
     // oxlint-disable-next-line preserve-caught-error -- AggregateError retains both failures and sets the primary cause.
-    throw new AggregateError([error, cleanupError], "Render and cleanup both failed", {
+    throw new AggregateError([error, disposalError], message, {
       cause: error,
     });
   }
@@ -308,11 +320,12 @@ export function reactive<T extends object>(target: T): T {
             : [];
           triggerMany(object, ["length", ...removed]);
         } else {
-          trigger(object, key);
-        }
-        if (!wasPresent) trigger(object, ITERATE);
-        if (Array.isArray(object) && key !== "length" && object.length !== oldLength) {
-          trigger(object, "length");
+          const affected: PropertyKey[] = [key];
+          if (!wasPresent) affected.push(ITERATE);
+          if (Array.isArray(object) && key !== "length" && object.length !== oldLength) {
+            affected.push("length");
+          }
+          triggerMany(object, affected);
         }
       }
       return changed;
@@ -321,8 +334,7 @@ export function reactive<T extends object>(target: T): T {
       const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
       const deleted = Reflect.deleteProperty(object, key);
       if (deleted && wasPresent) {
-        trigger(object, key);
-        trigger(object, ITERATE);
+        triggerMany(object, [key, ITERATE]);
       }
       return deleted;
     },

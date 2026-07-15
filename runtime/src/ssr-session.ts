@@ -66,10 +66,6 @@ export class SsrSession {
   private completion = deferred();
   private failed = false;
   private failure: unknown;
-  private readonly boundaryEntries = new Map<
-    number,
-    Array<{ site: string; status: "pending" | "fulfilled" | "rejected"; value?: unknown }>
-  >();
   private readonly boundaryControls = new Map<
     number,
     {
@@ -109,11 +105,6 @@ export class SsrSession {
       status: "pending",
     };
     this.async.push(entry as AsyncEntry);
-    if (boundary !== undefined) {
-      const entries = this.boundaryEntries.get(boundary) ?? [];
-      entries.push(entry);
-      this.boundaryEntries.set(boundary, entries);
-    }
     let result: T | PromiseLike<T>;
     try {
       result = thunk();

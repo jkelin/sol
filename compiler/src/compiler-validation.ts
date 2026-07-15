@@ -26,7 +26,7 @@ export function validateCompiledModule(state: CompilationState): boolean {
           "$component() is only valid as a direct top-level const initializer",
         );
       }
-      const declarationHelper = declarationCallHelper(compiler, path.node.callee);
+      const declarationHelper = declarationCallHelper(compiler, path.node);
       if (declarationHelper === "$route") {
         if (routeCallRanges.has(`${path.node.start}:${path.node.end}`)) return;
         codeFrame(

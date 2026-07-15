@@ -50,9 +50,19 @@ export interface CompilerContext {
   builtinElements: WeakMap<t.JSXElement, BuiltinKind>;
   linkImports: Set<t.Identifier>;
   linkElements: WeakSet<t.JSXElement>;
-  refCreatorNames: Set<string>;
-  declarationHelperNames: Map<string, "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute">;
-  declarationHelperNamespaces: Set<string>;
+  reactiveHelperImports: Map<t.Identifier, "signal" | "computed">;
+  reactiveHelperCalls: WeakMap<t.CallExpression, "signal" | "computed">;
+  refCreatorImports: Set<t.Identifier>;
+  refCreatorCalls: WeakSet<t.CallExpression>;
+  declarationHelperImports: Map<
+    t.Identifier,
+    "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute"
+  >;
+  declarationHelperCalls: WeakMap<
+    t.CallExpression,
+    "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute"
+  >;
+  declarationHelperNamespaceImports: Set<t.Identifier>;
   requestHelpers: Map<string, "$query" | "$mutation">;
   propsName?: string;
   mappingMarkerPrefix: string;

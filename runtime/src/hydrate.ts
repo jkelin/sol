@@ -1,6 +1,6 @@
 import type { Component } from "./components.ts";
 import { headHydrationClaims, rootHydrationClaim } from "./hydration-rendering.ts";
-import { isObject, isPromiseLike, reactive } from "./reactivity.ts";
+import { isObject, isPromiseLike, reactive, rethrowWithDisposals } from "./reactivity.ts";
 import {
   activateMounts,
   getFactory,
@@ -137,7 +137,11 @@ export async function hydrate<Props extends object>(
       rendered?.dispose();
     };
   } catch (error) {
-    rendered?.dispose();
-    throw error;
+    const failedRender = rendered;
+    return rethrowWithDisposals(
+      error,
+      failedRender ? [() => failedRender.dispose()] : [],
+      "Hydration and teardown both failed",
+    );
   }
 }

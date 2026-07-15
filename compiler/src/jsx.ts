@@ -632,7 +632,10 @@ export function compileIntrinsicElement(
       sourceName === "class" || sourceName === "className" || sourceName === "classNames";
     const name = isClass ? "class" : sourceName === "htmlFor" ? "for" : sourceName;
     const staticValue = staticAttributeValue(compiler, attribute);
-    if (staticValue === true) attributes.push(name);
+    const stringBoolean = name.startsWith("aria-") || name.startsWith("data-");
+    if (typeof staticValue === "boolean" && stringBoolean) {
+      attributes.push(`${name}="${String(staticValue)}"`);
+    } else if (staticValue === true) attributes.push(name);
     else if (typeof staticValue === "string")
       attributes.push(`${name}="${escapeAttribute(staticValue)}"`);
     else if (staticValue === false) continue;
@@ -936,13 +939,24 @@ export function compileBlockBody(
     elementIds: new WeakMap(),
   };
   compileNode(compiler, root, context, bindings, scope);
-  const templateIndex =
-    compiler.templates.push({
-      html: context.html.join(""),
-      elementTags: context.elementTags,
-      regionCount: context.nextRegion,
-      operations: context.operations,
-    }) - 1;
+  const compiledTemplate = {
+    html: context.html.join(""),
+    elementTags: context.elementTags,
+    regionCount: context.nextRegion,
+    operations: context.operations,
+  };
+  let templateIndex = compiler.templates.findIndex(
+    (template) =>
+      template.html === compiledTemplate.html &&
+      template.regionCount === compiledTemplate.regionCount &&
+      template.elementTags.length === compiledTemplate.elementTags.length &&
+      template.elementTags.every((tag, index) => tag === compiledTemplate.elementTags[index]) &&
+      template.operations.length === compiledTemplate.operations.length &&
+      template.operations.every(
+        (operation, index) => operation === compiledTemplate.operations[index],
+      ),
+  );
+  if (templateIndex < 0) templateIndex = compiler.templates.push(compiledTemplate) - 1;
   if (context.operations.length === 0) {
     return `
       const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);

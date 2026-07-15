@@ -22,15 +22,18 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `devtools.ts` installs the development global, WebMCP tools, element picker, and isolated in-app diagnostics panel.
 - `symbols.ts` owns the private brands shared by compiled components, contexts, and routes.
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
-- `reactivity.ts` implements signals, computed values, effects, batching, proxies, render ownership state, and failure-isolated reverse cleanup.
-- `forms.ts` implements form controllers, validation normalization, and submission state.
+- `reactivity.ts` implements signals, computed values, effects, batching, deduplicated proxy
+  invalidation, render ownership state, and primary-failure-preserving teardown.
+- `forms.ts` implements form controllers, descriptor-safe value cloning, validation normalization,
+  and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
   polling, eviction, Suspense participation, request-isolated server caches, hydration replay, and
   compiler-authored diagnostic source attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
 - `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, server
   render preparation, render adapters, head-scoped executable script instantiation, and error propagation.
-- `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR.
+- `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
+  including dynamic form-control serialization.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
@@ -40,7 +43,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
-- `routes.ts` implements typed route matching, parsing, URL generation, and route handles.
+- `routes.ts` implements typed route matching, safe parsed-value validation, URL generation, and route handles.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned document-head mounting and reactive raw text.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
@@ -55,7 +58,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 
 ## How it works
 
-The compiler turns JSX into signed static templates, compact element/region/value metadata, and calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Sol markers, and creates owned blocks. Block mount phases attach refs before resolving portals, and remote portal blocks delegate enter, leave, and disposal to their source owner. Teardown runs every owned cleanup and structural removal before reporting callback failures. Server rendering uses template metadata directly; tag-aware binding serialization emits browser-correct initial state for inputs, textareas, and selects, escapes raw-text closing tags, renders dynamic slots in bounded passes, validates refs without attaching, and omits browser-owned portal children. Hydration attaches refs to claimed elements before mounting portal children as fresh browser DOM; after the claim commits, those blocks use the same enter/leave transitions and retirement path as freshly mounted blocks. `reactivity.ts` tracks the effects that read signals, including array truncation and key iteration, so writes schedule only dependent DOM operations. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, queries, and route changes dispose the correct work. `queries.ts` keeps shared browser cache entries behind serialized JSON keys while each mounted observer owns its polling and Suspense lifecycle; SSR entries are isolated by render session, survive transient component disposal, and are discarded at the request render boundary. `router.ts` supplies route state through an internal adapter and one browser-lifetime popstate, hashchange, and link subscription while keeping route handles independent of browser globals.
+The compiler turns JSX into signed static templates, compact element/region/value metadata, and calls through `compiler-runtime.ts`. At mount time, `rendering.ts` clones those templates, locates Sol markers, and creates owned blocks. Block mount phases attach refs before resolving portals, and remote portal blocks delegate enter, leave, and disposal to their source owner. Teardown runs every owned cleanup and structural removal before reporting callback failures while preserving the primary mount, transition, or render error. Server rendering uses template metadata directly; tag-aware binding serialization emits browser-correct initial state for inputs, textareas, and selects, including dynamic option values, escapes raw-text closing tags, renders dynamic slots in bounded passes, validates refs without attaching, and omits browser-owned portal children. Hydration attaches refs to claimed elements before mounting portal children as fresh browser DOM; after the claim commits, those blocks use the same enter/leave transitions and retirement path as freshly mounted blocks. `reactivity.ts` tracks the effects that read signals, including array truncation and key iteration, so writes schedule only dependent DOM operations and combined invalidations flush once. Blocks own their effects and child blocks, letting `dom.ts`, `async.ts`, transitions, queries, and route changes dispose the correct work. `queries.ts` keeps shared browser cache entries behind serialized JSON keys while each mounted observer owns its polling and Suspense lifecycle; SSR entries are isolated by render session, survive transient component disposal, and are discarded at the request render boundary. `router.ts` supplies route state through an internal adapter and one browser-lifetime popstate, hashchange, and link subscription while keeping route handles independent of browser globals.
 
 The `sol/devtools` entry installs `globalThis.__sol` and a Shadow DOM panel. Compiler-emitted
 component source metadata is joined into an ownership tree with runtime-owned nodes, async component

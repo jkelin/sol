@@ -31,7 +31,6 @@ function transitionClasses(value: unknown, phase: TransitionPhase): string[] | u
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
-    !Object.isExtensible(value) ||
     ![Object.prototype, null].includes(Object.getPrototypeOf(value) as object | null)
   ) {
     throw new TypeError("$transition expects an object with enter and/or leave class names");

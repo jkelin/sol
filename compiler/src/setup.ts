@@ -219,11 +219,7 @@ export function compileSetup(
         declarationKinds.set(declaration, "function");
         continue;
       }
-      if (
-        t.isCallExpression(initializer) &&
-        t.isIdentifier(initializer.callee) &&
-        compiler.refCreatorNames.has(initializer.callee.name)
-      ) {
+      if (t.isCallExpression(initializer) && compiler.refCreatorCalls.has(initializer)) {
         declarationKinds.set(declaration, "stable");
         continue;
       }
@@ -250,9 +246,9 @@ export function compileSetup(
           );
         }
       }
-      const kind: ReactiveKind = isHelperCall(initializer, "$computed")
+      const kind: ReactiveKind = isHelperCall(compiler, initializer, "$computed")
         ? "computed"
-        : isHelperCall(initializer, "$signal")
+        : isHelperCall(compiler, initializer, "$signal")
           ? "signal"
           : t.isAwaitExpression(initializer)
             ? "signal"
@@ -263,7 +259,7 @@ export function compileSetup(
               : "signal";
       declarationKinds.set(declaration, kind);
       bindings.set(declaration.id.name, kind);
-      if (kind === "computed" && initializer && !isHelperCall(initializer, "$computed")) {
+      if (kind === "computed" && initializer && !isHelperCall(compiler, initializer, "$computed")) {
         validateDerivedInitializer(compiler, initializer);
       }
     }
@@ -303,7 +299,7 @@ export function compileSetup(
         declaration.init && t.isExpression(declaration.init)
           ? declaration.init
           : t.identifier("undefined");
-      if (kind === "signal" && isHelperCall(initializer, "$signal")) {
+      if (kind === "signal" && isHelperCall(compiler, initializer, "$signal")) {
         generated.push(
           mappedCode(
             compiler,
@@ -311,7 +307,7 @@ export function compileSetup(
             `const ${identifier.name} = ${reactiveCallCode(initializer, "__sol_signal", scope)};`,
           ),
         );
-      } else if (kind === "computed" && isHelperCall(initializer, "$computed")) {
+      } else if (kind === "computed" && isHelperCall(compiler, initializer, "$computed")) {
         generated.push(
           mappedCode(
             compiler,

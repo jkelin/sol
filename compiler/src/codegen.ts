@@ -150,10 +150,13 @@ export function validateReservedIdentifier(
 }
 
 export function isHelperCall(
+  compiler: CompilerContext,
   expression: t.Expression | null | undefined,
   name: "$signal" | "$computed",
 ): expression is t.CallExpression {
-  return t.isCallExpression(expression) && t.isIdentifier(expression.callee, { name });
+  return (
+    t.isCallExpression(expression) && compiler.reactiveHelperCalls.get(expression) === name.slice(1)
+  );
 }
 
 export function referencesReactive(

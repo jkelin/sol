@@ -77,6 +77,7 @@ function elementSlot(index: number): string {
 
 function prepareElementSlots(html: string, elements: ServerElement[]): string {
   const found = new Set<number>();
+  const markerPattern = /data-sol-e="(\d+)"(?=\s|\/?>)/y;
   let result = "";
   let cursor = 0;
   let inTag = false;
@@ -100,7 +101,8 @@ function prepareElementSlots(html: string, elements: ServerElement[]): string {
       continue;
     }
     if (!/\s/.test(html[index - 1] ?? "")) continue;
-    const match = /^data-sol-e="(\d+)"(?=\s|\/?>)/.exec(html.slice(index));
+    markerPattern.lastIndex = index;
+    const match = markerPattern.exec(html);
     if (!match) continue;
     const elementIndex = Number(match[1]);
     if (!elements[elementIndex] || found.has(elementIndex)) {
@@ -153,7 +155,16 @@ function decodeHtml(value: string): string {
   );
 }
 
-function optionValue(attributes: string, content: string): string {
+function optionValue(
+  attributes: string,
+  content: string,
+  elements: readonly ServerElement[],
+): string {
+  const slot = /\x00sol:element:(\d+)\x00/.exec(attributes);
+  if (slot) {
+    const value = elements[Number(slot[1])]?.attributes.get("value");
+    if (typeof value === "string") return value;
+  }
   const match = /\svalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
   if (match) return decodeHtml(match[1] ?? match[2] ?? match[3] ?? "");
   const text = decodeHtml(content.replaceAll(/<!--[\s\S]*?-->|<[^>]*>/g, ""));
@@ -173,7 +184,11 @@ function renderedAttributeSlot(element: ServerElement): string {
   return `${dynamic ? `${dynamic} ` : ""}${marker}`;
 }
 
-function renderSpecialElementContent(element: ServerElement, content: string): string {
+function renderSpecialElementContent(
+  element: ServerElement,
+  content: string,
+  elements: readonly ServerElement[],
+): string {
   if (element.tag === "textarea") {
     const value = element.attributes.get("value");
     if (typeof value === "string") return escapeText(value);
@@ -192,7 +207,8 @@ function renderSpecialElementContent(element: ServerElement, content: string): s
         /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
         "",
       );
-      const selected = optionValue(withoutSelected, optionContent) === value ? " selected" : "";
+      const selected =
+        optionValue(withoutSelected, optionContent, elements) === value ? " selected" : "";
       return `<option${withoutSelected}${selected}>${optionContent}</option>`;
     },
   );
@@ -252,7 +268,7 @@ export function serverBlock(fragment: ServerFragment, cleanups: (() => void)[] =
         if (!element || element.tag !== tag.toLowerCase()) {
           throw new Error(`Invalid server element metadata ${serializedIndex}`);
         }
-        return `<${tag}${attributes}>${renderSpecialElementContent(element, content)}</${tag}>`;
+        return `<${tag}${attributes}>${renderSpecialElementContent(element, content, fragment.elements)}</${tag}>`;
       },
     );
     html = html.replaceAll(

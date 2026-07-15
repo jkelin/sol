@@ -11,25 +11,9 @@ type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
 
 export function declarationCallHelper(
   compiler: CompilationState["compiler"],
-  callee: t.Expression | t.V8IntrinsicIdentifier,
+  call: t.CallExpression,
 ): DeclarationHelper | undefined {
-  if (t.isIdentifier(callee)) return compiler.declarationHelperNames.get(callee.name);
-  if (
-    t.isMemberExpression(callee) &&
-    t.isIdentifier(callee.object) &&
-    compiler.declarationHelperNamespaces.has(callee.object.name)
-  ) {
-    const property =
-      !callee.computed && t.isIdentifier(callee.property)
-        ? callee.property.name
-        : callee.computed && t.isStringLiteral(callee.property)
-          ? callee.property.value
-          : undefined;
-    return property && ["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"].includes(property)
-      ? (property as DeclarationHelper)
-      : undefined;
-  }
-  return undefined;
+  return compiler.declarationHelperCalls.get(call);
 }
 
 function exportedLocalNames(ast: t.File): Set<string> {
@@ -96,7 +80,7 @@ export function compileRouteDeclarations(state: CompilationState): void {
     const routeVariables = declaration.declarations.filter(
       (variable) =>
         t.isCallExpression(variable.init) &&
-        declarationCallHelper(compiler, variable.init.callee) === "$route",
+        declarationCallHelper(compiler, variable.init) === "$route",
     );
     if (routeVariables.length === 0) continue;
     const variable = routeVariables[0]!;
@@ -195,13 +179,13 @@ export function compileServerDeclarations(state: CompilationState): void {
     const variables = declaration.declarations.filter(
       (variable) =>
         t.isCallExpression(variable.init) &&
-        declarationCallHelper(compiler, variable.init.callee) !== undefined &&
-        declarationCallHelper(compiler, variable.init.callee) !== "$route",
+        declarationCallHelper(compiler, variable.init) !== undefined &&
+        declarationCallHelper(compiler, variable.init) !== "$route",
     );
     if (variables.length === 0) continue;
     const variable = variables[0]!;
     const call = variable.init as t.CallExpression;
-    const helper = declarationCallHelper(compiler, call.callee)!;
+    const helper = declarationCallHelper(compiler, call)!;
     if (!isSolFilename(compiler.filename)) {
       codeFrame(compiler, variable, `${helper}() is only valid in *.sol.ts or *.sol.tsx files`);
     }

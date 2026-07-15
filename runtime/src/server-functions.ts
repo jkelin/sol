@@ -136,12 +136,23 @@ function serializeJson(value: unknown, label: string): string {
     }
     if (Array.isArray(item)) {
       for (let index = 0; index < item.length; index += 1) {
-        if (!Object.prototype.hasOwnProperty.call(item, index)) {
+        const descriptor = Object.getOwnPropertyDescriptor(item, String(index));
+        if (!descriptor) {
           throw new TypeError(`${label} must not contain sparse arrays`);
         }
-        visit(item[index]);
+        if (!("value" in descriptor)) {
+          throw new TypeError(`${label} must not contain accessor properties`);
+        }
+        if (!descriptor.enumerable) {
+          throw new TypeError(`${label} arrays must contain enumerable indexed values`);
+        }
+        visit(descriptor.value);
       }
-      if (Object.keys(item).some((key) => !/^\d+$/.test(key))) {
+      if (
+        keys.some(
+          (key) => typeof key === "string" && key !== "length" && !/^(0|[1-9]\d*)$/.test(key),
+        )
+      ) {
         throw new TypeError(`${label} arrays must not contain custom properties`);
       }
     } else {

@@ -139,8 +139,16 @@ function validateRouteValues(
   if (!isObject(values) || Array.isArray(values)) {
     throw new TypeError("Route schema output must be an object");
   }
-  const paramKeys = Object.keys(values);
-  const missing = pathnameParameterNames.find((name) => !(name in values));
+  const prototype = Object.getPrototypeOf(values);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError("Route schema output must be a plain object");
+  }
+  const ownKeys = Reflect.ownKeys(values);
+  if (ownKeys.some((key) => typeof key === "symbol")) {
+    throw new TypeError("Route schema output must not contain symbol properties");
+  }
+  const paramKeys = ownKeys as string[];
+  const missing = pathnameParameterNames.find((name) => !Object.hasOwn(values, name));
   if (missing) throw new TypeError(`Route schema output is missing parameter ${missing}`);
   const unexpected = paramKeys.find((name) => !parameterNames.includes(name));
   if (unexpected)
@@ -218,7 +226,15 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   if (!isObject(destination) || Array.isArray(destination)) {
     throw new TypeError("Route destination must be an object");
   }
-  const unexpectedSection = Object.keys(destination).find((name) => name !== "params");
+  const destinationPrototype = Object.getPrototypeOf(destination);
+  if (destinationPrototype !== Object.prototype && destinationPrototype !== null) {
+    throw new TypeError("Route destination must be a plain object");
+  }
+  const destinationKeys = Reflect.ownKeys(destination);
+  if (destinationKeys.some((key) => typeof key === "symbol")) {
+    throw new TypeError("Route destination must not contain symbol properties");
+  }
+  const unexpectedSection = (destinationKeys as string[]).find((name) => name !== "params");
   if (unexpectedSection) {
     throw new TypeError(`Route destination contains unknown property ${unexpectedSection}`);
   }
@@ -229,6 +245,15 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   }
   if (hasParams && (!isObject(params) || Array.isArray(params))) {
     throw new TypeError("Route destination params must be an object");
+  }
+  if (isObject(params) && !Array.isArray(params)) {
+    const prototype = Object.getPrototypeOf(params);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError("Route destination params must be a plain object");
+    }
+    if (Reflect.ownKeys(params).some((key) => typeof key === "symbol")) {
+      throw new TypeError("Route destination params must not contain symbol properties");
+    }
   }
   if (!hasParams && params !== undefined) {
     if (!isObject(params) || Array.isArray(params) || Object.keys(params).length > 0) {
@@ -247,7 +272,8 @@ export function routeHref<Path extends string, Values extends RouteValues>(
     .map((segment) => {
       if (!segment.startsWith(":")) return encodeURIComponent(decodeURIComponent(segment));
       const name = segment.slice(1);
-      if (!(name in candidateParams)) throw new TypeError(`Missing route parameter ${name}`);
+      if (!Object.hasOwn(candidateParams, name))
+        throw new TypeError(`Missing route parameter ${name}`);
       const value = candidateParams[name];
       if (typeof value !== "string" && typeof value !== "number") {
         throw new TypeError(`Route parameter ${name} must be a string or number`);

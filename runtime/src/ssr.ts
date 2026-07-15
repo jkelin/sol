@@ -24,6 +24,7 @@ export const DEFAULT_SSR_TIMEOUT = 5_000;
 
 function finalTemplateOrder(markup: string): string[] {
   const signatures: string[] = [];
+  const lowercaseMarkup = markup.toLowerCase();
   const rawTextElements = new Set(["script", "style", "textarea", "title"]);
   let offset = 0;
   while (offset < markup.length) {
@@ -57,7 +58,7 @@ function finalTemplateOrder(markup: string): string[] {
       rawTextElements.has(tag) &&
       !markup.slice(opening, closing).trimEnd().endsWith("/")
     ) {
-      const rawClosing = markup.toLowerCase().indexOf(`</${tag}`, closing + 1);
+      const rawClosing = lowercaseMarkup.indexOf(`</${tag}`, closing + 1);
       if (rawClosing < 0) break;
       const rawClosingEnd = markup.indexOf(">", rawClosing + tag.length + 2);
       if (rawClosingEnd < 0) break;

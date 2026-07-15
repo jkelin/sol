@@ -49,6 +49,38 @@ describe("server declarations", () => {
     expect(invoked).toBe(true);
   });
 
+  test("rejects array accessors and every custom array property without invoking them", async () => {
+    let accessorCalls = 0;
+    const accessor = [] as unknown[];
+    Object.defineProperty(accessor, "0", {
+      enumerable: true,
+      get() {
+        accessorCalls += 1;
+        return "secret";
+      },
+    });
+    const accessorQuery = rpcQueryServer(
+      "accessor-result",
+      { schema: (args: readonly []) => args as [] },
+      async () => accessor,
+    );
+    const accessorFailure = await Promise.resolve(accessorQuery()).catch((error: unknown) => error);
+    expect(accessorFailure).toBeInstanceOf(TypeError);
+    expect((accessorFailure as Error).message).toContain("accessor");
+    expect(accessorCalls).toBe(0);
+
+    const custom = ["kept"] as unknown[];
+    Object.defineProperty(custom, "01", { enumerable: true, value: "dropped" });
+    const customQuery = rpcQueryServer(
+      "custom-result",
+      { schema: (args: readonly []) => args as [] },
+      async () => custom,
+    );
+    const customFailure = await Promise.resolve(customQuery()).catch((error: unknown) => error);
+    expect(customFailure).toBeInstanceOf(TypeError);
+    expect((customFailure as Error).message).toContain("custom properties");
+  });
+
   test("dispatches query and mutation POST requests with JSON values", async () => {
     const query = rpcQueryServer(
       "when",

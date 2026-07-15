@@ -21,7 +21,8 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 - `types.ts` defines the compilation result shared by callers and the implementation.
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures.
-- `module-analysis.ts` validates bindings and classifies framework, builtin, Head, Link, and component imports.
+- `module-analysis.ts` validates bindings and classifies framework helpers, declarations, builtins,
+  Head, Link, refs, and components by lexical binding identity.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
   selecting direct server definitions or browser stubs and pruning imports, declarators,
   assignments, effect statements, attached comments, and exported dependency closures used only
@@ -37,7 +38,8 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
 - `codegen.ts` owns identifier rewriting and reusable Babel-to-code helpers.
-- `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists, conditionals, and child expressions into templates and runtime operations.
+- `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
+  conditionals, and child expressions into interned templates and runtime operations.
 - `setup.ts` analyzes component setup and rewrites local state, derived values, props, frame-explicit context reads, and component factories while preserving `createRef()` objects as non-reactive handles and attaching authored locations to query/mutation diagnostics.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
 - `runtime-import.ts` resolves referenced compiler-runtime identifiers from generated syntax and emits one minimal import; output adds
@@ -54,6 +56,8 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 
 Compilation parses the source with Babel, then `compile.ts` passes shared state through binding-aware module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Static templates omit cleanup and lifecycle scaffolding. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. Context-compatible `use()` calls are routed through the runtime's non-observable context registry so direct, imported, aliased, and prop-supplied contexts receive the render frame across async continuations while ordinary methods retain their authored behavior. Await expressions are wrapped in lazy, module-qualified replay sites, including promise initializers later consumed by an await and awaits in lexically resolved local helper chains. Await ancestry stops at function boundaries, and helper capture is propagated per invocation, so an awaited call is replayable even when another call to the same helper is fire-and-forget. Redundant aggregate capture is omitted when `Promise.all` inputs already own replay sites. `Await` receives its own site, and Suspense forwards its validated server timeout. Generated component factories carry component names and authored file/line metadata for development introspection. Generated templates carry deterministic signatures plus the element tags, region count, and value-sensitive element indexes needed by SSR and hydration; full operation identities remain compiler-private signature inputs. They receive the active render frame so the same compiled operations can target a cloned DOM, server strings, or hydration claims. The output phase applies edits with `magic-string`, injects only referenced runtime helpers and signed templates, removes source-absent private mapping sentinels in one pass, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
 
-Compiler diagnostics are part of the module interface: keep their validation and authored source locations intact when reorganizing internals.
+Reactive helpers and declaration macros are recognized by lexical binding identity, imported aliases
+included; identical compiled templates are interned within a module. Compiler diagnostics are part
+of the module interface: keep their validation and authored source locations intact when reorganizing internals.
 
 The compiler treats a binding-resolved `Head` import as a child-bearing builtin with no properties. Its children become an owned block mounted by the runtime into `document.head` before older managed and static content, leaving no body wrapper. Empty Head blocks emit no operation. `title`, `style`, `script`, and `textarea` use a raw-text operation instead of comment regions so mixed static and reactive content updates through `textContent`; nested JSX is rejected with an authored diagnostic.

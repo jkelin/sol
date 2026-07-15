@@ -153,6 +153,36 @@ describe("forms", () => {
     ).toThrow("validationStrategy");
   });
 
+  test("preserves prototype-named fields and validation paths", async () => {
+    const defaults = { constructor: "ctor" } as Record<string, string>;
+    Object.defineProperty(defaults, "__proto__", {
+      configurable: true,
+      enumerable: true,
+      value: "proto",
+      writable: true,
+    });
+    const form = $form(
+      {
+        defaultValues: defaults,
+        schema: () => {
+          throw {
+            issues: [
+              { path: ["__proto__"], message: "Proto issue" },
+              { path: ["constructor"], message: "Constructor issue" },
+            ],
+          };
+        },
+      },
+      noopSubmit,
+    );
+
+    expect(Object.hasOwn(form.values, "__proto__")).toBe(true);
+    expect(form.values.__proto__).toBe("proto");
+    expect(await form.submit()).toBe(false);
+    expect(form.errors.__proto__).toEqual(["Proto issue"]);
+    expect(form.errors["constructor"]).toEqual(["Constructor issue"]);
+  });
+
   test("submits transformed Valibot output and resets controller-owned values", async () => {
     const schema = v.object({
       title: v.pipe(
@@ -383,6 +413,38 @@ describe("transitions", () => {
     otherFragment.append(other);
     transition(other, () => ({ leave: "" }));
     expect(() => block(otherFragment).leave()).toThrow("non-empty class name string");
+  });
+
+  test("accepts frozen and sealed transition definitions", () => {
+    for (const definition of [Object.freeze({ leave: "fade" }), Object.seal({ leave: "fade" })]) {
+      const element = document.createElement("div");
+      const fragment = document.createDocumentFragment();
+      fragment.append(element);
+      transition(element, () => definition);
+      const rendered = block(fragment);
+      const target = document.createElement("main");
+      rendered.mount(target);
+
+      expect(rendered.retire()).toBeUndefined();
+      expect(target.childNodes).toHaveLength(0);
+    }
+  });
+
+  test("finishes retirement when a transition getter throws", () => {
+    const element = document.createElement("div");
+    const fragment = document.createDocumentFragment();
+    fragment.append(element);
+    transition(element, () => {
+      throw new Error("transition failed");
+    });
+    let cleanups = 0;
+    const rendered = block(fragment, [() => (cleanups += 1)]);
+    const target = document.createElement("main");
+    rendered.mount(target);
+
+    expect(() => rendered.retire()).toThrow("transition failed");
+    expect(cleanups).toBe(1);
+    expect(target.childNodes).toHaveLength(0);
   });
 
   test("runs descendant animations together and retires after every leave finishes", async () => {
@@ -737,6 +799,33 @@ describe("reactivity", () => {
     expect(keys).toEqual(["first,second", "second"]);
   });
 
+  test("flushes combined property, iteration, and length dependencies once", () => {
+    const object = $signal<Record<string, number>>({});
+    let objectRuns = 0;
+    runtimeEffect(() => {
+      objectRuns += 1;
+      void object.value.added;
+      Object.keys(object.value);
+    });
+
+    object.value.added = 1;
+    delete object.value.added;
+    expect(objectRuns).toBe(3);
+
+    const array = $signal<number[]>([]);
+    let arrayRuns = 0;
+    runtimeEffect(() => {
+      arrayRuns += 1;
+      void array.value[0];
+      void array.value.length;
+      Object.keys(array.value);
+    });
+
+    array.value[0] = 1;
+    Reflect.deleteProperty(array.value, "0");
+    expect(arrayRuns).toBe(3);
+  });
+
   test("cleans stale conditional dependencies", () => {
     const useLeft = $signal(true);
     const left = $signal("left");
@@ -912,6 +1001,22 @@ describe("compiled DOM runtime", () => {
       specificity: [1, 1],
     });
     expect(routeHref(unicode, {})).toBe("/cafe%20au%20lait/Cr%C3%A8me");
+
+    const inherited = Object.create({ id: "42" }) as { id: string };
+    const inheritedRoute = route({ path: "/item/:id", schema: () => inherited }, Empty, {
+      pattern: "^/item/([^/]+)$",
+      parameterNames: ["id"],
+      pathnameParameterNames: ["id"],
+      queryParameters: [],
+      specificity: [1, 0],
+    });
+    expect(() => resolveRoute(inheritedRoute, { id: "42" })).toThrow("plain object");
+    expect(() => routeHref(inheritedRoute, { params: inherited })).toThrow("plain object");
+    expect(() =>
+      routeHref(inheritedRoute, {
+        params: Object.assign({ id: "42" }, { [Symbol("extra")]: true }),
+      }),
+    ).toThrow("symbol");
   });
 
   test("validates routes with Standard Schema implementations", async () => {
@@ -1153,6 +1258,32 @@ describe("compiled DOM runtime", () => {
         "Error: cleanup failed",
       ]);
     }
+  });
+
+  test("preserves a mount failure when teardown also fails", () => {
+    const lifecycle = blockLifecycle();
+    lifecycle.refMounts.push(() => {
+      throw new Error("mount failed");
+    });
+    const rendered = block(
+      document.createDocumentFragment(),
+      [
+        () => {
+          throw new Error("cleanup failed");
+        },
+      ],
+      lifecycle,
+    );
+
+    let failure: unknown;
+    try {
+      rendered.mount(document.createElement("main"));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).cause).toEqual(new Error("mount failed"));
+    expect((failure as AggregateError).errors.map(String)).toContain("Error: cleanup failed");
   });
 
   test("validates mount boundaries", () => {

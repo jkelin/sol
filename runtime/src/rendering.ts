@@ -12,6 +12,7 @@ import {
   isObject,
   isPromiseLike,
   reactive,
+  rethrowWithDisposals,
   runCleanups,
   runDisposals,
   runtimeEffect,
@@ -314,12 +315,11 @@ export function block(
       flushMounts(lifecycle.coordinator);
     } catch (error) {
       disposed = true;
-      runDisposals([
-        cleanup,
-        ...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()),
-        remove,
-      ]);
-      throw error;
+      rethrowWithDisposals(
+        error,
+        [cleanup, ...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove],
+        "Block mount and teardown both failed",
+      );
     }
   };
   const cleanup = (): void => {
@@ -356,20 +356,26 @@ export function block(
     },
     retire() {
       if (disposed) return undefined;
-      const leaving = combinedTransition(runTransitions(nodes(), "leave"), lifecycle.remoteBlocks);
+      let leaving: Promise<void> | undefined;
+      try {
+        leaving = combinedTransition(runTransitions(nodes(), "leave"), lifecycle.remoteBlocks);
+      } catch (error) {
+        disposed = true;
+        rethrowWithDisposals(
+          error,
+          [cleanup, ...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove],
+          "Block transition and teardown both failed",
+        );
+      }
       try {
         cleanup();
       } catch (error) {
         disposed = true;
-        try {
-          runDisposals([...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove]);
-        } catch (disposalError) {
-          // oxlint-disable-next-line preserve-caught-error -- AggregateError retains both failures and sets the primary cause.
-          throw new AggregateError([error, disposalError], "Block retirement failed", {
-            cause: error,
-          });
-        }
-        throw error;
+        rethrowWithDisposals(
+          error,
+          [...lifecycle.remoteBlocks.map((remote) => () => remote.dispose()), remove],
+          "Block retirement failed",
+        );
       }
       if (!leaving) {
         disposed = true;
@@ -614,8 +620,11 @@ function activatedBlock(rendered: Block, frame: RenderFrame): Block {
       try {
         activateMounts(frame);
       } catch (error) {
-        rendered.dispose();
-        throw error;
+        rethrowWithDisposals(
+          error,
+          [() => rendered.dispose()],
+          "Mount activation and teardown both failed",
+        );
       }
     },
     move: (parent, before) => rendered.move(parent, before),
@@ -733,13 +742,18 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
         : Promise.resolve(candidate);
     void promise.then(
       (settled) => {
-        if (disposed) settled.dispose();
-        else {
-          resolved = settled;
-          const currentParent = before?.parentNode ?? parent;
-          if (currentParent) settled.mount(currentParent, before);
+        try {
+          if (disposed) settled.dispose();
+          else {
+            resolved = settled;
+            const currentParent = before?.parentNode ?? parent;
+            if (currentParent) settled.mount(currentParent, before);
+          }
+        } catch (error) {
+          if (!disposed) reportError(frame, error);
+        } finally {
+          finish?.();
         }
-        finish?.();
       },
       (error) => {
         if (!disposed) reportError(frame, error);
@@ -781,13 +795,18 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
   const finish = frame.suspense?.begin();
   Promise.resolve(candidate).then(
     (settledBlock) => {
-      if (disposed) {
-        settledBlock.dispose();
-      } else {
-        resolved = settledBlock;
-        settledBlock.mount(marker.parentNode!, marker);
+      try {
+        if (disposed) {
+          settledBlock.dispose();
+        } else {
+          resolved = settledBlock;
+          settledBlock.mount(marker.parentNode!, marker);
+        }
+      } catch (error) {
+        if (!disposed) reportError(frame, error);
+      } finally {
+        finish?.();
       }
-      finish?.();
     },
     (error) => {
       if (!disposed) reportError(frame, error);

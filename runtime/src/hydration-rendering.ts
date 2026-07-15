@@ -1,6 +1,6 @@
 import type { Block, BlockLifecycle, Region, RenderView, TemplateDefinition } from "./rendering.ts";
 import { HydrationMismatchError, type HydrationSession } from "./ssr-session.ts";
-import { runCleanups, runDisposals, runtimeEffect } from "./reactivity.ts";
+import { rethrowWithDisposals, runCleanups, runDisposals, runtimeEffect } from "./reactivity.ts";
 import { cancelTransitions, runTransitions } from "./transitions.ts";
 
 export interface HydrationClaim {
@@ -366,7 +366,17 @@ export function hydratedBlock(
         }
         throw error;
       }
-      const leaving = leave();
+      let leaving: Promise<void> | undefined;
+      try {
+        leaving = leave();
+      } catch (error) {
+        disposed = true;
+        rethrowWithDisposals(
+          error,
+          [...(lifecycle?.remoteBlocks ?? []).map((remote) => () => remote.dispose()), remove],
+          "Hydrated transition and teardown both failed",
+        );
+      }
       if (!leaving) {
         disposed = true;
         runDisposals([

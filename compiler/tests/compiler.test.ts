@@ -95,6 +95,63 @@ describe("compiler", () => {
     expect(compile(source, "ordinary.ts").code).toBe(source);
   });
 
+  test("resolves reactive and ref helpers by lexical binding", () => {
+    const result = compile(
+      `import { $component, $signal as state, $computed as derive, createRef as makeRef } from "sol";
+       export const App = $component(function App() {
+         const count = state(1);
+         const doubled = derive(() => count * 2);
+         const reference = makeRef<HTMLDivElement>();
+         const locallyWrapped = (() => { const state = (value: number) => value; return state(3); })();
+         const shadowedRef = (() => { const makeRef = () => 4; return makeRef(); })();
+         return <div ref={reference}>{doubled + locallyWrapped + shadowedRef}</div>;
+       });`,
+      "helpers.tsx",
+    );
+
+    expect(result.code).toContain("const count = __sol_signal(1)");
+    expect(result.code).toContain("const doubled = __sol_computed(() => count.value * 2");
+    expect(result.code).toContain("const reference = makeRef<HTMLDivElement>();");
+    expect(result.code).toContain("const locallyWrapped = __sol_signal");
+    expect(result.code).toContain("const shadowedRef = __sol_signal");
+  });
+
+  test("ignores lexically shadowed declaration helper names", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       export const App = $component(function App() { return <p>Ready</p>; });
+       export function invoke($route: () => string) { return $route(); }`,
+      "shadowed-route.sol.tsx",
+    );
+
+    expect(result.code).toContain("return $route();");
+  });
+
+  test("serializes static aria and data booleans as strings", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       export const App = $component(function App() {
+         return <div aria-hidden={false} data-on={true}>Ready</div>;
+       });`,
+      "attributes.tsx",
+    );
+
+    expect(result.code).toContain('aria-hidden="false"');
+    expect(result.code).toContain('data-on="true"');
+  });
+
+  test("interns identical compiled templates", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       export const First = $component(function First() { return <p>Same</p>; });
+       export const Second = $component(function Second() { return <p>Same</p>; });`,
+      "templates.tsx",
+    );
+
+    expect(result.code.match(/const __sol_template_\d+ =/g)).toHaveLength(1);
+    expect(result.code.match(/__sol_instantiate\(__sol_template_0/g)).toHaveLength(2);
+  });
+
   test("does not import runtime helpers mentioned only in authored text", () => {
     const result = compile(
       `import { $component } from "sol";

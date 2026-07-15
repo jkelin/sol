@@ -1237,6 +1237,32 @@ test("async rejections prefer Await, then Suspense, then ErrorBoundary", async (
   dispose();
 });
 
+test("async mount failures reach ErrorBoundary and settle Suspense", async () => {
+  const module = await loadCompiled(`
+    import { ErrorBoundary, Suspense } from "sol";
+    const Async = $component(async function Async() {
+      await Promise.resolve();
+      return <p ref={() => { throw new Error("async mount failed"); }}>Ready</p>;
+    });
+    export const App = $component(function App() {
+      return <ErrorBoundary fallback={error => <p id="async-mount-error">{String((error as Error).cause ?? error)}</p>}>
+        <Suspense fallback={<p id="pending">Pending</p>}>
+          <Async />
+        </Suspense>
+      </ErrorBoundary>;
+    });
+  `);
+  const target = document.createElement("main");
+  const dispose = mount(module.App as Component, target);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(target.querySelector("#async-mount-error")?.textContent).toContain("async mount failed");
+  expect(target.querySelector("#pending")).toBeNull();
+  dispose();
+});
+
 test("compiled refs and portals preserve ownership across targets and body", async () => {
   const animations = installAnimations();
   const module = await loadCompiled(`
@@ -1431,6 +1457,28 @@ test("server rendering keeps hostile raw-text closing tags inside their elements
   expect(target.querySelector("#style-injection")).toBeNull();
   expect(target.querySelector("script")?.textContent).toContain("<\\/script>");
   expect(target.querySelector("style")?.textContent).toContain("<\\/style>");
+});
+
+test("server rendering selects options whose values are dynamic", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      let selected = "b";
+      const first = "a";
+      const second = "b";
+      return <select $bind={selected}>
+        <option value={first}>First</option>
+        <option value={second}>Second</option>
+      </select>;
+    });
+  `);
+  const html = await renderToStringAsync(module.App as Component);
+
+  expect(html).toMatch(/<option[^>]*value="b"[^>]*selected/);
+  const target = document.createElement("main");
+  target.innerHTML = html;
+  const dispose = await hydrate(module.App as Component, target);
+  expect(target.querySelector("select")!.value).toBe("b");
+  dispose();
 });
 
 test("server rendering keeps parent region slots distinct from nested region markers", async () => {

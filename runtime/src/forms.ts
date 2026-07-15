@@ -39,9 +39,11 @@ function cloneFormValue<T>(value: T): T {
   if (!isObject(value)) return value;
   const prototype = Object.getPrototypeOf(value) as unknown;
   if (prototype !== Object.prototype && prototype !== null) return value;
-  const clone: Record<PropertyKey, unknown> = {};
+  const clone = Object.create(prototype) as Record<PropertyKey, unknown>;
   for (const key of Reflect.ownKeys(value)) {
-    clone[key] = cloneFormValue((value as Record<PropertyKey, unknown>)[key]);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if ("value" in descriptor) descriptor.value = cloneFormValue(descriptor.value);
+    Object.defineProperty(clone, key, descriptor);
   }
   return clone as T;
 }
@@ -76,7 +78,7 @@ function normalizeFormErrors(failure: ValidationFailure): {
   fields: Record<string, string[]>;
   form: string[];
 } {
-  const fields: Record<string, string[]> = {};
+  const fields = Object.create(null) as Record<string, string[]>;
   const form: string[] = [];
   for (const issue of failure.issues) {
     const field = issueField(issue.path);

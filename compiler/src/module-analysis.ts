@@ -11,14 +11,6 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
       for (const binding of Object.values(path.scope.bindings)) {
         validateReservedIdentifier(compiler, binding.identifier);
       }
-      for (const helper of declarationHelpers) {
-        if (!path.scope.hasBinding(helper)) {
-          compiler.declarationHelperNames.set(
-            helper,
-            helper as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
-          );
-        }
-      }
       path.stop();
     },
   });
@@ -51,7 +43,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
       } else if (statement.source.value === "sol") {
         for (const specifier of statement.specifiers) {
           if (t.isImportNamespaceSpecifier(specifier)) {
-            compiler.declarationHelperNamespaces.add(specifier.local.name);
+            compiler.declarationHelperNamespaceImports.add(specifier.local);
             continue;
           }
           if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
@@ -60,8 +52,8 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             compiler.componentImports.add(specifier.local);
           }
           if (declarationHelpers.has(specifier.imported.name)) {
-            compiler.declarationHelperNames.set(
-              specifier.local.name,
+            compiler.declarationHelperImports.set(
+              specifier.local,
               specifier.imported.name as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
             );
           }
@@ -83,7 +75,16 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             compiler.linkImports.add(specifier.local);
           }
           if (t.isIdentifier(specifier.imported, { name: "createRef" })) {
-            compiler.refCreatorNames.add(specifier.local.name);
+            compiler.refCreatorImports.add(specifier.local);
+          }
+          if (
+            t.isIdentifier(specifier.imported) &&
+            (specifier.imported.name === "$signal" || specifier.imported.name === "$computed")
+          ) {
+            compiler.reactiveHelperImports.set(
+              specifier.local,
+              specifier.imported.name.slice(1) as "signal" | "computed",
+            );
           }
           if (
             t.isIdentifier(specifier.imported) &&
@@ -98,22 +99,56 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
 
   traverse(ast, {
     CallExpression(path) {
-      if (!t.isIdentifier(path.node.callee)) return;
-      const binding = path.scope.getBinding(path.node.callee.name);
-      if (
-        binding
-          ? compiler.componentImports.has(binding.identifier)
-          : path.node.callee.name === "$component"
-      ) {
-        compiler.componentCalls.add(path.node);
-        const variable = path.parentPath?.node;
+      const callee = path.node.callee;
+      if (t.isIdentifier(callee)) {
+        const binding = path.scope.getBinding(callee.name);
+        const importedReactive = binding
+          ? compiler.reactiveHelperImports.get(binding.identifier)
+          : undefined;
+        const globalReactive =
+          !binding && (callee.name === "$signal" || callee.name === "$computed")
+            ? (callee.name.slice(1) as "signal" | "computed")
+            : undefined;
+        const reactive = importedReactive ?? globalReactive;
+        if (reactive) compiler.reactiveHelperCalls.set(path.node, reactive);
+        if (binding && compiler.refCreatorImports.has(binding.identifier)) {
+          compiler.refCreatorCalls.add(path.node);
+        }
+        const declaration = binding
+          ? compiler.declarationHelperImports.get(binding.identifier)
+          : declarationHelpers.has(callee.name)
+            ? (callee.name as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute")
+            : undefined;
+        if (declaration) compiler.declarationHelperCalls.set(path.node, declaration);
         if (
-          t.isVariableDeclarator(variable) &&
-          variable.init === path.node &&
-          t.isIdentifier(variable.id)
+          binding ? compiler.componentImports.has(binding.identifier) : callee.name === "$component"
         ) {
-          compiler.componentNames.add(variable.id.name);
-          compiler.componentBindings.add(variable.id);
+          compiler.componentCalls.add(path.node);
+          const variable = path.parentPath?.node;
+          if (
+            t.isVariableDeclarator(variable) &&
+            variable.init === path.node &&
+            t.isIdentifier(variable.id)
+          ) {
+            compiler.componentNames.add(variable.id.name);
+            compiler.componentBindings.add(variable.id);
+          }
+        }
+      } else if (t.isMemberExpression(callee) && t.isIdentifier(callee.object)) {
+        const binding = path.scope.getBinding(callee.object.name);
+        if (binding && compiler.declarationHelperNamespaceImports.has(binding.identifier)) {
+          const property =
+            !callee.computed && t.isIdentifier(callee.property)
+              ? callee.property.name
+              : callee.computed && t.isStringLiteral(callee.property)
+                ? callee.property.value
+                : undefined;
+          if (property && declarationHelpers.has(property)) {
+            compiler.declarationHelperCalls.set(
+              path.node,
+              property as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
+            );
+          }
         }
       }
     },

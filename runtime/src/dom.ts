@@ -441,13 +441,28 @@ export function when(
   let initialized = false;
   const leaving = new Map<boolean, Block>();
   const stop = runtimeEffect(() => {
+    let transitionFailure: unknown;
     const nextCondition = Boolean(getCondition());
     if (nextCondition === currentCondition) return;
     const previousCondition = currentCondition;
     currentCondition = nextCondition;
     if (current && previousCondition !== undefined) {
       const previous = current;
-      const finished = previous.leave();
+      let finished: Promise<void> | undefined;
+      try {
+        finished = previous.leave();
+      } catch (error) {
+        transitionFailure = error;
+        try {
+          previous.dispose();
+        } catch (disposalError) {
+          transitionFailure = new AggregateError(
+            [error, disposalError],
+            "Conditional transition and teardown both failed",
+            { cause: error },
+          );
+        }
+      }
       if (finished) {
         leaving.set(previousCondition, previous);
         void finished.then(() => {
@@ -455,7 +470,7 @@ export function when(
           leaving.delete(previousCondition);
           previous.dispose();
         });
-      } else {
+      } else if (transitionFailure === undefined) {
         previous.dispose();
       }
     }
@@ -470,6 +485,7 @@ export function when(
       if (initialized) current.enter();
     }
     initialized = true;
+    if (transitionFailure !== undefined) throw transitionFailure;
   });
   cleanups.push(stop, () => {
     runDisposals([
@@ -551,9 +567,22 @@ export function list<T>(
       }
     });
     const removedKeys = new Set<unknown>();
+    const transitionFailures: unknown[] = [];
     for (const [key, row] of rows) {
       if (nextRows.has(key)) continue;
-      const finished = row.block.leave();
+      let finished: Promise<void> | undefined;
+      try {
+        finished = row.block.leave();
+      } catch (error) {
+        transitionFailures.push(error);
+        try {
+          row.block.dispose();
+        } catch (disposalError) {
+          transitionFailures.push(disposalError);
+        }
+        removedKeys.add(key);
+        continue;
+      }
       if (!finished) {
         row.block.dispose();
         removedKeys.add(key);
@@ -594,6 +623,12 @@ export function list<T>(
     }
     rows = nextRows;
     initialized = true;
+    if (transitionFailures.length === 1) throw transitionFailures[0];
+    if (transitionFailures.length > 1) {
+      throw new AggregateError(transitionFailures, "List transitions and teardown failed", {
+        cause: transitionFailures[0],
+      });
+    }
   });
   cleanups.push(stop, () => {
     runDisposals([

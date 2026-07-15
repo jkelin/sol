@@ -33,10 +33,10 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   Proxy-invariant-safe locked-property reads, complete reactive-flush failure reporting,
   transaction-local effect capture, and
   primary-failure-preserving teardown.
-- `forms.ts` implements form controllers, descriptor-snapshotted configs, graph-preserving plain
-  value snapshots, descriptor-safe value and validation-issue reads, reset-boundary validation,
-  validation normalization, disposal-safe submission state, and frame-explicit ownership for async
-  component setup.
+- `forms.ts` implements form controllers, descriptor-snapshotted configs, plain-object root
+  enforcement, graph-preserving plain value snapshots, descriptor-safe value and validation-issue
+  reads, reset-boundary validation, validation normalization, disposal-safe submission state, and
+  frame-explicit ownership for async component setup.
 - `queries.ts` implements descriptor-snapshotted cached query and mutation controllers, request
   deduplication, setup-lifetime enforcement, polling, eviction, Suspense participation,
   request-isolated server caches, hydration replay, and compiler-authored diagnostic source
@@ -98,8 +98,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets,
   evaluating each target once per reactive run.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including rollback
-  of Await value and local-error blocks whose mount fails and SSR boundary rejection when a
-  finish-time rerender fails.
+  of owned Await and ErrorBoundary replacement blocks whose mount fails, primary-error-preserving
+  ErrorBoundary teardown, and SSR boundary rejection when a finish-time rerender fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import * as v from "valibot";
 import { z } from "zod";
-import { awaitBlock } from "../src/async.ts";
+import { awaitBlock, errorBoundary } from "../src/async.ts";
 import { $component, $context, contextUse, Head, type Context } from "../src/components.ts";
 import { contextProvider, normalizeClass } from "../src/dom.ts";
 import { $form, formInFrame, type FormConfig, type FormController } from "../src/forms.ts";
@@ -568,10 +568,31 @@ describe("forms", () => {
       noopSubmit,
     );
 
-    for (const invalid of [null, [], "after"]) {
+    class CustomValues {
+      title = "after";
+    }
+    for (const invalid of [null, [], "after", new CustomValues()]) {
       expect(() => form.reset(invalid as never)).toThrow("values must be an object");
       expect(form.values).toEqual({ title: "before" });
     }
+  });
+
+  test("rejects custom-prototype default values before sharing caller state", () => {
+    class CustomValues {
+      title = "before";
+    }
+    const defaults = new CustomValues();
+
+    expect(() =>
+      ownedForm(
+        {
+          schema: (values: Record<string, unknown>) => values,
+          defaultValues: defaults as unknown as Record<string, unknown>,
+        },
+        noopSubmit,
+      ),
+    ).toThrow("defaultValues must be an object");
+    expect(defaults.title).toBe("before");
   });
 });
 
@@ -2476,6 +2497,55 @@ describe("compiled DOM runtime", () => {
       ),
     ).toThrow("provider child mount failed");
     expect(disposals).toBe(1);
+  });
+
+  test("ErrorBoundary renders its fallback with both the child error and teardown failure", () => {
+    for (const mode of ["browser", "server"] as const) {
+      const primary = new Error(`${mode} primary`);
+      const teardown = new Error(`${mode} teardown`);
+      const fallbackErrors: unknown[] = [];
+      const cleanups: Array<() => void> = [];
+      let fail!: (error: unknown) => void;
+      const rendered: Block & { serverHtml?: () => string } = {
+        nodes: [],
+        mount() {},
+        move() {},
+        enter() {},
+        leave: () => undefined,
+        retire: () => undefined,
+        dispose() {
+          throw teardown;
+        },
+        ...(mode === "server" ? { serverHtml: () => "child" } : {}),
+      };
+      const region =
+        mode === "server"
+          ? ({ kind: "server-region", index: 0, blocks: [] } satisfies ServerRegion)
+          : instantiate(template("<!--sol:s:0--><!--sol:e:0-->")).regions[0]!;
+      errorBoundary(
+        region,
+        (childFrame) => {
+          fail = childFrame.handleError!;
+          return rendered;
+        },
+        (error) => {
+          fallbackErrors.push(error);
+          return mode === "server"
+            ? ({ ...rendered, dispose() {}, serverHtml: () => "fallback" } as Block)
+            : block(document.createDocumentFragment());
+        },
+        cleanups,
+        { ...rootFrame(), mode: mode === "server" ? "server" : undefined },
+      );
+
+      fail(primary);
+
+      expect(fallbackErrors).toHaveLength(1);
+      expect(fallbackErrors[0]).toBeInstanceOf(AggregateError);
+      expect((fallbackErrors[0] as AggregateError).cause).toBe(primary);
+      expect((fallbackErrors[0] as AggregateError).errors).toEqual([primary, teardown]);
+      cleanups.toReversed().forEach((cleanup) => cleanup());
+    }
   });
 
   test("evaluates a Portal target once initially and once per reactive change", () => {

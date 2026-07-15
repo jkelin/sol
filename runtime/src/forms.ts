@@ -63,6 +63,10 @@ function assertFormValues(value: unknown, detail: "defaultValues" | "reset value
   if (!isObject(value) || Array.isArray(value)) {
     throw new TypeError(`$form() ${detail} must be an object`);
   }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`$form() ${detail} must be an object`);
+  }
 }
 
 export function validationFailure(error: unknown): ValidationFailure | undefined {

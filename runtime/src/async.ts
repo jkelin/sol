@@ -21,13 +21,29 @@ function rejectHydrationMismatch(frame: RenderFrame, error: unknown): boolean {
   return true;
 }
 
-function mountAwaitResult(block: Block, mount: (block: Block) => void, label: string): Block {
+function mountOwnedResult(block: Block, mount: (block: Block) => void, label: string): Block {
   try {
     mount(block);
   } catch (error) {
     rethrowWithDisposals(error, [() => block.dispose()], `${label} mount and rollback both failed`);
   }
   return block;
+}
+
+function boundaryFallbackError(error: unknown, current: Block | undefined): unknown {
+  if (!current) return error;
+  try {
+    current.dispose();
+    return error;
+  } catch (teardownError) {
+    return new AggregateError(
+      [error, teardownError],
+      "ErrorBoundary child and teardown both failed",
+      {
+        cause: error,
+      },
+    );
+  }
 }
 
 export function suspense(
@@ -309,7 +325,7 @@ export function awaitBlock<T>(
       (value) => {
         if (disposed) return finish?.();
         try {
-          current = mountAwaitResult(
+          current = mountOwnedResult(
             render(value, frame),
             (next) => mountServerBlock(next, region, true),
             "Await",
@@ -317,7 +333,7 @@ export function awaitBlock<T>(
         } catch (error) {
           if (renderError) {
             try {
-              current = mountAwaitResult(
+              current = mountOwnedResult(
                 renderError(error, frame),
                 (next) => mountServerBlock(next, region, true),
                 "Await error",
@@ -333,7 +349,7 @@ export function awaitBlock<T>(
         if (!disposed) {
           if (renderError) {
             try {
-              current = mountAwaitResult(
+              current = mountOwnedResult(
                 renderError(error, frame),
                 (next) => mountServerBlock(next, region, true),
                 "Await error",
@@ -363,7 +379,7 @@ export function awaitBlock<T>(
     if (!renderError) return reportError(frame, error);
     try {
       const claim = regionHydrationClaim(region);
-      current = mountAwaitResult(
+      current = mountOwnedResult(
         renderError(error, claim ? { ...frame, claim } : frame),
         (next) => next.mount(region.end.parentNode!, region.end),
         "Await error",
@@ -392,7 +408,7 @@ export function awaitBlock<T>(
         if (activeLoader === loaderId) activeLoader = 0;
         try {
           const claim = regionHydrationClaim(region);
-          current = mountAwaitResult(
+          current = mountOwnedResult(
             render(value, claim ? { ...frame, claim } : frame),
             (next) => next.mount(region.end.parentNode!, region.end),
             "Await",
@@ -446,13 +462,17 @@ export function errorBoundary(
       if (failed) return;
       failed = true;
       if (rejectHydrationMismatch(frame, error)) return;
-      current?.dispose();
+      const fallbackError = boundaryFallbackError(error, current);
+      current = undefined;
       try {
-        current = renderFallback(error, state === "error" ? claimFrame : resumeFrame);
-        current.mount(region.end.parentNode!, region.end);
-      } catch (fallbackError) {
-        if (frame.handleError) frame.handleError(fallbackError);
-        else surfaceAsyncError(fallbackError);
+        current = mountOwnedResult(
+          renderFallback(fallbackError, state === "error" ? claimFrame : resumeFrame),
+          (next) => next.mount(region.end.parentNode!, region.end),
+          "ErrorBoundary fallback",
+        );
+      } catch (replacementError) {
+        if (frame.handleError) frame.handleError(replacementError);
+        else surfaceAsyncError(replacementError);
       }
     };
     try {
@@ -472,13 +492,17 @@ export function errorBoundary(
       if (failed) return;
       failed = true;
       if (boundaryIndex !== undefined) frame.ssr?.markBoundaryError(boundaryIndex);
-      current?.dispose();
+      const fallbackError = boundaryFallbackError(error, current);
+      current = undefined;
       try {
-        current = renderFallback(error, frame);
-        mountServerBlock(current, region, true);
-      } catch (fallbackError) {
-        if (frame.handleError) frame.handleError(fallbackError);
-        else frame.ssr?.fail(fallbackError);
+        current = mountOwnedResult(
+          renderFallback(fallbackError, frame),
+          (next) => mountServerBlock(next, region, true),
+          "ErrorBoundary fallback",
+        );
+      } catch (replacementError) {
+        if (frame.handleError) frame.handleError(replacementError);
+        else frame.ssr?.fail(replacementError);
       }
     };
     try {
@@ -496,13 +520,17 @@ export function errorBoundary(
   const fail = (error: unknown): void => {
     if (failed) return;
     failed = true;
-    current?.dispose();
+    const fallbackError = boundaryFallbackError(error, current);
+    current = undefined;
     try {
-      current = renderFallback(error, frame);
-      current.mount(region.end.parentNode!, region.end);
-    } catch (fallbackError) {
-      if (frame.handleError) frame.handleError(fallbackError);
-      else surfaceAsyncError(fallbackError);
+      current = mountOwnedResult(
+        renderFallback(fallbackError, frame),
+        (next) => next.mount(region.end.parentNode!, region.end),
+        "ErrorBoundary fallback",
+      );
+    } catch (replacementError) {
+      if (frame.handleError) frame.handleError(replacementError);
+      else surfaceAsyncError(replacementError);
     }
   };
   const childFrame: RenderFrame = { ...frame, handleError: fail };

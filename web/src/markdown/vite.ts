@@ -75,17 +75,14 @@ export const formLines = ${JSON.stringify(formLines)};`,
       return compileModule(generated.code, `${file}.tsx`);
     },
     configureServer(server) {
-      const added = (file: string): void => {
+      const invalidateDocumentationRegistry = (file: string): void => {
         if (isDocumentationPage(file)) invalidate(server);
       };
-      const removed = (file: string): void => {
-        if (isDocumentationPage(file)) invalidate(server);
-      };
-      server.watcher.on("add", added);
-      server.watcher.on("unlink", removed);
+      server.watcher.on("add", invalidateDocumentationRegistry);
+      server.watcher.on("unlink", invalidateDocumentationRegistry);
       return () => {
-        server.watcher.off("add", added);
-        server.watcher.off("unlink", removed);
+        server.watcher.off("add", invalidateDocumentationRegistry);
+        server.watcher.off("unlink", invalidateDocumentationRegistry);
       };
     },
     handleHotUpdate(context) {

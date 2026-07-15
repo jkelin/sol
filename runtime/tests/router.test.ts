@@ -435,6 +435,8 @@ test("preserves request route state after async component setup resumes", async 
     const activePrefix = routeRead(asyncRoute, "isActivePrefix", frame);
     const { params: destructuredParams } = routeObject(router, frame) as typeof router;
     const spreadRoute = { ...(routeObject(asyncRoute, frame) as typeof asyncRoute) };
+    const routeView = routeObject(asyncRoute, frame);
+    if (routeView !== routeObject(asyncRoute, frame)) throw new Error("route view was not reused");
     text(
       view.regions[0]!,
       () =>

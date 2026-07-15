@@ -18,9 +18,12 @@ transformed code and a source map. `options.target` selects `"client"` or `"serv
 lowering. `options.routeMode` selects a metadata-only `"handle"` projection or the full `"page"`
 implementation (the default). Handle projections retain the route path and matcher while omitting
 the schema and route-owned stylesheet imports; bundlers can consequently remove component,
-schema, and page-only dependency graphs. The Vite adapter rewrites named route-handle imports to a
-dedicated metadata projection, even when an import also names ordinary exports. The ordinary side
+schema, and page-only dependency graphs. The Vite adapter resolves extensionless and aliased module
+specifiers and rewrites named route-handle imports to a dedicated metadata projection, even when an
+import also names ordinary exports. Aliased route declarations retain their public export name. The ordinary side
 of a mixed import retains the route module's full JavaScript, stylesheet, and side-effect semantics.
+Namespace imports and direct re-exports of route modules are rejected because they cannot preserve
+the lazy implementation boundary; use named imports and an explicit local export instead.
 Handle-only projections contain metadata only. Bare imports and the ordinary side of mixed imports
 continue to execute the original module once, preserving authored initialization without pulling
 route schemas, components, stylesheets, or their transitive module effects through handle imports.
@@ -44,7 +47,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
   namespace Sol import bindings and may be published by inline or later export declarations;
   ambiguous mixed frontend/server effects receive a diagnostic instead of being deleted.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
-- `output.ts` applies edits, injects runtime imports and signed templates, validates generated syntax,
+- `output.ts` applies edits, injects runtime imports and dual-lane signed templates, validates generated syntax,
   redacts stripped server ranges from client source content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames, owns source-marker insertion and canonical removal,
   and preserves source-map origins while accepting the client-safe source content emitted by
@@ -64,8 +67,9 @@ dependencies; route handles referenced by endpoint code are projected again as m
   form/query/mutation helpers, and component
   factories while preserving `createRef()` objects and immutable primitive constants as
   non-reactive values, recognizing explicit reactive helpers and extracted context methods,
-  capturing awaits through transparent TypeScript expressions, and attaching authored locations to
-  query/mutation diagnostics.
+  capturing awaits through transparent TypeScript expressions, attaching authored locations to
+  query/mutation diagnostics, and excluding provably ordinary local objects from async route-read
+  instrumentation.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
 - `runtime-import.ts` resolves referenced compiler-runtime identifiers from generated syntax and emits one minimal import; output adds
   a target-specific endpoint import only for modules containing server declarations.

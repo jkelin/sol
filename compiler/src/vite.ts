@@ -62,28 +62,28 @@ async function routeManifest(files: readonly string[], root: string): Promise<st
     const specifier = `/@fs/${normalizePath(file)}`;
     return `const __sol_load_route_module_${index} = () => import(${JSON.stringify(specifier)});`;
   });
+  let routeIndex = 0;
   const routes = declarations.flatMap((items, fileIndex) =>
-    items.map(
-      (declaration) =>
-        `__sol_lazy_route(${JSON.stringify(declaration.path)}, ${JSON.stringify(declaration.compiled)}, () => __sol_load_route_module_${fileIndex}().then(module => module[${JSON.stringify(declaration.exportName)}]))`,
-    ),
+    items.map((declaration) => {
+      const name = `__sol_route_${routeIndex++}`;
+      return {
+        name,
+        assetKey: normalizePath(relative(root, files[fileIndex]!)),
+        declaration,
+        code: `const ${name} = __sol_lazy_route(${JSON.stringify(declaration.path)}, ${JSON.stringify(declaration.compiled)}, () => __sol_load_route_module_${fileIndex}().then(module => module[${JSON.stringify(declaration.exportName)}]));`,
+      };
+    }),
   );
   const staticPaths = declarations
     .flat()
     .filter((route) => route.compiled.pathnameParameterNames.length === 0)
     .map((route) => route.path.split("?", 1)[0]);
-  const staticRoutes = declarations.flatMap((items, fileIndex) =>
-    items.map((declaration) => ({
-      path: declaration.path,
-      compiled: declaration.compiled,
-      assetKey: normalizePath(relative(root, files[fileIndex]!)),
-    })),
-  );
   return `import { lazyRoute as __sol_lazy_route } from "sol/compiler-runtime";
 ${loaders.join("\n")}
+${routes.map((route) => route.code).join("\n")}
 export const staticRoutePaths = ${JSON.stringify([...new Set(staticPaths)])};
-export const staticRoutes = ${JSON.stringify(staticRoutes)};
-export default [${routes.join(",\n")}];`;
+export const staticRoutes = [${routes.map((route) => `{ path: ${route.name}.config.path, compiled: ${route.name}.compiled, assetKey: ${JSON.stringify(route.assetKey)} }`).join(",\n")}];
+export default [${routes.map((route) => route.name).join(",\n")}];`;
 }
 
 function endpointManifest(files: readonly string[]): string {
@@ -303,29 +303,80 @@ function endpointProjection(source: string, filename: string): string {
   return dependencyProjection(source, filename);
 }
 
-async function projectRouteImports(source: string, importer: string): Promise<string> {
-  const ast = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
-  const edits = new MagicString(source);
-  const candidates = ast.program.body.flatMap((statement) => {
-    if (!t.isImportDeclaration(statement) || !statement.source.value.startsWith(".")) return [];
-    const target = resolve(dirname(importer), statement.source.value);
-    return isRouteFile(target) ? [{ statement, target }] : [];
-  });
-  const projections = await Promise.all(
-    candidates.map(async ({ statement, target }) => {
+async function routeImportSource(
+  importer: string,
+  specifier: string,
+  resolveImport?: (specifier: string, importer: string) => Promise<string | undefined>,
+): Promise<{ target: string; source: string } | undefined> {
+  const base = resolve(dirname(importer), specifier);
+  const resolved = await resolveImport?.(specifier, importer);
+  const candidates = [
+    ...(resolved ? [resolved] : []),
+    base,
+    ...[".tsx", ".ts", ".jsx", ".js"].map((suffix) => `${base}${suffix}`),
+  ].filter((candidate, index, all) => all.indexOf(candidate) === index);
+  const loaded = await Promise.all(
+    candidates.filter(isRouteFile).map(async (target) => {
       try {
-        return { statement, target, targetSource: await readFile(target, "utf8") };
+        return { target, source: await readFile(target, "utf8") };
       } catch {
         return undefined;
       }
     }),
   );
+  return loaded.find((candidate) => candidate !== undefined);
+}
+
+async function projectRouteImports(
+  source: string,
+  importer: string,
+  resolveImport?: (specifier: string, importer: string) => Promise<string | undefined>,
+): Promise<string> {
+  const ast = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
+  const edits = new MagicString(source);
+  const candidates = ast.program.body.flatMap((statement) => {
+    if (
+      (t.isImportDeclaration(statement) || t.isExportNamedDeclaration(statement)) &&
+      statement.source &&
+      statement.source.value !== "sol"
+    ) {
+      return [{ statement, specifier: statement.source.value }];
+    }
+    return [];
+  });
+  const projections = await Promise.all(
+    candidates.map(async ({ statement, specifier }) => ({
+      statement,
+      resolved: await routeImportSource(importer, specifier, resolveImport),
+    })),
+  );
   for (const projection of projections) {
-    if (!projection) continue;
-    const { statement, target, targetSource } = projection;
+    if (!projection.resolved) continue;
+    const { statement, resolved } = projection;
+    const { target, source: targetSource } = resolved;
     const routeNames = new Set(
       declaredRoutes(targetSource, target).map((route) => route.exportName),
     );
+    if (t.isExportNamedDeclaration(statement)) {
+      const exportsRoute = statement.specifiers.some(
+        (specifier) =>
+          t.isExportNamespaceSpecifier(specifier) ||
+          (t.isExportSpecifier(specifier) &&
+            t.isIdentifier(specifier.local) &&
+            routeNames.has(specifier.local.name)),
+      );
+      if (exportsRoute) {
+        throw new Error(
+          `Automatic route splitting does not support route re-exports from ${statement.source!.value}; import and export the handle explicitly`,
+        );
+      }
+      continue;
+    }
+    if (statement.specifiers.some((specifier) => t.isImportNamespaceSpecifier(specifier))) {
+      throw new Error(
+        `Automatic route splitting does not support namespace route imports from ${statement.source.value}; use named imports`,
+      );
+    }
     const handles = statement.specifiers.filter(
       (specifier) =>
         t.isImportSpecifier(specifier) &&
@@ -415,17 +466,27 @@ function manifestCallHelper(
   return undefined;
 }
 
-function manifestExportedNames(ast: t.File): Set<string> {
-  const names = new Set<string>();
+function manifestExportedNames(ast: t.File): Map<string, string[]> {
+  const names = new Map<string, string[]>();
+  const add = (local: string, exported: string): void => {
+    const exports = names.get(local) ?? [];
+    if (!exports.includes(exported)) exports.push(exported);
+    names.set(local, exports);
+  };
   for (const statement of ast.program.body) {
     if (!t.isExportNamedDeclaration(statement) || statement.source) continue;
     if (statement.declaration) {
       for (const name of Object.keys(t.getBindingIdentifiers(statement.declaration)))
-        names.add(name);
+        add(name, name);
     }
     for (const specifier of statement.specifiers) {
-      if (t.isExportSpecifier(specifier) && t.isIdentifier(specifier.local))
-        names.add(specifier.local.name);
+      if (
+        t.isExportSpecifier(specifier) &&
+        t.isIdentifier(specifier.local) &&
+        t.isIdentifier(specifier.exported)
+      ) {
+        add(specifier.local.name, specifier.exported.name);
+      }
     }
   }
   return names;
@@ -465,11 +526,13 @@ function declaredRoutes(source: string, filename: string): DeclaredRoute[] {
           t.isIdentifier(property.key, { name: "path" }),
       );
       if (path && t.isObjectProperty(path) && t.isStringLiteral(path.value)) {
-        routes.push({
-          exportName: variable.id.name,
-          path: path.value.value,
-          compiled: compileRoutePath(path.value.value),
-        });
+        for (const exportName of exportedNames.get(variable.id.name) ?? []) {
+          routes.push({
+            exportName,
+            path: path.value.value,
+            compiled: compileRoutePath(path.value.value),
+          });
+        }
       }
     }
   }
@@ -653,13 +716,24 @@ export function sol(options: SolPluginOptions = {}): Plugin {
           return null;
         }
         const filename = id.split("?", 1)[0]!;
+        const resolveImport = async (
+          specifier: string,
+          importer: string,
+        ): Promise<string | undefined> => {
+          const resolved = await this.resolve(specifier, importer, { skipSelf: true });
+          return resolved?.id.split("?", 1)[0];
+        };
         if (id.includes("?sol-route-handles")) {
-          return await projectRouteImports(routeHandleProjection(source, filename), filename);
+          return await projectRouteImports(
+            routeHandleProjection(source, filename),
+            filename,
+            resolveImport,
+          );
         }
         const projection = id.includes("?sol-endpoints")
           ? endpointProjection(source, filename)
           : source;
-        const projected = await projectRouteImports(projection, filename);
+        const projected = await projectRouteImports(projection, filename, resolveImport);
         if (!componentFile.test(id) && !solFile.test(id)) {
           return projected === source ? null : projected;
         }

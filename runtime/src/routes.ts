@@ -185,6 +185,7 @@ const ROUTE_READ_KEYS = new Set<RouteReadKey>([
 
 const routePrefixes = new WeakMap<RouteRuntimeDefinition, string>();
 const routerValues = new WeakSet<object>();
+const frameRouteObjects = new WeakMap<RenderFrame, WeakMap<object, object>>();
 
 export function registerRouter<T extends object>(candidate: T): T {
   routerValues.add(candidate);
@@ -247,13 +248,22 @@ export function routeObject(candidate: unknown, frame: RenderFrame): unknown {
   ) {
     return candidate;
   }
-  return new Proxy(candidate, {
+  let objects = frameRouteObjects.get(frame);
+  if (!objects) {
+    objects = new WeakMap();
+    frameRouteObjects.set(frame, objects);
+  }
+  const existing = objects.get(candidate);
+  if (existing) return existing;
+  const view = new Proxy(candidate, {
     get(target, key, receiver) {
       return typeof key === "string" && ROUTE_READ_KEYS.has(key as RouteReadKey)
         ? routeRead(target, key as RouteReadKey, frame)
         : Reflect.get(target, key, receiver);
     },
   });
+  objects.set(candidate, view);
+  return view;
 }
 
 function validateRouteValues(
@@ -431,30 +441,7 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   return serialized ? `${path}?${serialized}` : path;
 }
 
-function createRouteDefinition<
-  const Path extends `/${string}`,
-  Values extends RouteValues = DefaultRouteValues<Path>,
->(
-  config: RouteConfig<Path, Values>,
-  candidate: Component | undefined,
-  compiled: CompiledRoutePattern,
-): RouteDefinition<Path, Values> {
-  if (!config || typeof config !== "object" || typeof config.path !== "string") {
-    throw new TypeError("Compiled route config must contain a path");
-  }
-  const unexpectedConfig = Object.keys(config).find((name) => name !== "path" && name !== "schema");
-  if (unexpectedConfig) {
-    throw new TypeError(`Compiled route config contains unknown property ${unexpectedConfig}`);
-  }
-  if (config.schema !== undefined) {
-    const schema = config.schema;
-    if (!hasParser(schema)) {
-      throw new TypeError(
-        "Compiled route schema must be callable, expose parse() or parseAsync(), or implement Standard Schema",
-      );
-    }
-  }
-  if (candidate) getFactory(candidate);
+function validatedCompiledRoute(compiled: CompiledRoutePattern): CompiledRoutePattern {
   if (
     !compiled ||
     typeof compiled.pattern !== "string" ||
@@ -481,21 +468,49 @@ function createRouteDefinition<
   ) {
     throw new TypeError("Compiled route metadata is invalid");
   }
+  return Object.freeze({
+    pattern: compiled.pattern,
+    parameterNames: Object.freeze([...compiled.parameterNames]),
+    pathnameParameterNames: Object.freeze([...compiled.pathnameParameterNames]),
+    queryParameters: Object.freeze(
+      compiled.queryParameters.map((parameter) => Object.freeze({ ...parameter })),
+    ),
+    specificity: Object.freeze([...compiled.specificity]),
+  });
+}
+
+function createRouteDefinition<
+  const Path extends `/${string}`,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+>(
+  config: RouteConfig<Path, Values>,
+  candidate: Component | undefined,
+  compiled: CompiledRoutePattern,
+): RouteDefinition<Path, Values> {
+  if (!config || typeof config !== "object" || typeof config.path !== "string") {
+    throw new TypeError("Compiled route config must contain a path");
+  }
+  const unexpectedConfig = Object.keys(config).find((name) => name !== "path" && name !== "schema");
+  if (unexpectedConfig) {
+    throw new TypeError(`Compiled route config contains unknown property ${unexpectedConfig}`);
+  }
+  if (config.schema !== undefined) {
+    const schema = config.schema;
+    if (!hasParser(schema)) {
+      throw new TypeError(
+        "Compiled route schema must be callable, expose parse() or parseAsync(), or implement Standard Schema",
+      );
+    }
+  }
+  if (candidate) getFactory(candidate);
+  const validatedCompiled = validatedCompiledRoute(compiled);
   let definition: CompiledRouteDefinition<Path, Values>;
   const staticPrefix = canonicalizePathname(config.path.split("?", 1)[0]!.split("/:", 1)[0] || "/");
   definition = Object.freeze({
     [ROUTE]: true,
     config: Object.freeze({ ...config }),
     component: candidate ?? unloadedRouteComponent,
-    compiled: Object.freeze({
-      pattern: compiled.pattern,
-      parameterNames: Object.freeze([...compiled.parameterNames]),
-      pathnameParameterNames: Object.freeze([...compiled.pathnameParameterNames]),
-      queryParameters: Object.freeze(
-        compiled.queryParameters.map((parameter) => Object.freeze({ ...parameter })),
-      ),
-      specificity: Object.freeze([...compiled.specificity]),
-    }),
+    compiled: validatedCompiled,
     get params() {
       if (!routeRuntime) throw new Error("Route runtime is not initialized");
       return routeRuntime.getParams(definition) as Values;
@@ -554,17 +569,22 @@ export function lazyRoute(
     throw new TypeError("Lazy route path must be root-relative");
   }
   if (typeof loader !== "function") throw new TypeError("Lazy route loader must be a function");
-  const handle = routeHandle({ path: path as `/${string}` }, compiled);
+  canonicalizePathname(path.split("?", 1)[0]!);
+  const config = Object.freeze({ path });
+  const validatedCompiled = validatedCompiledRoute(compiled);
   let loaded: Promise<RouteDefinition> | undefined;
   return Object.freeze({
-    config: handle.config,
-    compiled: handle.compiled,
+    config,
+    compiled: validatedCompiled,
     load() {
       loaded ??= Promise.resolve(loader()).then((definition) => {
         if (!isRouteDefinition(definition)) {
           throw new TypeError(`Lazy route module did not export a compiled route for ${path}`);
         }
-        if (definition.config.path !== path || definition.compiled.pattern !== compiled.pattern) {
+        if (
+          definition.config.path !== path ||
+          definition.compiled.pattern !== validatedCompiled.pattern
+        ) {
           throw new TypeError(`Lazy route module metadata does not match ${path}`);
         }
         return definition;

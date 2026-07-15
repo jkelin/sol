@@ -970,8 +970,51 @@ function instrumentAwaitExpressions(
     "isActive",
     "isActivePrefix",
   ]);
+  const isProvablyOrdinaryRouteObject = (path: NodePath, expression: t.Expression): boolean => {
+    const candidate = unwrapTransparentExpression(expression);
+    if (
+      t.isObjectExpression(candidate) ||
+      t.isArrayExpression(candidate) ||
+      t.isNewExpression(candidate) ||
+      t.isFunctionExpression(candidate) ||
+      t.isArrowFunctionExpression(candidate)
+    ) {
+      return true;
+    }
+    const signalInitializer = (identifier: t.Identifier): boolean => {
+      const binding = path.scope.getBinding(identifier.name);
+      if (!binding?.constant || !binding.path.isVariableDeclarator()) return false;
+      const initializer = binding.path.node.init;
+      if (!initializer || !t.isExpression(initializer)) return false;
+      const value = unwrapTransparentExpression(initializer);
+      if (
+        t.isObjectExpression(value) ||
+        t.isArrayExpression(value) ||
+        t.isNewExpression(value) ||
+        t.isFunctionExpression(value) ||
+        t.isArrowFunctionExpression(value)
+      ) {
+        return true;
+      }
+      return (
+        t.isCallExpression(value) &&
+        t.isIdentifier(value.callee, { name: "__sol_signal" }) &&
+        value.arguments.length > 0 &&
+        t.isExpression(value.arguments[0]) &&
+        isProvablyOrdinaryRouteObject(path, value.arguments[0])
+      );
+    };
+    if (t.isIdentifier(candidate)) return signalInitializer(candidate);
+    return (
+      t.isMemberExpression(candidate) &&
+      staticMemberName(candidate) === "value" &&
+      t.isIdentifier(candidate.object) &&
+      signalInitializer(candidate.object)
+    );
+  };
   const instrumentRouteRead = (path: NodePath<t.MemberExpression>): void => {
     if (!path.isReferenced() || !t.isExpression(path.node.object)) return;
+    if (isProvablyOrdinaryRouteObject(path, path.node.object)) return;
     const parent = path.parentPath?.node;
     if (
       ((t.isCallExpression(parent) ||
@@ -995,6 +1038,7 @@ function instrumentAwaitExpressions(
   traverse(file, {
     VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
       if (!t.isObjectPattern(path.node.id) || !t.isExpression(path.node.init)) return;
+      if (isProvablyOrdinaryRouteObject(path, path.node.init)) return;
       path.node.init = t.callExpression(t.identifier("__sol_route_object"), [
         path.node.init,
         t.identifier("__sol_frame"),
@@ -1002,6 +1046,7 @@ function instrumentAwaitExpressions(
     },
     AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
       if (!t.isObjectPattern(path.node.left) || !t.isExpression(path.node.right)) return;
+      if (isProvablyOrdinaryRouteObject(path, path.node.right)) return;
       path.node.right = t.callExpression(t.identifier("__sol_route_object"), [
         path.node.right,
         t.identifier("__sol_frame"),
@@ -1009,6 +1054,7 @@ function instrumentAwaitExpressions(
     },
     SpreadElement(path: NodePath<t.SpreadElement>) {
       if (!path.parentPath?.isObjectExpression() || !t.isExpression(path.node.argument)) return;
+      if (isProvablyOrdinaryRouteObject(path, path.node.argument)) return;
       path.node.argument = t.callExpression(t.identifier("__sol_route_object"), [
         path.node.argument,
         t.identifier("__sol_frame"),
@@ -1019,6 +1065,7 @@ function instrumentAwaitExpressions(
     },
     OptionalMemberExpression(path: NodePath<t.OptionalMemberExpression>) {
       if (!path.node.optional || !t.isExpression(path.node.object)) return;
+      if (isProvablyOrdinaryRouteObject(path, path.node.object)) return;
       const key = staticMemberName(path.node);
       if (!key || !routeReadKeys.has(key)) return;
       const { outer, hasMemberContinuation } = optionalChainExtent(path as NodePath<t.Expression>);

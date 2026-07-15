@@ -62,12 +62,15 @@ function redactClientServerSource(state: CompilationState): string {
 }
 
 function identityHash(value: string, prefix: string): string {
-  let hash = 2_166_136_261;
+  let first = 2_166_136_261;
+  let second = 5381;
   for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
+    const code = value.charCodeAt(index);
+    first ^= code;
+    first = Math.imul(first, 16_777_619);
+    second = Math.imul(second, 33) ^ code;
   }
-  return `${prefix}${(hash >>> 0).toString(36)}`;
+  return `${prefix}${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
 }
 
 function propertyValueElements(

@@ -228,6 +228,19 @@ describe("compiler", () => {
     expect(result.code.match(/__sol_instantiate\(__sol_template_0/g)).toHaveLength(2);
   });
 
+  test("uses collision-resistant template signatures", () => {
+    const signatures = ["24596503", "389587026"].map((value) => {
+      const result = compile(
+        `const App = $component(function App() { return <div data-x="${value}"></div>; });`,
+        `${value}.tsx`,
+      );
+      return /__sol_template\(`[^`]*`, "([^"]+)"/.exec(result.code)?.[1];
+    });
+
+    expect(signatures[0]).toBeTruthy();
+    expect(signatures[0]).not.toBe(signatures[1]);
+  });
+
   test("does not import runtime helpers mentioned only in authored text", () => {
     const result = compile(
       `import { $component } from "sol";
@@ -1092,7 +1105,7 @@ describe("compiler", () => {
     expect(result.code).toContain("__sol_frame");
     expect(result.code).toContain('__sol_route_read(router, "params", __sol_frame)');
     expect(result.code).toContain('__sol_route_read(props.route, "params", __sol_frame)');
-    expect(result.code).toContain('__sol_route_read(ordinary.value, "params", __sol_frame)');
+    expect(result.code).not.toContain('__sol_route_read(ordinary.value, "params", __sol_frame)');
     expect(result.code).toContain(
       '__sol_route_read(router, "params", __sol_frame, __sol_route_value => __sol_route_value.id)',
     );
@@ -1121,6 +1134,25 @@ describe("compiler", () => {
 
     expect(result.code).toContain("} = __sol_route_object(router, __sol_frame)");
     expect(result.code).toContain("...__sol_route_object(detail, __sol_frame)");
+  });
+
+  test("omits route helpers for provably ordinary async setup objects", () => {
+    const result = compile(
+      `const App = $component(async function App() {
+        const options = { params: { id: "ordinary" } };
+        function read() {
+          const { params } = options;
+          const copy = { ...options };
+          return params.id + copy.params.id;
+        }
+        await Promise.resolve();
+        return <p>{read()}</p>;
+      });`,
+      "OrdinaryAsyncObjects.tsx",
+    );
+
+    expect(result.code).not.toContain("routeObject as __sol_route_object");
+    expect(result.code).not.toContain("routeRead as __sol_route_read");
   });
 
   test("instruments optional and computed context reads", () => {
@@ -2166,7 +2198,8 @@ test("the route manifest creates one lazy loader per route file and infers liter
       `import { $route } from "sol";
        import { Index, Detail } from "./Pages";
        export const index = $route({ path: "/docs" }, Index);
-       export const detail = $route({ path: "/docs/:slug" }, Detail);`,
+       const internal = $route({ path: "/docs/:slug" }, Detail);
+       export { internal as detail };`,
     );
     const plugin = sol();
     (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
@@ -2178,8 +2211,56 @@ test("the route manifest creates one lazy loader per route file and infers liter
     expect(source.match(/import\("\/@fs\//g)).toHaveLength(1);
     expect(source.match(/__sol_lazy_route\(/g)).toHaveLength(2);
     expect(source).toContain('export const staticRoutePaths = ["/docs"]');
-    expect(source).toContain('"assetKey":"pages.sol.tsx"');
+    expect(source).toContain('assetKey: "pages.sol.tsx"');
+    expect(source).toContain('module["detail"]');
+    expect(source).not.toContain('module["internal"]');
+    expect(source.split('"pattern":"^/docs/([^/]+)$"')).toHaveLength(2);
     expect(source).not.toContain("import * as __sol_route_module");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("projects extensionless route imports and rejects unsafe namespace and re-export forms", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "route-import-forms-"));
+  try {
+    await Promise.all([
+      writeFile(join(root, "Page.tsx"), `export function Page() { return null; }`),
+      writeFile(
+        join(root, "page.sol.tsx"),
+        `import { $route } from "sol";
+         import { Page } from "./Page";
+         console.log("EXTENSIONLESS_PAGE_SECRET");
+         export const page = $route({ path: "/page" }, Page);`,
+      ),
+      writeFile(join(root, "entry.ts"), `import { page } from "./page.sol"; console.log(page);`),
+    ]);
+    const buildEntry = (input: string) =>
+      build({
+        root,
+        logLevel: "silent",
+        plugins: [sol()],
+        build: { write: false, rollupOptions: { input } },
+      });
+    const result = await buildEntry(join(root, "entry.ts"));
+    const entry = (Array.isArray(result) ? result : [result])
+      .flatMap((item) => ("output" in item ? item.output : []))
+      .find((item) => item.type === "chunk" && item.isEntry);
+    expect(entry?.type === "chunk" ? entry.code : "").not.toContain("EXTENSIONLESS_PAGE_SECRET");
+
+    await writeFile(
+      join(root, "namespace.ts"),
+      `import * as pages from "./page.sol.tsx"; console.log(pages.page);`,
+    );
+    const namespaceFailure = await buildEntry(join(root, "namespace.ts")).catch(
+      (error: unknown) => error,
+    );
+    expect(String(namespaceFailure)).toContain("namespace route imports");
+    await writeFile(join(root, "reexport.ts"), `export { page } from "./page.sol.tsx";`);
+    const reexportFailure = await buildEntry(join(root, "reexport.ts")).catch(
+      (error: unknown) => error,
+    );
+    expect(String(reexportFailure)).toContain("route re-exports");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -88,18 +88,30 @@ export async function renderToStringAsync<Props extends object>(
   if (!isObject(options) || Array.isArray(options)) {
     throw new TypeError("renderToStringAsync() options must be an object");
   }
-  for (const key of Object.keys(options)) {
+  const descriptors = Object.getOwnPropertyDescriptors(options);
+  for (const key of Reflect.ownKeys(descriptors)) {
     if (key !== "timeoutMs" && key !== "onHead" && key !== "url") {
-      throw new TypeError(`Unknown renderToStringAsync() option ${key}`);
+      throw new TypeError(`Unknown renderToStringAsync() option ${String(key)}`);
     }
   }
-  if (options.onHead !== undefined && typeof options.onHead !== "function") {
+  const optionValue = (key: keyof RenderToStringOptions): unknown => {
+    if (!Object.hasOwn(descriptors, key)) return undefined;
+    const descriptor = descriptors[key]!;
+    if (!("value" in descriptor)) {
+      throw new TypeError(`renderToStringAsync() option ${key} must be a data property`);
+    }
+    return descriptor.value;
+  };
+  const onHead = optionValue("onHead");
+  const configuredUrl = optionValue("url");
+  const configuredTimeout = optionValue("timeoutMs");
+  if (onHead !== undefined && typeof onHead !== "function") {
     throw new TypeError("renderToStringAsync() onHead must be a function");
   }
   let url: URL | undefined;
-  if (options.url !== undefined) {
+  if (configuredUrl !== undefined) {
     try {
-      url = new URL(options.url);
+      url = new URL(configuredUrl as string | URL);
     } catch {
       throw new TypeError("renderToStringAsync() url must be an absolute URL");
     }
@@ -107,7 +119,7 @@ export async function renderToStringAsync<Props extends object>(
       throw new TypeError("renderToStringAsync() url must use http or https");
     }
   }
-  const timeoutMs = validateTimeout(options.timeoutMs, "renderToStringAsync() timeoutMs");
+  const timeoutMs = validateTimeout(configuredTimeout, "renderToStringAsync() timeoutMs");
   const session = new SsrSession();
   const frame: RenderFrame = {
     ...rootFrame(),
@@ -132,10 +144,10 @@ export async function renderToStringAsync<Props extends object>(
       })
       .join("");
     const head = session.headHtml();
-    if (head && !options.onHead) {
+    if (head && !onHead) {
       throw new Error("renderToStringAsync() rendered Head content without an onHead callback");
     }
-    options.onHead?.(head);
+    (onHead as ((html: string) => void) | undefined)?.(head);
     session.templates.splice(0, session.templates.length, ...finalTemplateOrder(html + head));
     for (const entry of session.async) {
       if (entry.status === "pending") continue;

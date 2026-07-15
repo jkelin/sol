@@ -467,8 +467,8 @@ function dispatchOptions(options: unknown): Required<ServerDispatchOptions> {
     throw new TypeError(`Server dispatch options contain unknown property ${String(unexpected)}`);
   }
   const optionValue = (key: keyof ServerDispatchOptions): unknown => {
-    const descriptor = descriptors[key];
-    if (!descriptor) return undefined;
+    if (!Object.hasOwn(descriptors, key)) return undefined;
+    const descriptor = descriptors[key]!;
     if (!("value" in descriptor)) {
       throw new TypeError(`Server dispatch option ${key} must be a data property`);
     }

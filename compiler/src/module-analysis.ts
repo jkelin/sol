@@ -4,6 +4,10 @@ import type { CompilationState } from "./context.ts";
 import { codeFrame } from "./diagnostics.ts";
 import * as t from "@babel/types";
 
+function importedName(specifier: t.ImportSpecifier): string {
+  return t.isIdentifier(specifier.imported) ? specifier.imported.name : specifier.imported.value;
+}
+
 export function analyzeModule({ ast, compiler }: CompilationState): void {
   const declarationHelpers = new Set(["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"]);
 
@@ -14,13 +18,12 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
           if (
             t.isImportSpecifier(specifier) &&
             specifier.importKind !== "type" &&
-            t.isIdentifier(specifier.imported) &&
-            (specifier.imported.name === "signal" || specifier.imported.name === "computed")
+            (importedName(specifier) === "signal" || importedName(specifier) === "computed")
           ) {
             codeFrame(
               compiler,
               specifier,
-              `${specifier.imported.name}() was renamed to $${specifier.imported.name}()`,
+              `${importedName(specifier)}() was renamed to $${importedName(specifier)}()`,
             );
           }
         }
@@ -39,53 +42,46 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
             compiler.declarationHelperNamespaceImports.add(specifier.local);
             continue;
           }
-          if (!t.isImportSpecifier(specifier) || !t.isIdentifier(specifier.imported)) continue;
+          if (!t.isImportSpecifier(specifier)) continue;
           if (specifier.importKind === "type") continue;
-          if (specifier.imported.name === "$component") {
+          const imported = importedName(specifier);
+          if (imported === "$component") {
             compiler.componentImports.add(specifier.local);
           }
-          if (declarationHelpers.has(specifier.imported.name)) {
+          if (declarationHelpers.has(imported)) {
             compiler.declarationHelperImports.set(
               specifier.local,
-              specifier.imported.name as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
+              imported as "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute",
             );
           }
-          if (specifier.imported.name === "Route") {
+          if (imported === "Route") {
             compiler.componentNames.add(specifier.local.name);
             compiler.componentBindings.add(specifier.local);
           }
           if (
-            specifier.imported.name === "Suspense" ||
-            specifier.imported.name === "Await" ||
-            specifier.imported.name === "ErrorBoundary" ||
-            specifier.imported.name === "Portal" ||
-            specifier.imported.name === "GlobalPortal" ||
-            specifier.imported.name === "Head"
+            imported === "Suspense" ||
+            imported === "Await" ||
+            imported === "ErrorBoundary" ||
+            imported === "Portal" ||
+            imported === "GlobalPortal" ||
+            imported === "Head"
           ) {
-            compiler.builtinImports.set(specifier.local, specifier.imported.name);
+            compiler.builtinImports.set(specifier.local, imported);
           }
-          if (t.isIdentifier(specifier.imported, { name: "Link" })) {
+          if (imported === "Link") {
             compiler.linkImports.add(specifier.local);
           }
-          if (t.isIdentifier(specifier.imported, { name: "createRef" })) {
+          if (imported === "createRef") {
             compiler.refCreatorImports.add(specifier.local);
           }
-          if (
-            t.isIdentifier(specifier.imported) &&
-            (specifier.imported.name === "$signal" || specifier.imported.name === "$computed")
-          ) {
+          if (imported === "$signal" || imported === "$computed") {
             compiler.reactiveHelperImports.set(
               specifier.local,
-              specifier.imported.name.slice(1) as "signal" | "computed",
+              imported.slice(1) as "signal" | "computed",
             );
           }
-          if (
-            t.isIdentifier(specifier.imported) &&
-            (specifier.imported.name === "$query" ||
-              specifier.imported.name === "$mutation" ||
-              specifier.imported.name === "$form")
-          ) {
-            compiler.requestHelpers.set(specifier.local.name, specifier.imported.name);
+          if (imported === "$query" || imported === "$mutation" || imported === "$form") {
+            compiler.requestHelpers.set(specifier.local.name, imported);
           }
         }
       }

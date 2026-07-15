@@ -706,6 +706,24 @@ describe("compiler", () => {
     expect(namespace.code).not.toContain("__sol_route");
   });
 
+  test("recognizes string-named Sol declaration helper imports", () => {
+    const routeResult = compile(
+      `import { $component, "$route" as defineRoute } from "sol";
+       const Page = $component(function Page() { return <p>Page</p>; });
+       export const page = defineRoute({ path: "/string-helper" }, Page);`,
+      "string-helper.sol.tsx",
+    );
+    expect(routeResult.code).toContain("export const page = __sol_route");
+
+    const endpointResult = compile(
+      `import { "$rpcQuery" as defineQuery } from "sol";
+       export const query = defineQuery("string-helper", { schema: value => value }, async () => 1);`,
+      "string-helper-api.sol.ts",
+      { target: "client" },
+    );
+    expect(endpointResult.code).toContain('__sol_rpc_query_client("string-helper")');
+  });
+
   test("accepts identifier default exports for routes and server endpoints", () => {
     const routeResult = compile(
       `import { $component, $route } from "sol";
@@ -2377,6 +2395,12 @@ test("ignores type-only Sol helpers in virtual manifests", async () => {
        const page = Sol.$route({ path: "/namespace-type" }, Page);
        export { page };`,
     );
+    await writeFile(
+      join(root, "string.sol.ts"),
+      `import { "$route" as defineRoute, "$rpcQuery" as defineQuery } from "sol";
+       export const page = defineRoute({ path: "/string-helper" }, Page);
+       export const endpoint = defineQuery("string-helper", { schema: value => value }, async () => 1);`,
+    );
     const plugin = sol();
     (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
       command: "build",
@@ -2388,7 +2412,9 @@ test("ignores type-only Sol helpers in virtual manifests", async () => {
     );
     expect(routes).not.toContain("named-type");
     expect(routes).not.toContain("namespace-type");
+    expect(routes).toContain("string-helper");
     expect(endpoints).not.toContain("named.sol.ts");
+    expect(endpoints).toContain("string.sol.ts?sol-endpoints");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2848,6 +2874,9 @@ test("endpoint projections retain dependency initialization and project route ha
       writeFile(
         join(root, "endpoint.sol.tsx"),
         `import { $component, $httpRoute, $route } from "sol";
+         import type { ExternalShape } from "./types";
+         type Shape = ExternalShape;
+         export type { Shape };
          import { detail } from "./detail.sol.tsx";
          let schema;
          function makeSchema() {
@@ -2874,10 +2903,11 @@ test("endpoint projections retain dependency initialization and project route ha
          configure(schema);
          console.log("UNRELATED_ENDPOINT_MODULE_EFFECT_SECRET");
          export const endpoint = $httpRoute(
-           { method: "GET", path: "/api/detail", schema },
-           async () => new Response(detail.path),
+           { method: "GET", path: "/api/detail", schema: schema as (value: Shape) => Shape },
+           async () => new Response(detail.path + consumer.path),
          );`,
       ),
+      writeFile(join(root, "types.ts"), `export type ExternalShape = unknown;`),
       writeFile(
         join(root, "detail.sol.tsx"),
         `import { $route } from "sol";

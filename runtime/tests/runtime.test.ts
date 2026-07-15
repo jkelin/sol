@@ -1357,6 +1357,24 @@ describe("compiled DOM runtime", () => {
     }
     expect(accessorCalls).toBe(0);
 
+    const objectPrototype = Object.prototype as { id?: unknown };
+    Object.defineProperty(objectPrototype, "id", {
+      configurable: true,
+      value: { enumerable: true, value: "POLLUTED" },
+    });
+    try {
+      const missing = route({ path: "/missing/:id", schema: () => ({}) as { id: string } }, Empty, {
+        pattern: "^/missing/([^/]+)$",
+        parameterNames: ["id"],
+        pathnameParameterNames: ["id"],
+        queryParameters: [],
+        specificity: [1, 0],
+      });
+      expect(() => resolveRoute(missing, { id: "actual" })).toThrow("missing parameter id");
+    } finally {
+      delete objectPrototype.id;
+    }
+
     const prototypeName = route(
       {
         path: "/prototype/:__proto__",
@@ -1437,6 +1455,21 @@ describe("compiled DOM runtime", () => {
         params: Object.assign({ id: "42" }, { [Symbol("extra")]: true }),
       }),
     ).toThrow("symbol");
+  });
+
+  test("rejects accessor-backed SSR options", async () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    let reads = 0;
+    const options = Object.defineProperty({}, "onHead", {
+      enumerable: true,
+      get() {
+        reads++;
+        return reads === 1 ? () => undefined : "changed";
+      },
+    });
+    const failure = await renderToStringAsync(Empty, {}, options).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(TypeError);
+    expect((failure as Error).message).toContain("data property");
   });
 
   test("validates routes with Standard Schema implementations", async () => {

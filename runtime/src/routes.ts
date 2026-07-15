@@ -284,15 +284,15 @@ function validateRouteValues(
   }
   const paramKeys = ownKeys as string[];
   const descriptors = Object.getOwnPropertyDescriptors(values);
-  const missing = pathnameParameterNames.find((name) => descriptors[name] === undefined);
+  const missing = pathnameParameterNames.find((name) => !Object.hasOwn(descriptors, name));
   if (missing) throw new TypeError(`Route schema output is missing parameter ${missing}`);
   const unexpected = paramKeys.find((name) => !parameterNames.includes(name));
   if (unexpected)
     throw new TypeError(`Route schema output contains unknown parameter ${unexpected}`);
   const validated: Record<string, string | number | undefined> = {};
   for (const name of parameterNames) {
-    const descriptor = descriptors[name];
-    if (!descriptor) continue;
+    if (!Object.hasOwn(descriptors, name)) continue;
+    const descriptor = descriptors[name]!;
     if (!("value" in descriptor) || !descriptor.enumerable) {
       throw new TypeError(
         `Route schema output parameter ${name} must be an enumerable data property`,

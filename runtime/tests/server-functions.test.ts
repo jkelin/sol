@@ -696,6 +696,19 @@ describe("server declarations", () => {
     ).catch((error: unknown) => error);
     expect(accessorFailure).toBeInstanceOf(TypeError);
     expect(invoked).toBe(false);
+
+    const objectPrototype = Object.prototype as { development?: unknown };
+    Object.defineProperty(objectPrototype, "development", {
+      configurable: true,
+      value: { value: true },
+    });
+    try {
+      const polluted = await dispatchServerEndpoint([endpoint], request.clone());
+      const body = (await polluted!.json()) as { error: { message: string } };
+      expect(body.error.message).toBe("Internal Server Error");
+    } finally {
+      delete objectPrototype.development;
+    }
   });
 
   test("rejects non-JSON RPC arguments and results", async () => {

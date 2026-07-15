@@ -504,6 +504,15 @@ test("validates navigation options", () => {
   expect(() => router.navigate("/", { [Symbol("extra")]: true } as never)).toThrow(
     "unknown property",
   );
+  let reads = 0;
+  const changing = Object.defineProperty({}, "replace", {
+    enumerable: true,
+    get() {
+      reads++;
+      return reads === 1 ? false : "yes";
+    },
+  });
+  expect(() => router.navigate("/", changing)).toThrow("data property");
 });
 
 test("uses document location APIs for imperative document navigation", () => {

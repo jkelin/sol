@@ -218,6 +218,7 @@ function dependencyProjection(source: string, filename: string): string {
   });
   const helpers = declarationHelperBindings(ast);
   const exportedNames = manifestExportedNames(ast);
+  const routes = declaredRoutes(source, filename, { ast, helpers, exportedNames });
   const roots = new Set<string>();
   const routeRoots = new Set<string>();
   const expressionPurity = new WeakMap<t.Expression, boolean>();
@@ -354,6 +355,7 @@ function dependencyProjection(source: string, filename: string): string {
     for (const statement of ast.program.body) {
       if (t.isImportDeclaration(statement) || effects.has(statement)) continue;
       const { references, mutations, declaredNames, authoredEffect } = facts.get(statement)!;
+      if (declaredNames.some((name) => routeRoots.has(name))) continue;
       const routeOwnedDeclaration =
         declaredNames.some((name) => routeOwned.has(name)) &&
         !declaredNames.some((name) => needed.has(name));
@@ -380,30 +382,23 @@ function dependencyProjection(source: string, filename: string): string {
       const specifiers = statement.specifiers.filter((specifier) =>
         needed.has(specifier.local.name),
       );
-      return specifiers.length
-        ? [
-            t.importDeclaration(
-              specifiers.map((item) => t.cloneNode(item)),
-              statement.source,
-            ),
-          ]
-        : [];
+      if (!specifiers.length) return [];
+      const projected = t.cloneNode(statement, true);
+      projected.specifiers = specifiers.map((item) => t.cloneNode(item));
+      return [projected];
     }
     if (t.isExportNamedDeclaration(statement) && !statement.declaration && !statement.source) {
+      if (statement.exportKind === "type") return [];
       const specifiers = statement.specifiers.filter(
         (specifier) =>
           t.isExportSpecifier(specifier) &&
           t.isIdentifier(specifier.local) &&
           needed.has(specifier.local.name),
       );
-      return specifiers.length
-        ? [
-            t.exportNamedDeclaration(
-              null,
-              specifiers.map((item) => t.cloneNode(item)),
-            ),
-          ]
-        : [];
+      if (!specifiers.length) return [];
+      const projected = t.cloneNode(statement, true);
+      projected.specifiers = specifiers.map((item) => t.cloneNode(item));
+      return [projected];
     }
     if (effects.has(statement)) return [t.cloneNode(statement, true)];
     const names = Object.keys(t.getBindingIdentifiers(statement));
@@ -411,7 +406,17 @@ function dependencyProjection(source: string, filename: string): string {
       ? [t.cloneNode(statement, true)]
       : [];
   });
-  return generate(t.program(body)).code;
+  const localRoutes = routes.filter((route) => needed.has(route.localName));
+  let handleName = "solRouteHandle";
+  while (scope.bindings[handleName]) handleName = `_${handleName}`;
+  const handles = localRoutes.map(
+    (route) =>
+      `const ${route.localName} = ${handleName}({ path: ${JSON.stringify(route.path)} }, ${JSON.stringify(route.compiled)});`,
+  );
+  const handleImport = localRoutes.length
+    ? `import { routeHandle as ${handleName} } from "sol/compiler-runtime";\n`
+    : "";
+  return `${handleImport}${handles.join("\n")}\n${generate(t.program(body)).code}`;
 }
 
 function endpointProjection(source: string, filename: string): string {
@@ -554,10 +559,9 @@ function declarationHelperBindings(ast: t.File): {
       }
       if (
         t.isImportSpecifier(specifier) &&
-        t.isIdentifier(specifier.imported) &&
-        helpers.has(specifier.imported.name as DeclarationHelper)
+        helpers.has(moduleExportName(specifier.imported) as DeclarationHelper)
       ) {
-        names.set(specifier.local.name, specifier.imported.name as DeclarationHelper);
+        names.set(specifier.local.name, moduleExportName(specifier.imported) as DeclarationHelper);
       }
     }
   }
@@ -796,6 +800,13 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   }
   let config: ResolvedConfig;
   let devtoolsEnabled = false;
+  let discoveredFiles: Promise<string[]> | undefined;
+  const discoveryConsumers = new Set<string>();
+  const routeFiles = (): Promise<string[]> =>
+    (discoveredFiles ??= discoverRoutes(config.root).catch((error: unknown) => {
+      discoveredFiles = undefined;
+      throw error;
+    }));
   const fileInspections = new Map<string, Promise<InspectedRouteFile>>();
   const inspectRouteFile = (file: string): Promise<InspectedRouteFile> => {
     let inspection = fileInspections.get(file);
@@ -814,6 +825,8 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   };
   const invalidateManifest = (server: ViteDevServer, file: string): void => {
     if (!isRouteFile(file)) return;
+    discoveredFiles = undefined;
+    discoveryConsumers.clear();
     fileInspections.delete(file);
     if (relative(config.root, file).startsWith("..")) return;
     for (const id of [resolvedVirtualRoutes, resolvedVirtualEndpoints]) {
@@ -855,7 +868,12 @@ export function sol(options: SolPluginOptions = {}): Plugin {
     async load(id) {
       if (id === resolvedDevtoolsBuildEntry) return 'import "sol/devtools";';
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
-      const files = await discoverRoutes(config.root);
+      if (discoveryConsumers.has(id)) {
+        discoveredFiles = undefined;
+        discoveryConsumers.clear();
+      }
+      const files = await routeFiles();
+      discoveryConsumers.add(id);
       const inspections = await Promise.all(files.map(inspectRouteFile));
       validateRouteCollisions(inspections);
       return id === resolvedVirtualRoutes

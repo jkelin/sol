@@ -52,7 +52,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
   envelopes with canonical array-index validation, validated dispatch options, and
   development-safe failures.
-- `ssr.ts` validates and implements `renderToStringAsync()`.
+- `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
+  before asynchronous rendering.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation, route handles, complete lazy metadata validation, cached lazy-route descriptors,
@@ -73,7 +74,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial
   asynchronous route readiness, deployment-base translation, trailing-slash directory URL
-  normalization, shared empty route values, request-frame reads, and hydration of the active route.
+  normalization, shared empty route values, snapshotted navigation options, request-frame reads,
+  and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.
@@ -104,7 +106,8 @@ canonicalized to URL pathname encoding, while query, fragment, backslash, contro
 syntax is rejected. Server dispatch options must be a plain object containing only a boolean
 `development` flag and a non-negative safe-integer `maxBodyBytes`, preventing malformed truthy
 values from enabling diagnostic error details. Option values are snapshotted from data-property
-descriptors, so accessors cannot change validation results or run while dispatch begins.
+descriptors with own-property checks, so accessors and polluted prototypes cannot change validation
+results or run while dispatch begins. Route-schema values apply the same own-descriptor rule.
 
 Public interfaces validate inputs before mutating runtime state. Keep that validation intact when moving implementation details between modules.
 

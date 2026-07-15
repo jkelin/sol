@@ -343,10 +343,16 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   ) {
     throw new TypeError("router.navigate() options must be a plain object");
   }
-  const unexpected = Reflect.ownKeys(options).find((name) => name !== "replace");
+  const descriptors = Object.getOwnPropertyDescriptors(options);
+  const unexpected = Reflect.ownKeys(descriptors).find((name) => name !== "replace");
   if (unexpected)
     throw new TypeError(`router.navigate() options contain unknown property ${String(unexpected)}`);
-  if (options.replace !== undefined && typeof options.replace !== "boolean") {
+  const replaceDescriptor = Object.hasOwn(descriptors, "replace") ? descriptors.replace : undefined;
+  if (replaceDescriptor && !("value" in replaceDescriptor)) {
+    throw new TypeError("router.navigate() options replace must be a data property");
+  }
+  const replace = replaceDescriptor?.value as unknown;
+  if (replace !== undefined && typeof replace !== "boolean") {
     throw new TypeError("router.navigate() options replace must be a boolean");
   }
   const destination = new URL(path, window.location.origin);
@@ -355,11 +361,11 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   }
   const deployed = `${deployedPath(destination.pathname)}${destination.search}${destination.hash}`;
   if (navigationMode === "document") {
-    if (options.replace) window.location.replace(deployed);
+    if (replace) window.location.replace(deployed);
     else window.location.assign(deployed);
     return;
   }
-  const method = options.replace ? "replaceState" : "pushState";
+  const method = replace ? "replaceState" : "pushState";
   window.history[method](null, "", deployed);
   void synchronizeLocation();
 }

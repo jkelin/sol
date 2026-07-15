@@ -102,8 +102,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   nodes during hydration, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, boolean-valued enumerated
   attribute tokens, unchanged-order keyed-list updates without DOM moves, consistent text-control
-  stringification, array-indexed keyed-list snapshots that preserve sparse `map()` semantics and
-  ignore overridden array iterators, browser-normalized constrained-control hydration, reflected-attribute
+  stringification, fixed-length array-indexed keyed-list snapshots that preserve sparse `map()`
+  semantics and ignore overridden array iterators, browser-normalized constrained-control hydration, reflected-attribute
   null/boolean parity, and shared U+0000 normalization for text and dynamic attributes across
   server rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API

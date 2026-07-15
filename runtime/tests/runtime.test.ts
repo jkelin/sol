@@ -89,6 +89,36 @@ function retiringBlock(finished: Promise<void>, disposalError?: Error): Block {
   };
 }
 
+function renderKeyedValues(
+  values: string[],
+  getKey: (item: string, index: number) => unknown,
+): string[] {
+  const definition = template("<ol><!--sol:s:0--><!--sol:e:0--></ol>");
+  const rowDefinition = template("<li><!--sol:s:0--><!--sol:e:0--></li>");
+  const List = component(() => {
+    const view = instantiate(definition);
+    const cleanups: Array<() => void> = [];
+    list(
+      view.regions[0]!,
+      () => values,
+      getKey,
+      (item, index) => {
+        const row = instantiate(rowDefinition);
+        const rowCleanups: Array<() => void> = [];
+        text(row.regions[0]!, () => `${index.value}:${item.value}`, rowCleanups);
+        return block(row.fragment, rowCleanups);
+      },
+      cleanups,
+    );
+    return block(view.fragment, cleanups);
+  });
+  const target = document.createElement("main");
+  const dispose = mount(List, target);
+  const rows = [...target.querySelectorAll("li")].map((row) => row.textContent ?? "");
+  dispose();
+  return rows;
+}
+
 beforeEach(() => {
   window = new Window();
   formDisposals = [];
@@ -3351,6 +3381,37 @@ describe("compiled DOM runtime", () => {
     values.value = custom;
     expect(rows()).toEqual(["0:indexed"]);
     dispose();
+  });
+
+  test("snapshots array length before keyed-list traversal", () => {
+    const appended = ["zero"];
+    expect(
+      renderKeyedValues(appended, (_item, index) => {
+        if (index === 0) appended.push("late");
+        return index;
+      }),
+    ).toEqual(["0:zero"]);
+
+    let lengthReads = 0;
+    const changingLength = new Proxy(["only"], {
+      get(target, key, receiver) {
+        if (key === "length") lengthReads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(renderKeyedValues(changingLength, (_item, index) => index)).toEqual(["0:only"]);
+    expect(lengthReads).toBe(1);
+
+    const truncated = ["zero", "one", "two"];
+    const inherited = Object.create(Array.prototype) as string[];
+    inherited[2] = "inherited";
+    Object.setPrototypeOf(truncated, inherited);
+    expect(
+      renderKeyedValues(truncated, (_item, index) => {
+        if (index === 0) truncated.length = 1;
+        return index;
+      }),
+    ).toEqual(["0:zero", "2:inherited"]);
   });
 
   test("updates keyed rows without moving blocks when key order is unchanged", () => {

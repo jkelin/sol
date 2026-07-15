@@ -740,7 +740,8 @@ function sameKey(left: unknown, right: unknown): boolean {
 
 function* listEntries<T>(items: Iterable<T>): IterableIterator<{ item: T; index: number }> {
   if (Array.isArray(items)) {
-    for (let index = 0; index < items.length; index += 1) {
+    const length = items.length;
+    for (let index = 0; index < length; index += 1) {
       if (index in items) yield { item: items[index] as T, index };
     }
     return;

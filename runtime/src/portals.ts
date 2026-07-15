@@ -41,10 +41,14 @@ function mountPortal(
         : frame,
     );
     lifecycle.remoteBlocks.push(rendered);
-    let target = validateTarget(getTarget(), name);
-    rendered.mount(target);
+    let target: Element | undefined;
     const stop = runtimeEffect(() => {
       const nextTarget = validateTarget(getTarget(), name);
+      if (!target) {
+        rendered.mount(nextTarget);
+        target = nextTarget;
+        return;
+      }
       if (nextTarget === target) return;
       rendered.move(nextTarget);
       target = nextTarget;

@@ -1884,6 +1884,33 @@ describe("compiler", () => {
     );
   });
 
+  test("propagates async capture through long helper call chains", () => {
+    const helperCount = 200;
+    const helpers = Array.from({ length: helperCount }, (_, index) =>
+      index === helperCount - 1
+        ? `async function load${index}() { return await Promise.resolve("ready"); }`
+        : `async function load${index}() { return await load${index + 1}(); }`,
+    ).join("\n");
+    const result = compile(
+      `
+      const App = $component(async function App() {
+        ${helpers}
+        const value = await load0();
+        return <p>{value}</p>;
+      });
+    `,
+      "LongAsyncChain.tsx",
+    );
+
+    expect(result.code.match(/const __sol_capture_enabled/g)).toHaveLength(helperCount);
+    expect(result.code).toContain(
+      "const value = __sol_signal(await __sol_async_capture_call(() => load0(), true))",
+    );
+    expect(result.code).toContain(
+      '__sol_capture_enabled ? __sol_async_value(__sol_frame, "await:LongAsyncChain.tsx:0"',
+    );
+  });
+
   test("does not capture helper calls nested in an awaited callback", () => {
     const result = compile(
       `

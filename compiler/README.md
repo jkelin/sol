@@ -97,7 +97,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   form/query/mutation helpers, and component
   factories while preserving `createRef()` objects and immutable primitive constants as
   non-reactive values, recognizing explicit reactive helpers and extracted context methods,
-  capturing awaits through transparent TypeScript expressions, attaching authored locations to
+  capturing awaits through transparent TypeScript expressions with a linear reverse-call-graph
+  analysis, attaching authored locations to
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read
   instrumentation; constructor results retain the conservative frame-aware fallback because a
   constructor may return a route-backed object.

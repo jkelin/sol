@@ -48,8 +48,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   compiled component factories,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   shared single-value and concatenate-then-normalize display conversion, asynchronous retirement
-  settlement that globally surfaces late teardown failures without re-entering disposed owners, and
-  error propagation.
+  settlement that globally surfaces late teardown failures without re-entering disposed owners,
+  immediate promised-block mount rollback, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
   including shared HTML-string normalization, dynamic attribute and form-control serialization,
   collision-safe normalized text, U+0000 and lone-surrogate replacement that preserves valid
@@ -93,7 +93,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   newline normalization, and failure-safe prepare/commit reconciliation for conditional and
   keyed-list updates and Context Provider mounts.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
-- `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
+- `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets,
+  evaluating each target once per reactive run.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including rollback
   of Await value and local-error blocks whose mount fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.

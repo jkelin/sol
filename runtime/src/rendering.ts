@@ -740,6 +740,19 @@ export function reportError(frame: RenderFrame, error: unknown): void {
   else surfaceAsyncError(error);
 }
 
+function failedAsyncMount(rendered: Block, error: unknown): unknown {
+  try {
+    rethrowWithDisposals(
+      error,
+      [() => rendered.dispose()],
+      "Async block mount and rollback both failed",
+    );
+  } catch (caught) {
+    return caught;
+  }
+  return error;
+}
+
 export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block {
   if (!isPromiseLike(candidate)) return candidate;
   if (frame.mode === "server") {
@@ -798,9 +811,15 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
         try {
           if (disposed) settled.dispose();
           else {
-            resolved = settled;
             const currentParent = before?.parentNode ?? parent;
-            if (currentParent) settled.mount(currentParent, before);
+            if (currentParent) {
+              try {
+                settled.mount(currentParent, before);
+              } catch (error) {
+                throw failedAsyncMount(settled, error);
+              }
+            }
+            resolved = settled;
           }
         } catch (error) {
           if (disposed) surfaceAsyncError(error);
@@ -853,8 +872,12 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
         if (disposed) {
           settledBlock.dispose();
         } else {
+          try {
+            settledBlock.mount(marker.parentNode!, marker);
+          } catch (error) {
+            throw failedAsyncMount(settledBlock, error);
+          }
           resolved = settledBlock;
-          settledBlock.mount(marker.parentNode!, marker);
         }
       } catch (error) {
         if (disposed) surfaceAsyncError(error);

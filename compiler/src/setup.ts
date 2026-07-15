@@ -824,14 +824,24 @@ function instrumentAwaitExpressions(
       }
     },
   });
-  const hasCapturedAwait = (helper: LocalFunction, seen = new Set<LocalFunction>()): boolean => {
-    if (ownAwait.has(helper)) return true;
-    if (seen.has(helper)) return false;
-    seen.add(helper);
-    return [...(callsByOwner.get(helper) ?? [])].some(
-      (called) => reachable.has(called) && hasCapturedAwait(called, seen),
-    );
-  };
+  const callersByHelper = new Map<LocalFunction, Set<LocalFunction>>();
+  for (const caller of reachable) {
+    for (const called of callsByOwner.get(caller) ?? []) {
+      if (!reachable.has(called)) continue;
+      const callers = callersByHelper.get(called) ?? new Set();
+      callers.add(caller);
+      callersByHelper.set(called, callers);
+    }
+  }
+  const capturedAwaitHelpers = new Set(ownAwait);
+  const capturedQueue = [...ownAwait];
+  for (let index = 0; index < capturedQueue.length; index += 1) {
+    for (const caller of callersByHelper.get(capturedQueue[index]!) ?? []) {
+      if (capturedAwaitHelpers.has(caller)) continue;
+      capturedAwaitHelpers.add(caller);
+      capturedQueue.push(caller);
+    }
+  }
 
   const directlyAwaitedHelper = (argument: t.Expression): LocalFunction | undefined => {
     const expression = unwrapTransparentExpression(argument);
@@ -856,7 +866,7 @@ function instrumentAwaitExpressions(
     return expression.arguments[0].elements.every((element) => {
       if (!element || t.isSpreadElement(element)) return false;
       const helper = directlyAwaitedHelper(element);
-      return helper !== undefined && reachable.has(helper) && hasCapturedAwait(helper);
+      return helper !== undefined && capturedAwaitHelpers.has(helper);
     });
   };
 
@@ -871,7 +881,7 @@ function instrumentAwaitExpressions(
         const helper = t.isCallExpression(initializer.init)
           ? callTargets.get(initializer.init)
           : undefined;
-        if (!(helper && reachable.has(helper) && hasCapturedAwait(helper))) {
+        if (!(helper && capturedAwaitHelpers.has(helper))) {
           if (!capturedInitializers.has(initializer)) {
             useRuntimeHelper(compiler, "__sol_async_value");
             initializer.init = t.callExpression(t.identifier("__sol_async_value"), [
@@ -885,7 +895,7 @@ function instrumentAwaitExpressions(
         return;
       }
       const helper = directlyAwaitedHelper(argument);
-      if (helper && reachable.has(helper) && hasCapturedAwait(helper)) return;
+      if (helper && capturedAwaitHelpers.has(helper)) return;
       if (capturedHelperAggregate(argument)) return;
       useRuntimeHelper(compiler, "__sol_async_value");
       const captured = t.callExpression(t.identifier("__sol_async_value"), [
@@ -902,7 +912,7 @@ function instrumentAwaitExpressions(
   });
 
   for (const helper of reachable) {
-    if (!hasCapturedAwait(helper)) continue;
+    if (!capturedAwaitHelpers.has(helper)) continue;
     useRuntimeHelper(compiler, "__sol_async_capture_active");
     if (t.isArrowFunctionExpression(helper) && !t.isBlockStatement(helper.body)) {
       helper.body = t.blockStatement([t.returnStatement(helper.body)]);
@@ -921,7 +931,7 @@ function instrumentAwaitExpressions(
   traverse(file, {
     CallExpression(path: NodePath<t.CallExpression>) {
       const helper = callTargets.get(path.node);
-      if (!helper || !reachable.has(helper) || !hasCapturedAwait(helper)) return;
+      if (!helper || !capturedAwaitHelpers.has(helper)) return;
       const owner = path.getFunctionParent()?.node;
       const awaited = ancestorWithinFunction(
         path,

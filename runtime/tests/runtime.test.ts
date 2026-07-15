@@ -20,6 +20,7 @@ import type { ServerRegion } from "../src/server-rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
 import { HydrationSession, SsrSession } from "../src/ssr-session.ts";
 import { transition } from "../src/transitions.ts";
+import { portal } from "../src/portals.ts";
 import {
   attribute,
   batch,
@@ -2301,6 +2302,72 @@ describe("compiled DOM runtime", () => {
     expect(new Set(surfaced)).toEqual(new Set(expected));
   });
 
+  test("immediately rolls back promised blocks whose browser or hydration mount fails", async () => {
+    await Promise.all(
+      ([undefined, "hydrate", "resume"] as const).map(async (mode) => {
+        const mountFailure = new Error(`${mode ?? "browser"} mount failed`);
+        const errors: unknown[] = [];
+        let disposals = 0;
+        const pending = resolvedBlock(
+          Promise.resolve<Block>({
+            nodes: [],
+            mount() {
+              throw mountFailure;
+            },
+            move() {},
+            enter() {},
+            leave: () => undefined,
+            retire: () => undefined,
+            dispose() {
+              disposals += 1;
+            },
+          }),
+          { ...rootFrame(), mode, handleError: (error) => errors.push(error) },
+        );
+        pending.mount(document.createElement("main"));
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(errors).toEqual([mountFailure]);
+        expect(disposals).toBe(1);
+        pending.dispose();
+        expect(disposals).toBe(1);
+      }),
+    );
+  });
+
+  test("preserves a promised-block mount failure when its rollback also fails", async () => {
+    const mountFailure = new Error("promised mount failed");
+    const rollbackFailure = new Error("promised rollback failed");
+    const errors: unknown[] = [];
+    const pending = resolvedBlock(
+      Promise.resolve<Block>({
+        nodes: [],
+        mount() {
+          throw mountFailure;
+        },
+        move() {},
+        enter() {},
+        leave: () => undefined,
+        retire: () => undefined,
+        dispose() {
+          throw rollbackFailure;
+        },
+      }),
+      { ...rootFrame(), handleError: (error) => errors.push(error) },
+    );
+    pending.mount(document.createElement("main"));
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(AggregateError);
+    expect((errors[0] as AggregateError).cause).toBe(mountFailure);
+    expect((errors[0] as AggregateError).errors).toEqual([mountFailure, rollbackFailure]);
+  });
+
   test("preserves a mount failure when teardown also fails", () => {
     const lifecycle = blockLifecycle();
     lifecycle.refMounts.push(() => {
@@ -2408,6 +2475,40 @@ describe("compiled DOM runtime", () => {
       ),
     ).toThrow("provider child mount failed");
     expect(disposals).toBe(1);
+  });
+
+  test("evaluates a Portal target once initially and once per reactive change", () => {
+    const first = document.createElement("aside");
+    const second = document.createElement("aside");
+    const target = $signal(first);
+    const cleanups: Array<() => void> = [];
+    const lifecycle = blockLifecycle();
+    let reads = 0;
+    portal(
+      () => {
+        reads += 1;
+        return target.value;
+      },
+      () => {
+        const fragment = document.createDocumentFragment();
+        fragment.append(document.createTextNode("portal content"));
+        return block(fragment);
+      },
+      cleanups,
+      lifecycle,
+      rootFrame(),
+    );
+    const owner = block(document.createDocumentFragment(), cleanups, lifecycle);
+
+    owner.mount(document.createElement("main"));
+    expect(reads).toBe(1);
+    expect(first.textContent).toBe("portal content");
+
+    target.value = second;
+    expect(reads).toBe(2);
+    expect(first.textContent).toBe("");
+    expect(second.textContent).toBe("portal content");
+    owner.dispose();
   });
 
   test("validates mount boundaries", () => {

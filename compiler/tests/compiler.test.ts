@@ -3119,25 +3119,47 @@ test("the Vite plugin enables devtools only for development by default", () => {
       tag: "script",
       attrs: {
         type: "module",
-        src: "/@id/@soljs/sol/devtools",
+        src: "/@id/virtual:sol/router-entry",
+        "data-sol-router": "",
         "data-sol-devtools": "",
       },
       injectTo: "head-prepend",
     },
   ]);
-  expect(injectedDevtools("build")).toEqual([]);
+  expect(injectedDevtools("build")).toEqual([
+    {
+      tag: "script",
+      attrs: {
+        type: "module",
+        src: "/@soljs/sol/router-entry",
+        "data-sol-router": "",
+      },
+      injectTo: "head-prepend",
+    },
+  ]);
   expect(injectedDevtools("build", true)).toEqual([
     {
       tag: "script",
       attrs: {
         type: "module",
-        src: "/@soljs/sol/devtools",
+        src: "/@soljs/sol/router-entry",
+        "data-sol-router": "",
         "data-sol-devtools": "",
       },
       injectTo: "head-prepend",
     },
   ]);
-  expect(injectedDevtools("serve", false)).toEqual([]);
+  expect(injectedDevtools("serve", false)).toEqual([
+    {
+      tag: "script",
+      attrs: {
+        type: "module",
+        src: "/@id/virtual:sol/router-entry",
+        "data-sol-router": "",
+      },
+      injectTo: "head-prepend",
+    },
+  ]);
   expect(() => sol({ devtools: "yes" as never })).toThrow("must be a boolean");
 });
 

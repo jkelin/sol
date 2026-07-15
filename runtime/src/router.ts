@@ -1,7 +1,3 @@
-// oxlint-disable-next-line typescript/triple-slash-reference -- Vite provides this virtual module.
-/// <reference path="./virtual-routes.d.ts" />
-
-import routes from "virtual:sol/routes";
 import type { Component } from "./components.ts";
 import { devtoolsRouterUpdated } from "./devtools-hook.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
@@ -158,7 +154,26 @@ function prepareRoutes(
     }));
 }
 
-const preparedRoutes = prepareRoutes(routes);
+let preparedRoutes: readonly PreparedRoute[] = [];
+
+/** Installs the compiler-generated route manifest before application rendering starts. */
+export function configureRouterRoutes(definitions: unknown): void | Promise<void> {
+  if (!Array.isArray(definitions)) throw new TypeError("Router routes must be an array");
+  for (const definition of definitions) {
+    if (
+      !isRouteDefinition(definition) &&
+      !(
+        definition &&
+        typeof definition === "object" &&
+        typeof (definition as Partial<LazyRouteDefinition>).load === "function"
+      )
+    ) {
+      throw new TypeError("Router routes must contain compiled route definitions");
+    }
+  }
+  preparedRoutes = prepareRoutes(definitions as Array<LazyRouteDefinition | RouteDefinition>);
+  return synchronizeLocation();
+}
 
 function decodeParameter(value: string): string {
   try {

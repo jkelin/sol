@@ -56,6 +56,7 @@ export { renderToStringAsync, type RenderToStringOptions } from "./ssr.ts";
 export {
   configureRouterBase,
   configureRouterNavigation,
+  configureRouterRoutes,
   Route,
   router,
   routerReady,

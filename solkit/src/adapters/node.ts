@@ -6,6 +6,12 @@ export function nodeAdapter(): SolkitAdapter {
   return Object.freeze({
     name: "node",
     write: async (context: SolkitAdapterContext) =>
-      writeLauncher(context, await loadLauncher(new URL("./node-launcher.mjs", import.meta.url))),
+      writeLauncher(
+        context,
+        await loadLauncher(
+          new URL("./node-launcher.mjs", import.meta.url),
+          () => import("./node-launcher.mjs", { with: { type: "text" } }),
+        ),
+      ),
   });
 }

@@ -1,14 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-  isCSSRequest,
-  type EnvironmentModuleNode,
-  type Plugin,
-  type ResolvedConfig,
-  type ViteDevServer,
-  normalizePath,
-} from "vite";
+import type { EnvironmentModuleNode, Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import type { RequestHandler, SolkitAdapter, SolkitOptions } from "./types.ts";
 
 const CLIENT_ENTRY = "virtual:solkit/client";
@@ -20,6 +13,15 @@ const RESOLVED_SERVER_ENTRY = `\0${SERVER_ENTRY}`;
 const RESOLVED_ADAPTER_ENTRY = `\0${ADAPTER_ENTRY}`;
 const BUILD_TARGET = "SOLKIT_BUILD_TARGET";
 const DEV_STYLE_ATTRIBUTE = "data-solkit-dev-style";
+const CSS_REQUEST = /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss|sss)(?:$|\?)/i;
+
+function isCssRequest(id: string): boolean {
+  return CSS_REQUEST.test(id);
+}
+
+function normalizePath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
 
 function validateOptions(options: unknown): asserts options is SolkitOptions {
   if (!options || typeof options !== "object" || Array.isArray(options)) {
@@ -108,7 +110,7 @@ async function collectDevStyles(server: ViteDevServer): Promise<string[]> {
     visited.add(url);
 
     let module = await graph.getModuleByUrl(url);
-    if (module && isCSSRequest(module.url)) {
+    if (module && isCssRequest(module.url)) {
       return /[?&](?:inline|raw|url)(?:&|$)/.test(module.url) ? [] : [module.url];
     }
     if (!module?.transformResult && module?.type !== "css") {
@@ -228,10 +230,13 @@ import { staticRoutePaths, staticRoutes } from "virtual:sol/routes";`
 export { staticRoutePaths, staticRoutes };`
           : "";
         return `import { createRequestHandler } from "@soljs/solkit";
+import { configureRouterRoutes } from "@soljs/sol";
 import { configureRouteBase } from "@soljs/sol/compiler-runtime";
+import routes from "virtual:sol/routes";
 import endpoints from "virtual:sol/server-endpoints";
 ${rootImport}
 configureRouteBase(${JSON.stringify(config.base)});
+await configureRouterRoutes(routes);
 export const handle = createRequestHandler(Root, endpoints, { logicalPaths: ${staticBuild}, maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });
 ${staticPathExport}`;
       }

@@ -1116,5 +1116,3 @@ export function installDevtools(): SolDevtools | undefined {
   installWebMcp(api);
   return api;
 }
-
-installDevtools();

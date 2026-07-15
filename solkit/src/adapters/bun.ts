@@ -6,6 +6,12 @@ export function bunAdapter(): SolkitAdapter {
   return Object.freeze({
     name: "bun",
     write: async (context: SolkitAdapterContext) =>
-      writeLauncher(context, await loadLauncher(new URL("./bun-launcher.mjs", import.meta.url))),
+      writeLauncher(
+        context,
+        await loadLauncher(
+          new URL("./bun-launcher.mjs", import.meta.url),
+          () => import("./bun-launcher.mjs", { with: { type: "text" } }),
+        ),
+      ),
   });
 }

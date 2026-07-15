@@ -8,7 +8,7 @@ request pipeline dispatches compiled RPC and HTTP endpoints before server-hosted
 Named queries and mutations share the JSON `POST /api/rpc/:name` protocol; lower-level HTTP routes
 retain their explicitly declared methods and body modes.
 
-`bun run build` writes the publishable JavaScript, CLI, and type declarations to `dist/` using `tsconfig.build.json`. The installed command remains `solkit`.
+`bun run build` writes one tree-shakeable ESM bundle (`dist/index.js`) and one rolled-up declaration file (`dist/index.d.ts`), then formats both files with Oxfmt. Every published Solkit subpath and the installed `solkit` command resolve to the shared JavaScript bundle; guarded direct-execution detection keeps ordinary and build-time library imports from starting or re-entering the CLI.
 
 ## Configure an application
 
@@ -149,11 +149,11 @@ const response = await handle(request, { template });
 - `index.ts` dispatches compiled endpoints, validates document requests and templates, renders the
   root, and composes full HTML.
 - `types.ts` defines the request handler, Vite options, adapter, and build context contracts.
-- `vite.ts` provides virtual browser/server entries, streaming Vite development request bridging,
-  build targets, hydration readiness, and Vite-emitted adapter output.
+- `vite.ts` provides virtual browser/server entries, installs generated routes before server rendering,
+  streams Vite development requests, coordinates build targets and hydration readiness, and emits adapter output through Vite.
 - `cli.ts` runs the Vite client, SSR, and adapter-finalization production builds with Bun.
-- `adapter-utils.ts` loads launcher source through Bun's text loader or Node's file API, validates
-  adapter output paths, and emits or directly writes launchers.
+- `adapter-utils.ts` loads statically identified launcher source through Bun's bundlable text loader
+  or Node's file API, validates adapter output paths, and emits or directly writes launchers.
 - `adapters/bun.ts` emits the Bun static-file and Fetch-handler host.
 - `adapters/node.ts` emits the Node.js HTTP/static-file host and bridges Web responses.
 - `adapters/static.ts` validates an entry's static paths and emits prerendered documents beside the

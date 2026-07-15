@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import type { Scope } from "@babel/traverse";
 import * as t from "@babel/types";
-import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
+import type { HtmlTagDescriptor, Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath } from "vite";
 import MagicString, { type SourceMap } from "magic-string";
 import { type RawSourceMap, SourceMapConsumer, SourceMapGenerator } from "source-map-js";
@@ -21,8 +21,9 @@ const resolvedVirtualRoutes = `\0${virtualRoutes}`;
 const virtualEndpoints = "virtual:sol/server-endpoints";
 const resolvedVirtualEndpoints = `\0${virtualEndpoints}`;
 const devtoolsPackageEntry = "@soljs/sol/devtools";
-const devtoolsBuildEntry = "/@soljs/sol/devtools";
-const resolvedDevtoolsBuildEntry = "\0sol:devtools-entry";
+const routerPackageEntry = "virtual:sol/router-entry";
+const routerBuildEntry = "/@soljs/sol/router-entry";
+const resolvedRouterBuildEntry = "\0sol:router-entry";
 const componentFile = /\.tsx(?:\?.*)?$/;
 const solFile = /\.sol\.tsx?(?:\?.*)?$/i;
 const moduleFile = /\.[cm]?[jt]sx?(?:\?.*)?$/i;
@@ -856,28 +857,28 @@ export function sol(options: SolPluginOptions = {}): Plugin {
     transformIndexHtml: {
       order: "pre",
       handler() {
-        if (!devtoolsEnabled) return [];
-        return [
-          {
-            tag: "script",
-            attrs: {
-              type: "module",
-              src: config.command === "serve" ? `/@id/${devtoolsPackageEntry}` : devtoolsBuildEntry,
-              "data-sol-devtools": "",
-            },
-            injectTo: "head-prepend",
-          },
-        ];
+        const attrs: HtmlTagDescriptor["attrs"] = {
+          type: "module",
+          src: config.command === "serve" ? `/@id/${routerPackageEntry}` : routerBuildEntry,
+          "data-sol-router": "",
+        };
+        if (devtoolsEnabled) attrs["data-sol-devtools"] = "";
+        return [{ tag: "script", attrs, injectTo: "head-prepend" }];
       },
     },
     resolveId(id) {
       if (id === virtualRoutes) return resolvedVirtualRoutes;
       if (id === virtualEndpoints) return resolvedVirtualEndpoints;
-      return id === devtoolsBuildEntry ? resolvedDevtoolsBuildEntry : null;
+      if (id === routerPackageEntry || id === routerBuildEntry) return resolvedRouterBuildEntry;
+      return null;
     },
     async load(id) {
-      if (id === resolvedDevtoolsBuildEntry)
-        return `import ${JSON.stringify(devtoolsPackageEntry)};`;
+      if (id === resolvedRouterBuildEntry) {
+        const devtools = devtoolsEnabled
+          ? `import { installDevtools } from ${JSON.stringify(devtoolsPackageEntry)};\ninstallDevtools();\n`
+          : "";
+        return `import routes from ${JSON.stringify(virtualRoutes)};\nimport { configureRouterRoutes } from "@soljs/sol";\n${devtools}await configureRouterRoutes(routes);`;
+      }
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
       if (generationConsumers.has(id)) {
         discoveredFiles = undefined;

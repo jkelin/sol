@@ -39,7 +39,7 @@ Generated lazy loaders use the full page projection, while endpoint discovery us
 binding-and-initialization-effect closure that excludes route implementations and their transitive
 dependencies; route handles referenced by endpoint code are projected again as metadata.
 
-`bun run build` writes the publishable JavaScript and type declarations to `dist/` using `tsconfig.build.json`.
+`bun run build` writes one tree-shakeable ESM bundle (`dist/index.js`) and one rolled-up declaration file (`dist/index.d.ts`), then formats both files with Oxfmt. The root and Vite subpaths both resolve to those two files.
 
 ## Source files
 
@@ -132,7 +132,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `vite.ts` discovers `.sol.ts` and `.sol.tsx` modules, provides lazy route-file and server-endpoint
   manifests, infers literal static paths, emits both RPC declaration kinds as
   `POST /api/rpc/:name`, rejects matcher collisions, invalidates both manifests during development,
-  injects the opt-out development devtools entry, and compiles metadata-only route handles
+  injects route-manifest initialization plus the opt-out development devtools entry, and compiles metadata-only route handles
   separately from page implementations before Vite's JSX transform. Every projection emits a
   source map. Route-import maps compose with compiler maps to retain authored locations and source
   content, while generated handle and endpoint projections expose only their projected source so

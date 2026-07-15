@@ -2,10 +2,17 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SolkitAdapterContext } from "./types.ts";
 
-export async function loadLauncher(url: URL): Promise<string> {
+export async function loadLauncher(
+  url: URL,
+  importText: () => Promise<{ default?: unknown }>,
+): Promise<string> {
   let source: unknown;
-  if (typeof Bun === "undefined") source = await readFile(url, "utf8");
-  else source = (await import(url.href, { with: { type: "text" } })).default;
+  try {
+    source = (await importText()).default;
+  } catch (error) {
+    if (typeof Bun !== "undefined") throw error;
+    source = await readFile(url, "utf8");
+  }
   if (typeof source !== "string") throw new TypeError("Launcher source must be text");
   return source;
 }

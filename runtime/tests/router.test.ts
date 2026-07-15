@@ -280,8 +280,15 @@ const routes = [
 window.history.replaceState(null, "", "/initial-lazy");
 await mock.module("virtual:sol/routes", () => ({ default: routes }));
 const devtools = installDevtools()!;
-const { configureRouterBase, configureRouterNavigation, Route, router, routerReady } =
-  await import("../src/router.ts");
+const {
+  configureRouterBase,
+  configureRouterNavigation,
+  configureRouterRoutes,
+  Route,
+  router,
+  routerReady,
+} = await import("../src/router.ts");
+await configureRouterRoutes(routes);
 await routerReady;
 const initialRoutePath = router.route?.path;
 router.navigate("/");

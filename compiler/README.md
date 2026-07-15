@@ -79,9 +79,11 @@ dependencies; route handles referenced by endpoint code are projected again as m
   canonical matching metadata for compiled declarations and lazy manifests.
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
-- `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
-  reusable Babel-to-code helpers, including nested-JSX detection and validation for `arguments`,
-  `new.target`, and named self-references owned by erased function boundaries.
+- `codegen.ts` owns lexical-binding-aware identifier and assignment-target rewriting without
+  rewriting TypeScript type positions, transparent TypeScript-expression unwrapping, and reusable
+  Babel-to-code helpers, including nested-JSX detection and validation for `arguments`,
+  `new.target`, and named self-references owned by erased function boundaries. Component bindings
+  remain reactive even when their names also exist in Babel's known-global table.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
   conditionals, and child expressions into source-marker-independent, signature-indexed interned
   templates and reactive or one-shot runtime operations. Keyed-list parameters use deterministic
@@ -114,11 +116,13 @@ dependencies; route handles referenced by endpoint code are projected again as m
   `satisfies`, and non-null wrappers. Constant form/query/mutation controllers remain direct stable objects instead
   of receiving redundant signal wrappers, while their members remain valid binding roots. Authored
   `const` compiler-managed bindings reject direct assignment, compound assignment, updates, and loop
-  target writes while retaining writable object members. Initializer free references are analyzed
+  target writes in setup and returned JSX callbacks while retaining writable object members;
+  computed bindings receive the same callback-aware readonly validation. Initializer free references are analyzed
   once for self, forward, and reactive classification, recognizing explicit reactive helpers and extracted context methods,
   capturing awaits through transparent TypeScript expressions with a linear reverse-call-graph
   analysis, rejecting `for await...of` loops whose iterator progress cannot be replayed during
-  hydration, attaching authored locations to
+  hydration, retaining the native `Promise.all` capture optimization only when `Promise` resolves to
+  the global rather than a lexical binding, attaching authored locations to
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read
   instrumentation; constructor results retain the conservative frame-aware fallback because a
   constructor may return a route-backed object.

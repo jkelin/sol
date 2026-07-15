@@ -765,7 +765,7 @@ test("contexts compose with async components, Suspense, Await, and ErrorBoundary
     });
 
     export const App = $component(function App() {
-      const shared = { label: "provided", count: 0 };
+      let shared = { label: "provided", count: 0 };
       const promise = Promise.resolve({ text: "awaited" });
       return <sharedContext.Provider data={shared}>
         <ErrorBoundary fallback={error => <p id="boundary-error">{String(error)}</p>}>

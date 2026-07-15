@@ -26,14 +26,44 @@ export function containsJsx(node: t.Node): boolean {
   return found;
 }
 
+function isAssignmentTarget(path: NodePath<t.Identifier>): boolean {
+  let current: NodePath = path;
+  while (current.parentPath) {
+    const parent = current.parentPath;
+    if (
+      ((parent.isObjectProperty() || parent.isObjectMethod()) &&
+        current.key === "key" &&
+        !parent.node.computed) ||
+      ((parent.isMemberExpression() || parent.isOptionalMemberExpression()) &&
+        current.key === "property" &&
+        !parent.node.computed)
+    ) {
+      return false;
+    }
+    if (parent.isAssignmentExpression()) return parent.node.left === current.node;
+    if (parent.isForOfStatement() || parent.isForInStatement()) {
+      return parent.node.left === current.node;
+    }
+    current = parent;
+  }
+  return false;
+}
+
 export function rewriteIdentifiers(file: t.File, scope: Scope): void {
   traverse(file, {
     Identifier(path: NodePath<t.Identifier>) {
       const replacement = scope.get(path.node.name);
-      if (!replacement || path.scope.hasBinding(path.node.name)) return;
+      if (
+        !replacement ||
+        path.scope.getBinding(path.node.name) ||
+        path.findParent((parent) => t.isTSType(parent.node))
+      ) {
+        return;
+      }
       const isAssignment = t.isAssignmentExpression(path.parent) && path.parent.left === path.node;
       const isUpdate = t.isUpdateExpression(path.parent) && path.parent.argument === path.node;
-      if (!path.isReferencedIdentifier() && !isAssignment && !isUpdate) return;
+      if (!path.isReferencedIdentifier() && !isAssignment && !isUpdate && !isAssignmentTarget(path))
+        return;
       if (t.isObjectProperty(path.parent) && path.parent.shorthand) path.parent.shorthand = false;
       path.replaceWith(parseExpression(replacement, { plugins: ["typescript"] }));
       path.skip();
@@ -240,7 +270,7 @@ export function referencedNames(expression: t.Expression): Set<string> {
   const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
   traverse(file, {
     ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
-      if (!t.isIdentifier(path.node) || path.scope.hasBinding(path.node.name)) return;
+      if (!t.isIdentifier(path.node) || path.scope.getBinding(path.node.name)) return;
       names.add(path.node.name);
     },
   });

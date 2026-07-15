@@ -157,8 +157,17 @@ export function validateComputedWrites(
   compiler: CompilerContext,
   setup: t.Statement[],
   bindings: ReadonlyMap<string, ReactiveKind>,
+  returned?: t.JSXElement | t.JSXFragment,
 ): void {
-  const file = t.file(t.program(setup.map((statement) => t.cloneNode(statement, true))));
+  const returnedStatement = returned
+    ? t.expressionStatement(t.cloneNode(returned, true))
+    : undefined;
+  const file = t.file(
+    t.program([
+      ...setup.map((statement) => t.cloneNode(statement, true)),
+      ...(returnedStatement ? [returnedStatement] : []),
+    ]),
+  );
   const check = (path: NodePath, expression: t.Expression): void => {
     const root = bindingRoot(expression);
     if (!root || bindings.get(root) !== "computed") return;
@@ -177,7 +186,9 @@ export function validateComputedWrites(
       if (!bindings.has(name)) return false;
       return path.scope.getBinding(name)?.scope.path.isProgram();
     });
-    if (reactiveBinding) {
+    const insideReturned =
+      returnedStatement && path.findParent((candidate) => candidate.node === returnedStatement);
+    if (reactiveBinding && !insideReturned) {
       codeFrame(
         compiler,
         target,
@@ -258,7 +269,7 @@ export function validatePropWrites(
     const object = t.isExpression(expression.object)
       ? unwrapTransparentExpression(expression.object)
       : expression.object;
-    return t.isIdentifier(object, { name: propsName }) && !path.scope.hasBinding(propsName);
+    return t.isIdentifier(object, { name: propsName }) && !path.scope.getBinding(propsName);
   };
   const reject = (node: t.Node): never =>
     codeFrame(
@@ -275,7 +286,7 @@ export function validatePropWrites(
     if (
       target &&
       t.isIdentifier(unwrapTransparentExpression(target), { name: propsName }) &&
-      !path.scope.hasBinding(propsName)
+      !path.scope.getBinding(propsName)
     ) {
       reject(target);
     }
@@ -356,6 +367,7 @@ export function compileSetup(
   compiler: CompilerContext,
   setup: t.Statement[],
   propsName: string | undefined,
+  returned?: t.JSXElement | t.JSXFragment,
 ): { bindings: Map<string, ReactiveKind>; code: string; scope: Map<string, string> } {
   const bindings = new Map<string, ReactiveKind>();
   const declarationKinds = new WeakMap<
@@ -482,8 +494,9 @@ export function compileSetup(
     }
   }
 
-  validateConstSignalWrites(compiler, setup, constSignalNames);
-  validateComputedWrites(compiler, setup, bindings);
+  const validatedStatements = returned ? [...setup, t.expressionStatement(returned)] : setup;
+  validateConstSignalWrites(compiler, validatedStatements, constSignalNames);
+  validateComputedWrites(compiler, setup, bindings, returned);
   const scope = new Map<string, string>();
   for (const [name, kind] of bindings) {
     scope.set(name, kind === "controller" ? name : `${name}.value`);
@@ -631,7 +644,7 @@ export function compileFunction(
       validateReservedIdentifier(compiler, statement.id);
     }
   }
-  const compiledSetup = compileSetup(compiler, setup, parameter?.name);
+  const compiledSetup = compileSetup(compiler, setup, parameter?.name, returned);
   const parameterCode = parameter ? generate(parameter).code : "__sol_props";
   const previousPropsName = compiler.propsName;
   compiler.propsName = parameter?.name;
@@ -658,7 +671,7 @@ function instrumentRequestSources(
       const helper = t.isIdentifier(call.callee)
         ? compiler.requestHelpers.get(call.callee.name)
         : undefined;
-      if (!t.isIdentifier(call.callee) || !helper || path.scope.hasBinding(call.callee.name)) {
+      if (!t.isIdentifier(call.callee) || !helper || path.scope.getBinding(call.callee.name)) {
         return;
       }
       compiler.requestControllerCalls.add(call);
@@ -977,9 +990,13 @@ function instrumentAwaitExpressions(
     return callTargets.get(expression);
   };
 
-  const capturedHelperAggregate = (argument: t.Expression): boolean => {
+  const capturedHelperAggregate = (
+    path: NodePath<t.AwaitExpression>,
+    argument: t.Expression,
+  ): boolean => {
     const expression = unwrapTransparentExpression(argument);
     if (
+      path.scope.getBinding("Promise") ||
       !t.isCallExpression(expression) ||
       !t.isMemberExpression(expression.callee) ||
       expression.callee.computed ||
@@ -1024,7 +1041,7 @@ function instrumentAwaitExpressions(
       }
       const helper = directlyAwaitedHelper(argument);
       if (helper && capturedAwaitHelpers.has(helper)) return;
-      if (capturedHelperAggregate(argument)) return;
+      if (capturedHelperAggregate(path, argument)) return;
       useRuntimeHelper(compiler, "__sol_async_value");
       const captured = t.callExpression(t.identifier("__sol_async_value"), [
         t.identifier("__sol_frame"),

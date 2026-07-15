@@ -1866,6 +1866,122 @@ describe("compiler", () => {
     }
   });
 
+  test("rewrites component bindings whose names are known globals", () => {
+    for (const name of ["Math", "Promise", "Array", "Object", "JSON", "NaN", "undefined"]) {
+      const result = compile(
+        `const App = $component(function App() {
+          let ${name} = 1;
+          ${name} += 1;
+          const doubled = ${name} * 2;
+          function shadow(${name}: number) { return ${name}; }
+          return <button onClick={() => ${name}++}>{${name}}:{doubled}:{shadow(3)}:{String({ ${name} })}</button>;
+        });`,
+        "GlobalBinding.tsx",
+      );
+
+      expect(result.code).toContain(`${name}.value += 1`);
+      expect(result.code).toContain(`() => ${name}.value++`);
+      expect(result.code).toContain(`${name}: ${name}.value`);
+      expect(result.code).toContain(`function shadow(${name}: number)`);
+      expect(result.code).toContain(`return ${name}`);
+      expect(result.code).toContain("const doubled = __sol_computed");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App(Object: { value: number }) { Object.value = 2; return <p>{Object.value}</p>; });`,
+        "GlobalProps.tsx",
+      ),
+    ).toThrow("Component props are readonly");
+  });
+
+  test("rewrites expressions but not TypeScript type positions", () => {
+    const result = compile(
+      `const App = $component(function App() {
+        let count = 1;
+        function identity<T extends typeof count>(value: T): typeof count { return value; }
+        const asserted = count as number;
+        const satisfied = count satisfies number;
+        return <p>{identity(count)}:{asserted}:{satisfied}</p>;
+      });`,
+      "ReactiveTypes.tsx",
+    );
+
+    expect(result.code).toContain("T extends typeof count");
+    expect(result.code).toContain("): typeof count");
+    expect(result.code).toContain("count.value as number");
+    expect(result.code).toContain("count.value satisfies number");
+  });
+
+  test("rewrites complex reactive targets inside JSX callbacks", () => {
+    const result = compile(
+      `const App = $component(function App() {
+        let count = 1;
+        return <button onClick={() => {
+          ({ count } = { count: 2 });
+          [count] = [3];
+          for (count of [4]) void count;
+          for (count in { 0: true }) void count;
+        }}>{count}</button>;
+      });`,
+      "CallbackTargets.tsx",
+    );
+
+    expect(result.code).toContain("count: count.value");
+    expect(result.code).toContain("[count.value] = [3]");
+    expect(result.code).toContain("for (count.value of [4])");
+    expect(result.code).toContain("for (count.value in");
+  });
+
+  test("validates readonly writes inside JSX callbacks", () => {
+    for (const write of [
+      "state = { n: 1 }",
+      "state++",
+      "for (state of [{ n: 1 }]) {}",
+      "({ state } = { state: { n: 1 } })",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { const state = { n: 0 }; return <button onClick={() => { ${write}; }}>{state.n}</button>; });`,
+          "CallbackConstWrite.tsx",
+        ),
+      ).toThrow("const binding state cannot be reassigned");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() { let source = 1; const doubled = source * 2; return <button onClick={() => { doubled = 3; }}>{doubled}</button>; });`,
+        "CallbackComputedWrite.tsx",
+      ),
+    ).toThrow("Computed component value doubled is readonly");
+  });
+
+  test("captures shadowed Promise.all while retaining the native aggregate optimization", () => {
+    const shadowed = compile(
+      `const App = $component(async function App() {
+        async function one() { return await globalThis.Promise.resolve(1); }
+        async function aggregate(Promise: { all(values: unknown[]): Promise<unknown[]> }) {
+          return await Promise.all([one()]);
+        }
+        const custom = { all: async (values: unknown[]) => values };
+        const value = await aggregate(custom);
+        return <p>{value[0]}</p>;
+      });`,
+      "ShadowedPromise.tsx",
+    );
+    const native = compile(
+      `const App = $component(async function App() {
+        async function one() { return await Promise.resolve(1); }
+        const value = await Promise.all([one()]);
+        return <p>{value[0]}</p>;
+      });`,
+      "NativePromise.tsx",
+    );
+
+    expect(shadowed.code.match(/__sol_async_value\(__sol_frame/g)).toHaveLength(2);
+    expect(native.code.match(/__sol_async_value\(__sol_frame/g)).toHaveLength(1);
+  });
+
   test("rejects DOM properties without SSR and hydration semantics", () => {
     for (const property of [
       "innerHTML",

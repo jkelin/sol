@@ -133,6 +133,17 @@ function escapeText(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+export function serverSafeRawText(tag: string, value: string): string {
+  switch (tag.toLowerCase()) {
+    case "script":
+      return value.replaceAll(/<\/script/gi, "<\\/script");
+    case "style":
+      return value.replaceAll(/<\/style/gi, "<\\/style");
+    default:
+      return value;
+  }
+}
+
 function decodeHtml(value: string): string {
   return value.replaceAll(
     /&(?:#(\d+)|#x([\da-f]+)|amp|lt|gt|quot|#39);/gi,
@@ -195,7 +206,7 @@ function renderSpecialElementContent(
   }
   if (element.textContent !== undefined) {
     return element.tag === "script" || element.tag === "style"
-      ? element.textContent.replaceAll(new RegExp(`</${element.tag}`, "gi"), `<\\/${element.tag}`)
+      ? serverSafeRawText(element.tag, element.textContent)
       : escapeText(element.textContent);
   }
   const value = element.attributes.get("value");

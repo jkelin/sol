@@ -1555,6 +1555,13 @@ test("server rendering keeps hostile raw-text closing tags inside their elements
   expect(target.querySelector("#style-injection")).toBeNull();
   expect(target.querySelector("script")?.textContent).toContain("<\\/script>");
   expect(target.querySelector("style")?.textContent).toContain("<\\/style>");
+
+  const dispose = await hydrate(module.App as Component, target);
+  expect(target.querySelector("#script-injection")).toBeNull();
+  expect(target.querySelector("#style-injection")).toBeNull();
+  expect(target.querySelector("script")?.textContent).toContain("<\\/script>");
+  expect(target.querySelector("style")?.textContent).toContain("<\\/style>");
+  dispose();
 });
 
 test("server rendering selects options whose values are dynamic", async () => {

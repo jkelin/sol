@@ -53,6 +53,37 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "selected",
 ]);
 
+function intrinsicAttributeTarget(sourceName: string): string {
+  if (sourceName === "class" || sourceName === "className" || sourceName === "classNames") {
+    return "class";
+  }
+  if (sourceName === "htmlFor") return "for";
+  if (/^on[A-Z]/.test(sourceName)) {
+    const eventName = sourceName.slice(2).toLowerCase();
+    return `event:${eventName === "doubleclick" ? "dblclick" : eventName}`;
+  }
+  return sourceName;
+}
+
+function validateUniqueAttributes(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  intrinsic: boolean,
+): void {
+  const sources = new Map<string, string>();
+  for (const attribute of node.openingElement.attributes) {
+    if (!t.isJSXAttribute(attribute)) continue;
+    const sourceName = getAttributeName(compiler, attribute.name);
+    if (!intrinsic && ["$bind", "$transition", "ref"].includes(sourceName)) continue;
+    const target = intrinsic ? intrinsicAttributeTarget(sourceName) : sourceName;
+    const previous = sources.get(target);
+    if (previous !== undefined) {
+      codeFrame(compiler, attribute, `JSX attribute ${sourceName} conflicts with ${previous}`);
+    }
+    sources.set(target, sourceName);
+  }
+}
+
 export function compileBinding(
   compiler: CompilerContext,
   expression: t.Expression,
@@ -463,6 +494,7 @@ export function compileComponentElement(
   scope: Scope,
 ): void {
   const componentName = jsxName(compiler, node.openingElement.name);
+  validateUniqueAttributes(compiler, node, false);
   const meaningfulComponentChildren = node.children.filter((child) => {
     return !t.isJSXText(child) || normalizeJsxText(child.value) !== "";
   });
@@ -566,6 +598,7 @@ export function compileIntrinsicElement(
       "Use only one of class, className, or classNames on an element",
     );
   }
+  validateUniqueAttributes(compiler, node, true);
   const formAttribute = node.openingElement.attributes.find(
     (attribute) =>
       t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "$form" }),

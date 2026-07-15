@@ -30,6 +30,7 @@ import {
   isServerRegion,
   mountServerBlock,
   setServerAttribute,
+  serverSafeRawText,
   serverRawValue,
   type ServerElement,
 } from "./server-rendering.ts";
@@ -143,7 +144,7 @@ export function rawText(
       const value = values.map(displayValue).join("");
       if (hydrating) {
         hydrating = false;
-        if (element.textContent !== value) {
+        if (element.textContent !== serverSafeRawText(element.tagName, value)) {
           throw new HydrationMismatchError("raw text differs");
         }
         return;

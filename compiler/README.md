@@ -73,7 +73,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
   conditionals, and child expressions into source-marker-independent, signature-indexed interned
   templates and reactive or one-shot runtime operations, including single-owner form bindings,
-  property-backed text-control values, and runtime-validated Link navigation options.
+  normalized unique DOM attribute targets, unique component properties, property-backed
+  text-control values, and runtime-validated Link navigation options.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly
   mutations in dot or bracket syntax, and rewrites local state, derived values, props,
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned

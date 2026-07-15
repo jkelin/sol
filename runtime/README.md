@@ -45,7 +45,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
-  including dynamic form-control serialization.
+  including dynamic form-control serialization and the raw-text closing-tag transform shared with
+  hydration validation.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
@@ -73,8 +74,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   their distinct deterministic tie-breaks.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting, reactive or one-shot text rendering, consistent text-control and class
-  normalization, server child-block ownership, and prepare/commit reconciliation for conditional
-  and keyed-list updates.
+  normalization, server-safe raw-text hydration comparison, server child-block ownership, and
+  prepare/commit reconciliation for conditional and keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.

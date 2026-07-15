@@ -1794,6 +1794,45 @@ describe("compiler", () => {
       ),
     ).toThrow("Use only one of class, className, or classNames");
 
+    for (const [attributes, conflict] of [
+      ['id="first" id="second"', "JSX attribute id conflicts with id"],
+      [
+        "onClick={() => undefined} onClick={() => undefined}",
+        "JSX attribute onClick conflicts with onClick",
+      ],
+      [
+        "onDoubleClick={() => undefined} onDblClick={() => undefined}",
+        "JSX attribute onDblClick conflicts with onDoubleClick",
+      ],
+      ['htmlFor="first" for="second"', "JSX attribute for conflicts with htmlFor"],
+      ['key="first" key="second"', "JSX attribute key conflicts with key"],
+    ]) {
+      expect(() =>
+        compile(
+          `
+      import { $component } from "sol";
+      const App = $component(function App() {
+        return <button ${attributes}>Duplicate</button>;
+      });
+    `,
+          "Invalid.tsx",
+        ),
+      ).toThrow(conflict);
+    }
+
+    expect(() =>
+      compile(
+        `
+      import { $component } from "sol";
+      const Child = $component(function Child(props) { return <p>{props.label}</p>; });
+      const App = $component(function App() {
+        return <Child label="first" label="second" />;
+      });
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("JSX attribute label conflicts with label");
+
     expect(() =>
       compile(
         `

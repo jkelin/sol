@@ -61,7 +61,6 @@ export function ref(
   if (!element || element.nodeType !== Node.ELEMENT_NODE) {
     throw new TypeError("ref expects a DOM Element");
   }
-  validateRef(getRef());
   lifecycle.refMounts.push(() => {
     let attached: Ref | undefined;
     let stop: Cleanup = noopCleanup;

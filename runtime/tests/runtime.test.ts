@@ -130,16 +130,61 @@ describe("DOM refs", () => {
     expect(firstCalls).toEqual([expect.any(window.HTMLButtonElement), null]);
   });
 
+  test("evaluates each browser ref expression once per reactive run", () => {
+    const element = document.createElement("button");
+    const fragment = document.createDocumentFragment();
+    fragment.append(element);
+    const lifecycle = blockLifecycle();
+    const cleanups: (() => void)[] = [];
+    const firstCalls: Array<Element | null> = [];
+    const secondCalls: Array<Element | null> = [];
+    const active = $signal<Ref>((value) => firstCalls.push(value));
+    const second: Ref = (value) => secondCalls.push(value);
+    let evaluations = 0;
+    ref(
+      element,
+      () => {
+        evaluations += 1;
+        return active.value;
+      },
+      cleanups,
+      lifecycle,
+    );
+    const rendered = block(fragment, cleanups, lifecycle);
+    const target = document.createElement("main");
+
+    expect(evaluations).toBe(0);
+    rendered.mount(target);
+    expect(evaluations).toBe(1);
+    expect(firstCalls).toEqual([element]);
+
+    active.value = second;
+    expect(evaluations).toBe(2);
+    expect(firstCalls).toEqual([element, null]);
+    expect(secondCalls).toEqual([element]);
+
+    rendered.dispose();
+    expect(secondCalls).toEqual([element, null]);
+  });
+
   test("validates ref constructors and structural objects", () => {
     expect(() => (createRef as (...values: unknown[]) => unknown)(null)).toThrow(
       "does not accept an initial value",
     );
-    const element = document.createElement("button");
-    const lifecycle = blockLifecycle();
-    expect(() => ref(element, () => [], [], lifecycle)).toThrow("callback or an object");
     const readonly = {};
     Object.defineProperty(readonly, "current", { value: null });
-    expect(() => ref(element, () => readonly, [], lifecycle)).toThrow("must be writable");
+    for (const [value, message] of [
+      [[], "callback or an object"],
+      [readonly, "must be writable"],
+    ] as const) {
+      const element = document.createElement("button");
+      const fragment = document.createDocumentFragment();
+      fragment.append(element);
+      const lifecycle = blockLifecycle();
+      ref(element, () => value, [], lifecycle);
+      const rendered = block(fragment, [], lifecycle);
+      expect(() => rendered.mount(document.createElement("main"))).toThrow(message);
+    }
   });
 });
 
@@ -1004,6 +1049,54 @@ describe("reactivity", () => {
       expect(seen).toEqual([1, 2]);
       stop();
     }
+  });
+
+  test("assigns reactive accessors without eagerly reading their getters", () => {
+    let throwingGets = 0;
+    let throwingSets = 0;
+    const throwing = {} as { value: number };
+    Object.defineProperty(throwing, "value", {
+      configurable: true,
+      get() {
+        throwingGets += 1;
+        throw new Error("getter must not run");
+      },
+      set(_value: number) {
+        throwingSets += 1;
+      },
+    });
+    const throwingState = reactive(throwing);
+
+    expect(() => {
+      throwingState.value = 2;
+    }).not.toThrow();
+    expect(throwingGets).toBe(0);
+    expect(throwingSets).toBe(1);
+
+    let value = 1;
+    let gets = 0;
+    let sets = 0;
+    const target = {} as { value: number };
+    Object.defineProperty(target, "value", {
+      configurable: true,
+      get() {
+        gets += 1;
+        return value;
+      },
+      set(next: number) {
+        sets += 1;
+        value = next;
+      },
+    });
+    const state = reactive(target);
+    const seen: number[] = [];
+    const stop = runtimeEffect(() => seen.push(state.value));
+
+    state.value = 2;
+    expect(gets).toBe(2);
+    expect(sets).toBe(1);
+    expect(seen).toEqual([1, 2]);
+    stop();
   });
 
   test("rejects locking raw children out of their existing reactive proxies", () => {

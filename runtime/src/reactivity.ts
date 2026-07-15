@@ -434,8 +434,9 @@ export function reactive<T extends object>(target: T): T {
       return Reflect.has(object, key);
     },
     set(object, key, value, receiver) {
-      const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
-      const oldValue = unwrap(Reflect.get(object, key, receiver) as unknown);
+      const previous = Reflect.getOwnPropertyDescriptor(object, key);
+      const wasPresent = previous !== undefined;
+      const oldValue = previous && "value" in previous ? unwrap(previous.value) : undefined;
       const nextValue = unwrap(value);
       const oldLength = Array.isArray(object) ? object.length : 0;
       const operation = { key, handled: false };
@@ -446,8 +447,10 @@ export function reactive<T extends object>(target: T): T {
       } finally {
         setOperations.pop();
       }
-      if (changed && !operation.handled && (!wasPresent || !Object.is(oldValue, nextValue))) {
-        invalidate(key, wasPresent, oldLength, !wasPresent);
+      const isPresent = Object.prototype.hasOwnProperty.call(object, key);
+      const dataUnchanged = previous && "value" in previous && Object.is(oldValue, nextValue);
+      if (changed && !operation.handled && !dataUnchanged) {
+        invalidate(key, wasPresent || !isPresent, oldLength, wasPresent !== isPresent);
       }
       return changed;
     },

@@ -28,7 +28,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `options.ts` snapshots exact own enumerable data-property records for stable public option and
   configuration boundaries.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
-  checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
+  checks, and descriptor-based writes that preserve setter-only assignment semantics, deduplicated
+  proxy invalidation, render ownership state,
   identity-preserving array mutator batching and nested proxy caching even after targets become
   non-extensible, rejection of descriptor locks that would expose an already-proxied raw child,
   shared object-or-callable promise-like detection, Proxy-invariant-safe locked-property reads,
@@ -106,7 +107,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API
   newline normalization, and failure-safe prepare/commit reconciliation for conditional and
   keyed-list updates and Context Provider mounts.
-- `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
+- `refs.ts` defines typed callback/object refs, `createRef()`, single-evaluation mount-phase ref
+  validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive cross-realm element or
   body targets, evaluating each target once per reactive run.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including local Await

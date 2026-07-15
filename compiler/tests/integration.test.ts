@@ -28,6 +28,7 @@ declare global {
   var integrationRejectors: Array<(error: unknown) => void>;
   var integrationPortalRef: Element | null;
   var integrationPortalClicks: number;
+  var integrationRefEvaluations: number;
   var integrationInvalidatePortalTarget: () => void;
   var integrationConditionalRefConnected: boolean;
   var integrationKeyedRefs: Set<number>;
@@ -1574,6 +1575,39 @@ test("compiled refs and portals preserve ownership across targets and body", asy
   expect(document.querySelector("#global-content")).toBeNull();
 
   dispose();
+});
+
+test("compiled refs evaluate once on SSR, hydration, and fresh mount", async () => {
+  const module = await loadCompiled(`
+    import { createRef } from "@soljs/sol";
+
+    export const App = $component(function App() {
+      const stable = createRef<HTMLDivElement>();
+      function currentRef() {
+        globalThis.integrationRefEvaluations += 1;
+        return stable;
+      }
+      return <div id="single-ref-evaluation" ref={currentRef()} />;
+    });
+  `);
+  const App = module.App as Component;
+
+  globalThis.integrationRefEvaluations = 0;
+  const html = await renderToStringAsync(App);
+  expect(globalThis.integrationRefEvaluations).toBe(1);
+
+  const hydratedTarget = document.createElement("div");
+  hydratedTarget.innerHTML = html;
+  globalThis.integrationRefEvaluations = 0;
+  const disposeHydrated = await hydrate(App, hydratedTarget);
+  expect(globalThis.integrationRefEvaluations).toBe(1);
+  disposeHydrated();
+
+  const mountedTarget = document.createElement("div");
+  globalThis.integrationRefEvaluations = 0;
+  const disposeMounted = mount(App, mountedTarget);
+  expect(globalThis.integrationRefEvaluations).toBe(1);
+  disposeMounted();
 });
 
 test("defers nested mount phases and activates keyed refs and portals", async () => {

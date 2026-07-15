@@ -2474,6 +2474,62 @@ describe("compiled DOM runtime", () => {
     }
   });
 
+  test("rolls back staged keyed rows when a reused row update fails", () => {
+    type Item = { id: number; label: string };
+    const values = $signal<Item[]>([{ id: 1, label: "one" }]);
+    const disposals = new Map<number, number>();
+    const definition = template("<div><!--sol:s:0--><!--sol:e:0--></div>");
+    const rowDefinition = template("<p><!--sol:s:0--><!--sol:e:0--></p>");
+    const List = component(() => {
+      const view = instantiate(definition);
+      const cleanups: Array<() => void> = [];
+      list(
+        view.regions[0]!,
+        () => values.value,
+        (item) => item.id,
+        (item) => {
+          const id = item.value.id;
+          const row = instantiate(rowDefinition);
+          const rowCleanups: Array<() => void> = [
+            () => disposals.set(id, (disposals.get(id) ?? 0) + 1),
+          ];
+          text(
+            row.regions[0]!,
+            () => {
+              if (item.value.label === "boom") throw new Error("row update failed");
+              return item.value.label;
+            },
+            rowCleanups,
+          );
+          return block(row.fragment, rowCleanups);
+        },
+        cleanups,
+      );
+      return block(view.fragment, cleanups);
+    });
+    const target = document.createElement("main");
+    const dispose = mount(List, target);
+
+    expect(() => {
+      values.value = [
+        { id: 1, label: "boom" },
+        { id: 2, label: "two" },
+      ];
+    }).toThrow("row update failed");
+    expect(target.textContent).toBe("one");
+    expect(disposals.get(2)).toBe(1);
+
+    values.value = [
+      { id: 1, label: "recovered" },
+      { id: 2, label: "two" },
+    ];
+    expect(target.textContent).toBe("recoveredtwo");
+    expect(target.querySelectorAll("p")).toHaveLength(2);
+    dispose();
+    expect(disposals.get(1)).toBe(1);
+    expect(disposals.get(2)).toBe(2);
+  });
+
   test("disposes effects owned by removed keyed rows", () => {
     const items = $signal([{ id: 1, value: "first" }]);
     const removed = items.value[0]!;

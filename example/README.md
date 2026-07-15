@@ -27,4 +27,6 @@ and transitions. The query declarations import their validators and a fake secre
 them in both client JavaScript and source maps. Playwright exercises server-rendered routes, managed
 head content, async/query data replay, browser hydration, and navigation against both the Bun and
 Node.js deployment adapters, as well as Vite development middleware. A focused fixture under
-`tests/fixtures` also covers timed-out Suspense continuation in a real browser.
+`tests/fixtures` also covers timed-out Suspense continuation in a real browser. The E2E server
+fixtures share `tests/e2e/available-port.ts` so parallel workers use independently allocated
+loopback ports.

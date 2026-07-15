@@ -39,7 +39,9 @@ const AssemblyQueue = $component(function AssemblyQueue() {
 
 ## Form bindings
 
-Use `$bind={state}` on inputs, textareas, and selects. Static checkbox and radio inputs bind `checked`; other supported controls bind `value`.
+Use `$bind={state}` on inputs, textareas, and selects. Static checkbox and radio input types bind
+`checked` regardless of casing; other supported controls bind `value`. A textarea controlled by
+`value` or `$bind` cannot also have children.
 
 ```tsx
 <input name="title" $bind={title} />

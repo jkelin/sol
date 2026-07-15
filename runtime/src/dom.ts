@@ -8,6 +8,7 @@ import {
   rethrowWithDisposals,
   runDisposals,
   runtimeEffect,
+  transactionalBatch,
   type Signal,
 } from "./reactivity.ts";
 import {
@@ -636,33 +637,52 @@ export function list<T>(
       return [activeKey];
     });
     nextOrder.push(...activeKeys.slice(activeIndex));
+    const rollbackMounts = [
+      ...createdRows.map((row) => () => row.block.dispose()),
+      () => {
+        for (const key of order) {
+          const row = rows.get(key) ?? leavingRows.get(key);
+          row?.block.mount(region.end.parentNode!, region.end);
+        }
+      },
+    ];
     try {
       for (const key of nextOrder) {
         const row = nextRows.get(key) ?? leavingRows.get(key) ?? rows.get(key);
         row?.block.mount(region.end.parentNode!, region.end);
       }
     } catch (error) {
+      rethrowWithDisposals(error, rollbackMounts, "List mount and rollback both failed");
+    }
+
+    const previousUpdates = updates.map((update) => ({
+      row: update.row,
+      item: update.row.item.value,
+      index: update.row.index.value,
+    }));
+    try {
+      transactionalBatch(() => {
+        for (const update of updates) {
+          update.row.item.value = update.item;
+          update.row.index.value = update.index;
+        }
+      });
+    } catch (error) {
       rethrowWithDisposals(
         error,
         [
-          ...createdRows.map((row) => () => row.block.dispose()),
-          () => {
-            for (const key of order) {
-              const row = rows.get(key) ?? leavingRows.get(key);
-              row?.block.mount(region.end.parentNode!, region.end);
-            }
-          },
+          () =>
+            transactionalBatch(() => {
+              for (const update of previousUpdates) {
+                update.row.item.value = update.item;
+                update.row.index.value = update.index;
+              }
+            }),
+          ...rollbackMounts,
         ],
-        "List mount and rollback both failed",
+        "List update and rollback both failed",
       );
     }
-
-    batch(() => {
-      for (const update of updates) {
-        update.row.item.value = update.item;
-        update.row.index.value = update.index;
-      }
-    });
     for (const key of revivedKeys) leavingRows.delete(key);
 
     const removedKeys = new Set<unknown>();

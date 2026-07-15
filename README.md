@@ -77,7 +77,11 @@ Direct component-body data variables are reactive automatically. Writable declar
 
 Derived inference follows direct reads in the initializer. When a helper function closes over reactive state and the initializer only calls that helper, use an explicit `$computed(() => helper())` override; interprocedural dependency analysis is intentionally outside v1.
 
-Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static checkbox/radio inputs and `value` for other supported controls. Signal arrays and plain-object values are deep proxies, so nested assignments and mutating array methods are reactive. Dates, collections, and class instances retain their original identity.
+Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static
+checkbox/radio input types regardless of casing and `value` for other supported controls. A
+textarea controlled by `value` or `$bind` cannot also have children. Signal arrays and plain-object
+values are deep proxies, so nested assignments and mutating array methods are reactive. Dates,
+collections, and class instances retain their original identity.
 
 ## Refs and portals
 

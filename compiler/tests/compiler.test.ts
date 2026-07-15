@@ -1062,6 +1062,8 @@ describe("compiler", () => {
           <textarea $bind={text}></textarea>
           <select $bind={selected}><option value="all">All</option></select>
           <input type="radio" $bind={checked} />
+          <input type="CHECKBOX" $bind={checked} />
+          <input type="RaDiO" $bind={checked} />
         </form>;
       });
     `,
@@ -1069,7 +1071,7 @@ describe("compiler", () => {
     );
 
     expect(result.code.match(/__sol_bind\([^\n]+"value"/g)?.length).toBe(2);
-    expect(result.code.match(/__sol_bind\([^\n]+"checked"/g)?.length).toBe(1);
+    expect(result.code.match(/__sol_bind\([^\n]+"checked"/g)?.length).toBe(3);
     expect(result.code).toContain('"propertyValueElements":[0,1]');
   });
 
@@ -1107,6 +1109,24 @@ describe("compiler", () => {
           "CompetingChecked.tsx",
         ),
       ).toThrow("$bind already controls checked");
+    }
+
+    for (const element of [
+      '<textarea value="controlled">fallback</textarea>',
+      '<textarea value="controlled">{fallback}</textarea>',
+      "<textarea $bind={text}>fallback</textarea>",
+      "<textarea $bind={text}>{fallback}</textarea>",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() {
+            let text = "controlled";
+            const fallback = "fallback";
+            return ${element};
+          });`,
+          "CompetingTextareaChildren.tsx",
+        ),
+      ).toThrow("Textarea children conflict with value or $bind");
     }
   });
 
@@ -1811,7 +1831,7 @@ describe("compiler", () => {
       expect(() =>
         compile(
           `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         return <button ${attributes}>Duplicate</button>;
       });
@@ -1824,7 +1844,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const Child = $component(function Child(props) { return <p>{props.label}</p>; });
       const App = $component(function App() {
         return <Child label="first" label="second" />;

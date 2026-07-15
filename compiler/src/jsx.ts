@@ -555,6 +555,7 @@ export function compileIntrinsicElement(
     inputTypeAttribute && t.isJSXAttribute(inputTypeAttribute)
       ? staticAttributeValue(compiler, inputTypeAttribute)
       : undefined;
+  const normalizedInputType = typeof inputType === "string" ? inputType.toLowerCase() : inputType;
   const bindAttributes = node.openingElement.attributes.filter(
     (attribute): attribute is t.JSXAttribute =>
       t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "$bind" }),
@@ -576,7 +577,9 @@ export function compileIntrinsicElement(
       codeFrame(compiler, inputTypeAttribute, "$bind requires a static input type");
     }
     bindProperty =
-      tag === "input" && (inputType === "checkbox" || inputType === "radio") ? "checked" : "value";
+      tag === "input" && (normalizedInputType === "checkbox" || normalizedInputType === "radio")
+        ? "checked"
+        : "value";
     const competingAttribute = node.openingElement.attributes.find(
       (attribute) =>
         t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: bindProperty }),
@@ -599,6 +602,18 @@ export function compileIntrinsicElement(
     );
   }
   validateUniqueAttributes(compiler, node, true);
+  const rawValues = RAW_TEXT_ELEMENTS.has(tag) ? rawTextValues(compiler, node, tag, scope) : [];
+  const textareaValue = node.openingElement.attributes.find(
+    (attribute) =>
+      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "value" }),
+  );
+  if (tag === "textarea" && rawValues.length > 0 && (textareaValue || bindProperty === "value")) {
+    codeFrame(
+      compiler,
+      textareaValue ?? bindAttributes[0]!,
+      "Textarea children conflict with value or $bind",
+    );
+  }
   const formAttribute = node.openingElement.attributes.find(
     (attribute) =>
       t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "$form" }),
@@ -756,15 +771,12 @@ export function compileIntrinsicElement(
     }
   }
 
-  if (RAW_TEXT_ELEMENTS.has(tag)) {
-    const values = rawTextValues(compiler, node, tag, scope);
-    if (values.length > 0) {
-      propertyValueElement = true;
-      deferredOperations.push(
-        (element) =>
-          `__sol_raw_text(__sol_view.elements[${element}], () => [${values.join(", ")}], __sol_cleanups);`,
-      );
-    }
+  if (rawValues.length > 0) {
+    propertyValueElement = true;
+    deferredOperations.push(
+      (element) =>
+        `__sol_raw_text(__sol_view.elements[${element}], () => [${rawValues.join(", ")}], __sol_cleanups);`,
+    );
   }
 
   deferredOperations.push(...injectedOperations);

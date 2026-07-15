@@ -1,14 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
+import { availablePort } from "./available-port.ts";
 
 let server: ViteDevServer;
 let serverHtml: () => Promise<string>;
 let serverUrl: string;
 
 test.beforeAll(async () => {
+  const port = await availablePort();
   server = await createServer({
     configFile: "vite.config.ts",
-    server: { host: "127.0.0.1", port: 0 },
+    server: { host: "127.0.0.1", port, strictPort: true },
   });
   await server.listen();
   const resolvedUrl = server.resolvedUrls?.local[0];

@@ -2024,6 +2024,40 @@ test("mounts and hydrates static textarea and select values as DOM properties", 
   disposeHydration();
 });
 
+test("binds mixed-case checkbox types through their checked property", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { initial: boolean }) {
+      let checked = props.initial;
+      return <main>
+        <input id="mixed-checkbox" type="CHECKBOX" $bind={checked} />
+        <output>{checked ? "checked" : "clear"}</output>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ initial: boolean }>;
+
+  const assertBound = (target: Element) => {
+    const input = target.querySelector<HTMLInputElement>("#mixed-checkbox")!;
+    expect(input.checked).toBe(true);
+    expect(target.querySelector("output")?.textContent).toBe("checked");
+    input.checked = false;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event);
+    expect(target.querySelector("output")?.textContent).toBe("clear");
+  };
+
+  const mounted = document.createElement("div");
+  const disposeMount = mount(App, mounted, { initial: true });
+  assertBound(mounted);
+  disposeMount();
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { initial: true });
+  expect(target.querySelector<HTMLInputElement>("#mixed-checkbox")!.checked).toBe(true);
+  const disposeHydration = await hydrate(App, target, { initial: true });
+  assertBound(target);
+  disposeHydration();
+});
+
 test("keeps boolean input values and numeric zero classes consistent across rendering modes", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App(props: { value: boolean; classValue: number }) {

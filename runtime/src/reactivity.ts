@@ -22,6 +22,11 @@ interface ReactiveEffect {
   run: () => void;
 }
 
+interface EffectQueue {
+  readonly computed: Set<ReactiveEffect>;
+  readonly regular: Set<ReactiveEffect>;
+}
+
 const ITERATE = Symbol("sol.iterate");
 const SIGNAL = Symbol("sol.signal");
 const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
@@ -44,6 +49,7 @@ let batchDepth = 0;
 let flushingEffects = false;
 const pendingEffects = new Set<ReactiveEffect>();
 const pendingComputedEffects = new Set<ReactiveEffect>();
+let capturedEffects: EffectQueue | undefined;
 const disposedOwners = new WeakSet<Cleanup[]>();
 
 export function runDisposals(disposals: readonly Cleanup[]): void {
@@ -121,29 +127,32 @@ function track(target: object, key: PropertyKey): void {
   activeEffect.dependencies.add(dependency);
 }
 
-function flushEffects(): void {
-  if (flushingEffects) return;
-  flushingEffects = true;
+function runEffectQueue(queue: EffectQueue): void {
   const failures: unknown[] = [];
-  try {
-    while (pendingComputedEffects.size > 0 || pendingEffects.size > 0) {
-      const effect =
-        pendingComputedEffects.values().next().value ?? pendingEffects.values().next().value;
-      if (!effect) break;
-      pendingComputedEffects.delete(effect);
-      pendingEffects.delete(effect);
-      try {
-        effect.run();
-      } catch (error) {
-        failures.push(error);
-      }
+  while (queue.computed.size > 0 || queue.regular.size > 0) {
+    const effect = queue.computed.values().next().value ?? queue.regular.values().next().value;
+    if (!effect) break;
+    queue.computed.delete(effect);
+    queue.regular.delete(effect);
+    try {
+      effect.run();
+    } catch (error) {
+      failures.push(error);
     }
-  } finally {
-    flushingEffects = false;
   }
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) {
     throw new AggregateError(failures, "Multiple reactive effects failed");
+  }
+}
+
+function flushEffects(): void {
+  if (flushingEffects) return;
+  flushingEffects = true;
+  try {
+    runEffectQueue({ computed: pendingComputedEffects, regular: pendingEffects });
+  } finally {
+    flushingEffects = false;
   }
 }
 
@@ -156,7 +165,13 @@ function triggerMany(target: object, keys: Iterable<PropertyKey>): void {
   }
   for (const effect of effects) {
     if (effect.active && !effect.running) {
-      (effect.computed ? pendingComputedEffects : pendingEffects).add(effect);
+      if (capturedEffects) {
+        pendingComputedEffects.delete(effect);
+        pendingEffects.delete(effect);
+        (effect.computed ? capturedEffects.computed : capturedEffects.regular).add(effect);
+      } else {
+        (effect.computed ? pendingComputedEffects : pendingEffects).add(effect);
+      }
     }
   }
   if (batchDepth === 0 && !flushingEffects) flushEffects();
@@ -197,6 +212,40 @@ export function batch<T>(callback: () => T): T {
   }
   if (callbackFailed) throw callbackFailure;
   if (flushFailed) throw flushFailure;
+  return result as T;
+}
+
+export function transactionalBatch<T>(callback: () => T): T {
+  if (capturedEffects) return callback();
+  const queue: EffectQueue = { computed: new Set(), regular: new Set() };
+  capturedEffects = queue;
+  let result: T | undefined;
+  let callbackFailed = false;
+  let callbackFailure: unknown;
+  try {
+    result = callback();
+  } catch (error) {
+    callbackFailed = true;
+    callbackFailure = error;
+  }
+  let effectsFailed = false;
+  let effectFailure: unknown;
+  try {
+    runEffectQueue(queue);
+  } catch (error) {
+    effectsFailed = true;
+    effectFailure = error;
+  } finally {
+    capturedEffects = undefined;
+  }
+  if (callbackFailed && effectsFailed) {
+    throw new AggregateError(
+      [callbackFailure, effectFailure],
+      "Transaction callback and reactive effects failed",
+    );
+  }
+  if (callbackFailed) throw callbackFailure;
+  if (effectsFailed) throw effectFailure;
   return result as T;
 }
 

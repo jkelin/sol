@@ -1,14 +1,16 @@
 // oxlint-disable eslint/no-underscore-dangle -- __sol is the documented development global.
 import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
+import { availablePort } from "./available-port.ts";
 
 let server: ViteDevServer;
 let origin: string;
 
 test.beforeAll(async () => {
+  const port = await availablePort();
   server = await createServer({
     configFile: "vite.config.ts",
-    server: { host: "127.0.0.1", port: 0, strictPort: true },
+    server: { host: "127.0.0.1", port, strictPort: true },
   });
   await server.listen();
   const localUrl = server.resolvedUrls?.local[0];

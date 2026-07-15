@@ -30,7 +30,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
-  complete reactive-flush failure reporting and primary-failure-preserving teardown.
+  complete reactive-flush failure reporting, transaction-local effect capture, and
+  primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-snapshotted configs, graph-preserving plain
   value snapshots, descriptor-safe value and validation-issue reads, reset-boundary validation,
   validation normalization, disposal-safe submission state, and frame-explicit ownership for async
@@ -77,7 +78,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting, reactive or one-shot text rendering, consistent text-control and class
   normalization, server-safe raw-text hydration comparison, server child-block ownership, and
-  prepare/commit reconciliation for conditional and keyed-list updates.
+  failure-safe prepare/commit reconciliation for conditional and keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.

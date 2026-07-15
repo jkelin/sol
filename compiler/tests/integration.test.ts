@@ -2616,7 +2616,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     "options must be an object",
   );
   await Promise.all(
-    [-1, NaN, Infinity].map((timeoutMs) =>
+    [-1, NaN, Infinity, 2_147_483_648].map((timeoutMs) =>
       expectRejection(renderToStringAsync(App, undefined, { timeoutMs }), "finite non-negative"),
     ),
   );
@@ -2656,7 +2656,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     });
   `);
   const SuspenseApp = suspenseModule.App as Component<{ timeoutMs: number }>;
-  for (const timeoutMs of [-1, NaN, Infinity]) {
+  for (const timeoutMs of [-1, NaN, Infinity, 2_147_483_648]) {
     expect(() => mount(SuspenseApp, document.createElement("div"), { timeoutMs })).toThrow(
       "finite non-negative",
     );

@@ -174,6 +174,21 @@ describe("queries", () => {
         $query({ query: async () => 1, queryKey: "bad-poll", pollingInterval: Infinity }),
       ),
     ).toThrow("pollingInterval");
+    for (const [option, value] of [
+      ["cacheTime", { cacheTime: 2_147_483_648 }],
+      ["pollingInterval", { pollingInterval: 2_147_483_648 }],
+    ] as const) {
+      expect(() =>
+        inComponent(() =>
+          $query({ query: async () => 1, queryKey: `oversized-${option}`, ...value }),
+        ),
+      ).toThrow(option);
+    }
+    expect(() =>
+      inComponent(() =>
+        $query({ query: async () => 1, queryKey: "large-stale", staleTime: 2_147_483_648 }),
+      ),
+    ).not.toThrow();
 
     const query = inComponent(() =>
       $query({ query: async () => 1, queryKey: "bad-call-options", enabled: false }),

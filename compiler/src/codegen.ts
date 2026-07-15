@@ -94,6 +94,13 @@ export function staticAttributeValue(
     return attribute.value.expression.value;
   if (
     t.isJSXExpressionContainer(attribute.value) &&
+    t.isTemplateLiteral(attribute.value.expression) &&
+    attribute.value.expression.expressions.length === 0
+  ) {
+    return attribute.value.expression.quasis[0]!.value.cooked ?? "";
+  }
+  if (
+    t.isJSXExpressionContainer(attribute.value) &&
     t.isBooleanLiteral(attribute.value.expression)
   ) {
     return attribute.value.expression.value;

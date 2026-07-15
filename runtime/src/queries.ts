@@ -19,6 +19,7 @@ import {
 import { asyncValue } from "./ssr-session.ts";
 import { rpcFunctionMetadata } from "./server-functions.ts";
 import { snapshotOwnDataProperties } from "./options.ts";
+import { MAX_TIMER_DELAY } from "./timers.ts";
 
 export type QueryKey =
   | null
@@ -156,6 +157,7 @@ function validateDuration(
   name: string,
   defaultValue: number,
   allowZero: boolean,
+  timerBacked = false,
 ): number {
   if (value === undefined) return defaultValue;
   if (
@@ -163,6 +165,7 @@ function validateDuration(
     Number.isNaN(value) ||
     value < 0 ||
     (!allowZero && value === 0) ||
+    (timerBacked && value !== Infinity && typeof value === "number" && value > MAX_TIMER_DELAY) ||
     (value !== Infinity && !Number.isFinite(value))
   ) {
     const range = allowZero ? "a non-negative number" : "a positive finite number";
@@ -469,11 +472,12 @@ function createQuery<Data, Args extends unknown[]>(
     "$query() cacheTime",
     DEFAULT_CACHE_TIME,
     true,
+    true,
   );
   const pollingInterval =
     snapshot.pollingInterval === undefined
       ? undefined
-      : validateDuration(snapshot.pollingInterval, "$query() pollingInterval", 0, false);
+      : validateDuration(snapshot.pollingInterval, "$query() pollingInterval", 0, false, true);
   let suspenseInitial = true;
   let suspenseRefetch = false;
   if (snapshot.suspense !== undefined) {

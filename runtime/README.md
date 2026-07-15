@@ -102,6 +102,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   of owned Await and ErrorBoundary replacement blocks whose mount fails, primary-error-preserving
   ErrorBoundary teardown, and SSR boundary rejection when a finish-time rerender fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
+- `timers.ts` defines and validates the shared platform-safe timer delay ceiling.
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial
   asynchronous route readiness, deployment-base translation, trailing-slash directory URL

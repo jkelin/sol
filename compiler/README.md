@@ -85,7 +85,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
   case-sensitive component properties, truthy-presence boolean expressions, property-backed
   text-control values with controlled file inputs rejected, canonical boolean-valued enumerated
   attribute tokens, lower-initial camel-case SVG intrinsic names, and runtime-validated Link
-  navigation options. Deterministic string, template, numeric, boolean, null, and bigint children
+  navigation options. Expression-free template attributes fold like quoted strings. Deterministic string, template, numeric, boolean, null, and bigint children
   fold directly into ordinary or parser-correct raw-text templates when safe and contain no matching closing-tag
   token; bigint radices and separators canonicalize to their decimal runtime display. Reactive and
   hazardous content retains the safe runtime path.

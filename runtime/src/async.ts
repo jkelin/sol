@@ -2,6 +2,7 @@ import { devtoolsLoaderCreated, devtoolsLoaderUpdated } from "./devtools-hook.ts
 import { isPromiseLike, rethrowWithDisposals, runDisposals, runtimeEffect } from "./reactivity.ts";
 import { asyncValue, HydrationMismatchError } from "./ssr-session.ts";
 import { isServerRegion, mountServerBlock } from "./server-rendering.ts";
+import { validateTimerDelay } from "./timers.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
 import {
   reportError,
@@ -53,9 +54,7 @@ export function suspense(
   frame: RenderFrame,
   timeoutMs?: number,
 ): void {
-  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) {
-    throw new TypeError("Suspense timeoutMs must be a finite non-negative number");
-  }
+  if (timeoutMs !== undefined) validateTimerDelay(timeoutMs, "Suspense timeoutMs");
   const hydrationClaim = regionHydrationClaim(region);
   if (frame.mode === "hydrate" && frame.hydration && hydrationClaim && !isServerRegion(region)) {
     const state = frame.hydration.claimBoundary();
@@ -147,9 +146,7 @@ export function suspense(
   }
   if (isServerRegion(region)) {
     const serverTimeout = timeoutMs ?? frame.timeoutMs ?? 5_000;
-    if (typeof serverTimeout !== "number" || !Number.isFinite(serverTimeout) || serverTimeout < 0) {
-      throw new TypeError("Suspense timeoutMs must be a finite non-negative number");
-    }
+    validateTimerDelay(serverTimeout, "Suspense timeoutMs");
     let pending = 0;
     let failed = false;
     let timedOut = false;

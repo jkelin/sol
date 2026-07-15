@@ -1,5 +1,6 @@
 import type { Block } from "./rendering.ts";
 import { isPromiseLike } from "./reactivity.ts";
+import { validateTimerDelay } from "./timers.ts";
 
 export const HYDRATION_VERSION = 1;
 
@@ -142,6 +143,7 @@ export class SsrSession {
     onTimeout: (renderFallback: boolean) => void,
     parent?: number,
   ): { index: number; finish: () => void } {
+    validateTimerDelay(timeoutMs, "Suspense timeoutMs");
     const index = this.boundaries.length;
     this.boundaries.push("resolved");
     this.boundaryPending += 1;
@@ -183,6 +185,7 @@ export class SsrSession {
   }
 
   async wait(timeoutMs: number): Promise<void> {
+    validateTimerDelay(timeoutMs, "renderToStringAsync() timeoutMs");
     this.checkComplete();
     if (this.rootPending === 0 && this.boundaryPending === 0) {
       if (this.failed) throw this.failure;

@@ -702,6 +702,9 @@ export function compileIntrinsicElement(
       ? rawText.staticValue
       : undefined;
   const valueAttribute = findIntrinsicAttribute(compiler, node, "value");
+  if (tag === "input" && valueAttribute && inputTypeAttribute && inputType === undefined) {
+    codeFrame(compiler, inputTypeAttribute, "Controlled input value requires a static type");
+  }
   if (
     tag === "input" &&
     normalizedInputType === "file" &&

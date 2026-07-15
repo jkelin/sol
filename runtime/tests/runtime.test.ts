@@ -1311,6 +1311,15 @@ describe("reactivity", () => {
 });
 
 describe("compiled DOM runtime", () => {
+  test("rejects server timers beyond the platform delay limit", async () => {
+    const server = new SsrSession();
+    expect(() => server.beginBoundary(2_147_483_648, () => undefined)).toThrow(
+      "no greater than 2147483647",
+    );
+    server.beginRoot();
+    expect(await rejection(server.wait(2_147_483_648))).toBeInstanceOf(TypeError);
+  });
+
   test("wakes failed server and hydration sessions while work remains pending", async () => {
     const serverFailure = new Error("server session failed");
     const server = new SsrSession();

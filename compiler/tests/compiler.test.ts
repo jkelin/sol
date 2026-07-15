@@ -1520,6 +1520,31 @@ describe("compiler", () => {
         ),
       ).toThrow("File input value cannot be controlled");
     }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App(props: { kind: string }) { let value = "fake"; return <input type={props.kind} value={value} />; });`,
+        "DynamicFileInput.tsx",
+      ),
+    ).toThrow("Controlled input value requires a static type");
+  });
+
+  test("folds constant template attributes and classifies template input types", () => {
+    const result = compile(
+      `const App = $component(function App() { let checked = false; return <main title={\`hello\`}><input type={\`checkbox\`} $bind={checked} /></main>; });`,
+      "TemplateAttributes.tsx",
+    );
+
+    expect(result.code).toContain('title="hello"');
+    expect(result.code).toContain('type="checkbox"');
+    expect(result.code).toContain('"checked"');
+    expect(result.code).not.toContain('__sol_attribute(__sol_view.elements[0], "title"');
+    expect(() =>
+      compile(
+        `const App = $component(function App() { let value = "fake"; return <input type={\`file\`} value={value} />; });`,
+        "TemplateFileInput.tsx",
+      ),
+    ).toThrow("File input value cannot be controlled");
   });
 
   test("connects form controllers through the $form element property", () => {

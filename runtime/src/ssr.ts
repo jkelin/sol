@@ -20,6 +20,7 @@ import {
 import { serializeGraph } from "./serialization.ts";
 import { isServerBlock, mountServerBlock, type ServerRegion } from "./server-rendering.ts";
 import { SsrSession } from "./ssr-session.ts";
+import { validateTimerDelay } from "./timers.ts";
 
 export interface RenderToStringOptions {
   readonly timeoutMs?: number;
@@ -31,10 +32,7 @@ export const DEFAULT_SSR_TIMEOUT = 5_000;
 
 export function validateTimeout(value: unknown, label = "timeoutMs"): number {
   if (value === undefined) return DEFAULT_SSR_TIMEOUT;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new TypeError(`${label} must be a finite non-negative number`);
-  }
-  return value;
+  return validateTimerDelay(value, label);
 }
 
 export async function renderToStringAsync<Props extends object>(

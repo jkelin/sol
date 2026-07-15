@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import type { ResolvedConfig } from "vite";
 import { bunAdapter } from "../src/adapters/bun.ts";
 import { staticAdapter } from "../src/adapters/static.ts";
+import type { SolkitAdapterContext } from "../src/types.ts";
 import { solkit } from "../src/vite.ts";
 
 test("validates Vite integration options", () => {
@@ -34,4 +36,65 @@ test("configures the route base in dynamic server entries", () => {
   } as ResolvedConfig);
   const staticSource = (staticPlugin.load as (id: string) => string)("\0virtual:solkit/server");
   expect(staticSource).toContain("logicalPaths: true");
+  expect(staticSource).toContain("staticRoutePaths, staticRoutes");
+
+  const clientSource = (staticPlugin.load as (id: string) => string)("\0virtual:solkit/client");
+  expect(clientSource).toContain('configureRouterNavigation("document")');
+});
+
+test("emits adapter output through Vite's output pipeline", async () => {
+  const previousTarget = process.env.SOLKIT_BUILD_TARGET;
+  process.env.SOLKIT_BUILD_TARGET = "adapter";
+  const emitted: Array<{ readonly fileName?: string; readonly source?: unknown }> = [];
+  try {
+    const plugin = solkit({
+      entry: "/src/app.tsx",
+      adapter: Object.assign(
+        {
+          name: "capture",
+          async write(context: SolkitAdapterContext) {
+            expect(context.writeFile).toBeFunction();
+            await context.writeFile?.(join(context.clientDirectory, "docs", "index.html"), "docs");
+          },
+        },
+        { static: true as const },
+      ),
+    });
+    const configured = Reflect.apply(plugin.config as (...args: never[]) => unknown, plugin, [
+      {},
+      { command: "build", mode: "production" },
+    ]);
+    expect(configured).toMatchObject({
+      build: { outDir: "dist", emptyOutDir: false, manifest: false },
+    });
+    (plugin.configResolved as (config: ResolvedConfig) => void)({
+      root: "/project",
+      build: { outDir: "dist" },
+    } as ResolvedConfig);
+    const bundle = { ".solkit/adapter.js": {} };
+    const hook = plugin.generateBundle as {
+      order: string;
+      handler: (
+        this: { emitFile(asset: unknown): void },
+        output: unknown,
+        bundle: unknown,
+      ) => Promise<void>;
+    };
+    expect(hook.order).toBe("pre");
+    await Reflect.apply(
+      hook.handler,
+      {
+        emitFile: (asset: unknown) =>
+          emitted.push(asset as { readonly fileName?: string; readonly source?: unknown }),
+      },
+      [{}, bundle],
+    );
+    expect(Object.keys(bundle)).toEqual([]);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]?.fileName).toBe("docs/index.html");
+    expect(emitted[0]?.source).toBe("docs");
+  } finally {
+    if (previousTarget === undefined) delete process.env.SOLKIT_BUILD_TARGET;
+    else process.env.SOLKIT_BUILD_TARGET = previousTarget;
+  }
 });

@@ -291,7 +291,8 @@ only for trusted development environments.
 
 For full-document rendering, add the `solkit` Vite plugin after the compiler and export the
 application root from an entry module. Select `bunAdapter()` or `nodeAdapter()` for request-time SSR,
-or `staticAdapter()` plus an exported `staticPaths` array for multipage static HTML. Development HTML
+or `staticAdapter()` for multipage static HTML. Literal routes are included automatically; an
+optional `staticPaths` export supplies concrete parameterized paths. Development HTML
 requests render through Vite middleware with imported stylesheets available for the initial render;
 `solkit build` creates the selected deployment output.
 The generated launcher prints its bound HTTP address once it starts listening.
@@ -434,7 +435,10 @@ percent-escape syntax is rejected.
 
 ## Routing
 
-Routes are discovered automatically below the Vite project root. Define each route as an exported
+Routes are discovered automatically below the Vite project root. Each `.sol.ts` or `.sol.tsx` route
+file becomes one lazy browser and server chunk; routes declared together intentionally share it.
+Typed route-handle imports retain only route metadata, so page implementation code loads when the
+route matches. Define each route as an exported
 top-level constant in a `.sol.ts` or `.sol.tsx` file:
 
 ```tsx
@@ -505,7 +509,7 @@ const App = $component(function App() {
 });
 ```
 
-The optional `pending` component renders while an asynchronous schema resolves. Without it, the outlet remains empty during validation. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` (with `query` as an alias), the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors are still handled through browser history.
+The optional `pending` component renders while a route chunk loads or an asynchronous schema resolves. Without it, the outlet remains empty while pending. The global `router` remains available for destinations that are not represented by a route handle. It exposes `pathname`, `search`, `hash`, `searchParams`, untyped parsed `params` (with `query` as an alias), the matched route config, and `navigate(path, { replace? })`. Same-origin root-relative anchors use browser history in server-driven applications and document navigation in static applications.
 
 `routerReady` resolves after the browser's initial asynchronous route schema has settled. Solkit
 awaits it automatically before hydration; custom hydration entries should do the same before calling

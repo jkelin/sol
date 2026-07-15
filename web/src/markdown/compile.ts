@@ -444,14 +444,14 @@ export async function markdownModule(
     .join("\n");
   return {
     metadata: parsed.metadata,
-    code: `import { $component } from "sol";
+    code: `import { $component, Head } from "sol";
 import { CodePanel, ExampleViewToggle, type ExampleMode } from ${JSON.stringify(uiModule)};
 ${imports.join("\n")}
 ${state.moduleDeclarations.join("\n")}
 ${liveSources}
 ${liveComponents}
 export const metadata = ${JSON.stringify(parsed.metadata)} as const;
-const Document = $component(function Document() { return <article class="docs-prose">${body}</article>; });
+const Document = $component(function Document() { return <><Head><title>${jsxText(parsed.metadata.title)}</title><meta name="description" content=${JSON.stringify(parsed.metadata.description)} /></Head><article class="docs-prose">${body}</article></>; });
 export default Document;`,
   };
 }

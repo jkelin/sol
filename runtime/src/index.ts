@@ -53,7 +53,15 @@ export {
 export { mount } from "./rendering.ts";
 export { hydrate } from "./hydrate.ts";
 export { renderToStringAsync, type RenderToStringOptions } from "./ssr.ts";
-export { configureRouterBase, Route, router, routerReady, type Router } from "./router.ts";
+export {
+  configureRouterBase,
+  configureRouterNavigation,
+  Route,
+  router,
+  routerReady,
+  type Router,
+  type RouterNavigationMode,
+} from "./router.ts";
 export {
   type LinkProps,
   type NavigateOptions,

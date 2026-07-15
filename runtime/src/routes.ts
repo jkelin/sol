@@ -116,6 +116,16 @@ export interface RouteDefinition<
   navigate(destination: RouteDestination<Values>, options?: NavigateOptions): void;
 }
 
+export interface LazyRouteDefinition {
+  readonly config: { readonly path: string };
+  readonly compiled: CompiledRoutePattern;
+  load(): Promise<RouteDefinition>;
+}
+
+const unloadedRouteComponent = (() => {
+  throw new Error("Route implementation has not been loaded");
+}) as Component;
+
 export type LinkProps<
   Path extends string,
   Values extends RouteValues,
@@ -416,12 +426,12 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   return serialized ? `${path}?${serialized}` : path;
 }
 
-export function route<
+function createRouteDefinition<
   const Path extends `/${string}`,
   Values extends RouteValues = DefaultRouteValues<Path>,
 >(
   config: RouteConfig<Path, Values>,
-  candidate: Component,
+  candidate: Component | undefined,
   compiled: CompiledRoutePattern,
 ): RouteDefinition<Path, Values> {
   if (!config || typeof config !== "object" || typeof config.path !== "string") {
@@ -439,7 +449,7 @@ export function route<
       );
     }
   }
-  getFactory(candidate);
+  if (candidate) getFactory(candidate);
   if (
     !compiled ||
     typeof compiled.pattern !== "string" ||
@@ -471,7 +481,7 @@ export function route<
   definition = Object.freeze({
     [ROUTE]: true,
     config: Object.freeze({ ...config }),
-    component: candidate,
+    component: candidate ?? unloadedRouteComponent,
     compiled: Object.freeze({
       pattern: compiled.pattern,
       parameterNames: Object.freeze([...compiled.parameterNames]),
@@ -507,6 +517,56 @@ export function route<
   }) as CompiledRouteDefinition<Path, Values>;
   routePrefixes.set(definition, staticPrefix);
   return definition;
+}
+
+export function route<
+  const Path extends `/${string}`,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+>(
+  config: RouteConfig<Path, Values>,
+  candidate: Component,
+  compiled: CompiledRoutePattern,
+): RouteDefinition<Path, Values> {
+  return createRouteDefinition(config, candidate, compiled);
+}
+
+export function routeHandle<
+  const Path extends `/${string}`,
+  Values extends RouteValues = DefaultRouteValues<Path>,
+>(
+  config: RouteConfig<Path, Values>,
+  compiled: CompiledRoutePattern,
+): RouteDefinition<Path, Values> {
+  return createRouteDefinition(config, undefined, compiled);
+}
+
+export function lazyRoute(
+  path: string,
+  compiled: CompiledRoutePattern,
+  loader: () => Promise<unknown>,
+): LazyRouteDefinition {
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) {
+    throw new TypeError("Lazy route path must be root-relative");
+  }
+  if (typeof loader !== "function") throw new TypeError("Lazy route loader must be a function");
+  const handle = routeHandle({ path: path as `/${string}` }, compiled);
+  let loaded: Promise<RouteDefinition> | undefined;
+  return Object.freeze({
+    config: handle.config,
+    compiled: handle.compiled,
+    load() {
+      loaded ??= Promise.resolve(loader()).then((definition) => {
+        if (!isRouteDefinition(definition)) {
+          throw new TypeError(`Lazy route module did not export a compiled route for ${path}`);
+        }
+        if (definition.config.path !== path || definition.compiled.pattern !== compiled.pattern) {
+          throw new TypeError(`Lazy route module metadata does not match ${path}`);
+        }
+        return definition;
+      });
+      return loaded;
+    },
+  });
 }
 
 export function isRouteDefinition(value: unknown): value is RouteDefinition {

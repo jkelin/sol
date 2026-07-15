@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { nodeAdapter } from "solkit/adapters/node";
 
@@ -14,6 +14,7 @@ test.beforeAll(async () => {
   await rm(serverDirectory, { recursive: true, force: true });
   await mkdir(serverDirectory, { recursive: true });
   await copyFile(resolve("dist/server/app.mjs"), resolve(serverDirectory, "app.mjs"));
+  await cp(resolve("dist/server/assets"), resolve(serverDirectory, "assets"), { recursive: true });
   await nodeAdapter().write({ serverDirectory, clientDirectory });
   server = spawn("node", [resolve(serverDirectory, "index.mjs")], {
     env: { ...process.env, HOST: "127.0.0.1", PORT: String(port) },

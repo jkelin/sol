@@ -1,5 +1,5 @@
 declare module "virtual:sol/routes" {
-  const routes: readonly import("./routes.ts").RouteDefinition[];
+  const routes: readonly import("./routes.ts").LazyRouteDefinition[];
   export default routes;
 }
 

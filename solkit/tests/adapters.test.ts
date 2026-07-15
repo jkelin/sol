@@ -162,14 +162,29 @@ test("static adapter renders root and nested HTML beside client assets", async (
   const clientDirectory = join(directory, "client");
   await mkdir(serverDirectory, { recursive: true });
   await mkdir(join(clientDirectory, "assets"), { recursive: true });
+  await mkdir(join(clientDirectory, ".solkit"), { recursive: true });
   await writeFile(
     join(clientDirectory, "index.html"),
     '<!doctype html><html><head><!--solkit-head--><script src="/assets/app.js"></script></head><body><div id="app"><!--solkit-body--></div></body></html>',
   );
   await writeFile(join(clientDirectory, "assets", "app.js"), "export const built = true;");
+  await writeFile(join(clientDirectory, "assets", "landing.js"), "export const landing = true;");
+  await writeFile(join(clientDirectory, "assets", "docs.js"), "export const docs = true;");
+  await writeFile(
+    join(clientDirectory, ".solkit", "manifest.json"),
+    JSON.stringify({
+      "landing.sol.tsx?sol-route-page": { file: "assets/landing.js" },
+      "docs.sol.tsx?sol-route-page": { file: "assets/docs.js" },
+    }),
+  );
   await writeFile(
     join(serverDirectory, "app.mjs"),
-    `export const staticPaths = ["/", "/docs/guide"];
+    `export const staticRoutePaths = ["/"];
+export const staticPaths = ["/", "/docs/guide"];
+export const staticRoutes = [
+  { path: "/", compiled: { pattern: "^/$", specificity: [] }, assetKey: "landing.sol.tsx?sol-route-page" },
+  { path: "/docs/:slug", compiled: { pattern: "^/docs/([^/]+)$", specificity: [1, 0] }, assetKey: "docs.sol.tsx?sol-route-page" },
+];
 let rendering = false;
 export async function handle(request, context) {
   if (rendering) throw new Error("Static renders must be isolated");
@@ -187,10 +202,13 @@ export async function handle(request, context) {
 
   await staticAdapter().write({ serverDirectory, clientDirectory });
 
-  expect(await readFile(join(clientDirectory, "index.html"), "utf8")).toContain("<main>/</main>");
-  expect(await readFile(join(clientDirectory, "docs", "guide", "index.html"), "utf8")).toContain(
-    "<title>/docs/guide</title>",
-  );
+  const rootPage = await readFile(join(clientDirectory, "index.html"), "utf8");
+  const docsPage = await readFile(join(clientDirectory, "docs", "guide", "index.html"), "utf8");
+  expect(rootPage).toContain("<main>/</main>");
+  expect(rootPage).toContain('href="/assets/landing.js"');
+  expect(rootPage).not.toContain('href="/assets/docs.js"');
+  expect(docsPage).toContain("<title>/docs/guide</title>");
+  expect(docsPage).toContain('href="/assets/docs.js"');
   expect(await readFile(join(clientDirectory, "assets", "app.js"), "utf8")).toContain(
     "built = true",
   );
@@ -200,6 +218,15 @@ export async function handle(request, context) {
 test("static adapter validates its public inputs and generated paths", async () => {
   expect(() => Reflect.apply(staticAdapter, undefined, [{}])).toThrow("does not accept options");
   expect(await rejection(staticAdapter().write(null as never))).toBeInstanceOf(TypeError);
+  expect(
+    await rejection(
+      staticAdapter().write({
+        serverDirectory: "/server",
+        clientDirectory: "/client",
+        writeFile: "invalid",
+      } as never),
+    ),
+  ).toBeInstanceOf(TypeError);
 
   await Promise.all(
     (

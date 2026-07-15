@@ -15,18 +15,18 @@ export function canonicalizeStaticRouteSegment(segment: string): string {
   return encodeURIComponent(decodeURIComponent(segment));
 }
 
-export function parseRoutePath(context: CompilerContext, node: t.StringLiteral): ParsedRoutePath {
-  const path = node.value;
+export function compileRoutePath(path: string): ParsedRoutePath {
+  if (typeof path !== "string") throw new TypeError("Route path must be a string");
   if (!path.startsWith("/") || path.startsWith("//")) {
-    codeFrame(context, node, "Route paths must start with exactly one slash");
+    throw new TypeError("Route paths must start with exactly one slash");
   }
-  if (path.includes("#")) codeFrame(context, node, "Route paths must not contain a hash");
+  if (path.includes("#")) throw new TypeError("Route paths must not contain a hash");
   const parts = path.split("?");
-  if (parts.length > 2) codeFrame(context, node, "Route paths may contain only one query template");
+  if (parts.length > 2) throw new TypeError("Route paths may contain only one query template");
   const pathname = parts[0]!;
   const query = parts[1];
   if (pathname !== "/" && (pathname.endsWith("/") || pathname.includes("//"))) {
-    codeFrame(context, node, "Route paths must not contain empty or trailing segments");
+    throw new TypeError("Route paths must not contain empty or trailing segments");
   }
 
   const parameterNames: string[] = [];
@@ -46,19 +46,19 @@ export function parseRoutePath(context: CompilerContext, node: t.StringLiteral):
               try {
                 decoded = decodeURIComponent(segment);
               } catch {
-                codeFrame(context, node, `Invalid percent encoding in route segment ${segment}`);
+                throw new TypeError(`Invalid percent encoding in route segment ${segment}`);
               }
               if (decoded === "." || decoded === "..") {
-                codeFrame(context, node, "Route paths must not contain dot segments");
+                throw new TypeError("Route paths must not contain dot segments");
               }
               return escapeRegExp(encodeURIComponent(decoded));
             }
             const name = segment.slice(1);
             if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
-              codeFrame(context, node, `Invalid route parameter ${segment}`);
+              throw new TypeError(`Invalid route parameter ${segment}`);
             }
             if (parameterNames.includes(name)) {
-              codeFrame(context, node, `Duplicate route parameter ${name}`);
+              throw new TypeError(`Duplicate route parameter ${name}`);
             }
             parameterNames.push(name);
             pathnameParameterNames.push(name);
@@ -68,15 +68,15 @@ export function parseRoutePath(context: CompilerContext, node: t.StringLiteral):
           .join("/");
 
   if (query !== undefined) {
-    if (!query) codeFrame(context, node, "Route query templates must not be empty");
+    if (!query) throw new TypeError("Route query templates must not be empty");
     const queryKeys = new Set<string>();
     for (const part of query.split("&")) {
       const match = /^([A-Za-z_$][A-Za-z0-9_$-]*)=:([A-Za-z_$][A-Za-z0-9_$]*)$/.exec(part);
       if (!match) {
-        codeFrame(context, node, `Invalid route query parameter ${part}`);
+        throw new TypeError(`Invalid route query parameter ${part}`);
       }
       const [, key, name] = match;
-      if (queryKeys.has(key!)) codeFrame(context, node, `Duplicate route query key ${key}`);
+      if (queryKeys.has(key!)) throw new TypeError(`Duplicate route query key ${key}`);
       queryKeys.add(key!);
       queryParameters.push({ key: key!, name: name! });
       if (!parameterNames.includes(name!)) parameterNames.push(name!);
@@ -90,4 +90,13 @@ export function parseRoutePath(context: CompilerContext, node: t.StringLiteral):
     queryParameters,
     specificity,
   };
+}
+
+export function parseRoutePath(context: CompilerContext, node: t.StringLiteral): ParsedRoutePath {
+  try {
+    return compileRoutePath(node.value);
+  } catch (error) {
+    codeFrame(context, node, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }

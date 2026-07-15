@@ -4,6 +4,8 @@ test("the example build keeps compiler output readable", async () => {
   const assets = new Bun.Glob("*.js");
   const outputFiles = [...assets.scanSync("dist/client/assets")];
   expect(outputFiles.length).toBeGreaterThan(0);
+  expect(outputFiles.some((file) => file.startsWith("todo.sol-"))).toBe(true);
+  expect(outputFiles.some((file) => file.startsWith("queries.sol-"))).toBe(true);
 
   const output = (
     await Promise.all(outputFiles.map((file) => Bun.file(`dist/client/assets/${file}`).text()))
@@ -44,6 +46,16 @@ test("the example build keeps compiler output readable", async () => {
   expect(await Bun.file("dist/server/index.mjs").exists()).toBe(true);
   const serverOutput = await Bun.file("dist/server/app.mjs").text();
   expect(serverOutput).toContain("notes-backend");
-  expect(serverOutput).toContain("SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
-  expect(serverOutput).toContain("SOL_BACKEND_SECRET_DO_NOT_SHIP");
+  const serverArtifacts = (
+    await Promise.all(
+      [...new Bun.Glob("**/*").scanSync("dist/server")]
+        .filter((file) => file.endsWith(".js") || file.endsWith(".mjs") || file.endsWith(".map"))
+        .map((file) => Bun.file(`dist/server/${file}`).text()),
+    )
+  ).join("\n");
+  const serverFiles = [...new Bun.Glob("assets/*.js").scanSync("dist/server")];
+  expect(serverFiles.some((file) => file.includes("todo.sol-"))).toBe(true);
+  expect(serverFiles.some((file) => file.includes("queries.sol-"))).toBe(true);
+  expect(serverArtifacts).toContain("SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
+  expect(serverArtifacts).toContain("SOL_BACKEND_SECRET_DO_NOT_SHIP");
 });

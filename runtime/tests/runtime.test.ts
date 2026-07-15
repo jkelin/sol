@@ -27,6 +27,7 @@ import {
   configureRouteBase,
   configureRouteRuntime,
   instantiate,
+  lazyRoute,
   list,
   link,
   rawText,
@@ -1106,6 +1107,33 @@ describe("compiled DOM runtime", () => {
     expect(() => route({ path: "/bad" }, (() => undefined) as never, definition.compiled)).toThrow(
       "uncompiled component",
     );
+  });
+
+  test("validates and caches lazy route implementations", async () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const definition = route({ path: "/lazy" }, Empty, {
+      pattern: "^/lazy$",
+      parameterNames: [],
+      pathnameParameterNames: [],
+      queryParameters: [],
+      specificity: [1],
+    });
+    let loads = 0;
+    const lazy = lazyRoute("/lazy", definition.compiled, async () => {
+      loads += 1;
+      return definition;
+    });
+
+    expect(await Promise.all([lazy.load(), lazy.load()])).toEqual([definition, definition]);
+    expect(loads).toBe(1);
+    expect(() => lazyRoute("lazy", definition.compiled, async () => definition)).toThrow(
+      "root-relative",
+    );
+    const failure = await lazyRoute("/lazy", definition.compiled, async () => null)
+      .load()
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(TypeError);
+    expect((failure as Error).message).toContain("did not export");
   });
 
   test("provides typed route params, navigation, and active state", () => {

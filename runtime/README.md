@@ -53,8 +53,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
-  generation, route handles, and frame-explicit reads and object views used after async setup
-  resumes.
+  generation, route handles, validated cached lazy-route descriptors, and frame-explicit reads and
+  object views used after async setup resumes.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
   application paths.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
@@ -63,8 +63,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
-- `router.ts` connects compiled route definitions to browser history, request URLs, SSR route rendering,
-  initial asynchronous route readiness, deployment-base translation, trailing-slash directory URL
+- `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
+  browser history or static document navigation, request URLs, SSR route rendering, initial
+  asynchronous route readiness, deployment-base translation, trailing-slash directory URL
   normalization, shared empty route values, request-frame reads, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.

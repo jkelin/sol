@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   isCSSRequest,
@@ -7,13 +7,16 @@ import {
   type Plugin,
   type ResolvedConfig,
   type ViteDevServer,
+  normalizePath,
 } from "vite";
 import type { RequestHandler, SolkitAdapter, SolkitOptions } from "./types.ts";
 
 const CLIENT_ENTRY = "virtual:solkit/client";
 const SERVER_ENTRY = "virtual:solkit/server";
+const ADAPTER_ENTRY = "virtual:solkit/adapter";
 const RESOLVED_CLIENT_ENTRY = `\0${CLIENT_ENTRY}`;
 const RESOLVED_SERVER_ENTRY = `\0${SERVER_ENTRY}`;
+const RESOLVED_ADAPTER_ENTRY = `\0${ADAPTER_ENTRY}`;
 const BUILD_TARGET = "SOLKIT_BUILD_TARGET";
 const DEV_STYLE_ATTRIBUTE = "data-solkit-dev-style";
 
@@ -140,12 +143,29 @@ export function solkit(options: SolkitOptions): Plugin {
   const clientOutDir = staticBuild ? "dist" : "dist/client";
   let config: ResolvedConfig;
   let serverBuild = false;
+  let adapterBuild = false;
 
   return {
     name: "solkit",
     enforce: "post",
     config(_config, environment) {
       serverBuild = environment.command === "build" && process.env[BUILD_TARGET] === "server";
+      adapterBuild = environment.command === "build" && process.env[BUILD_TARGET] === "adapter";
+      if (adapterBuild) {
+        return {
+          build: {
+            outDir: "dist",
+            emptyOutDir: false,
+            copyPublicDir: false,
+            manifest: false,
+            sourcemap: false,
+            rollupOptions: {
+              input: ADAPTER_ENTRY,
+              output: { entryFileNames: ".solkit/adapter.js" },
+            },
+          },
+        };
+      }
       if (serverBuild) {
         return {
           build: {
@@ -162,7 +182,13 @@ export function solkit(options: SolkitOptions): Plugin {
       }
       return environment.command === "serve" && !environment.isPreview
         ? { appType: "custom" }
-        : { build: { outDir: clientOutDir, emptyOutDir: true } };
+        : {
+            build: {
+              outDir: clientOutDir,
+              emptyOutDir: true,
+              manifest: staticBuild ? ".solkit/manifest.json" : false,
+            },
+          };
     },
     configResolved(resolved) {
       config = resolved;
@@ -172,31 +198,38 @@ export function solkit(options: SolkitOptions): Plugin {
       handler(id) {
         if (id === CLIENT_ENTRY) return RESOLVED_CLIENT_ENTRY;
         if (id === SERVER_ENTRY) return RESOLVED_SERVER_ENTRY;
+        if (id === ADAPTER_ENTRY) return RESOLVED_ADAPTER_ENTRY;
         return null;
       },
     },
     load(id) {
       if (id === RESOLVED_CLIENT_ENTRY) {
-        return `import { configureRouterBase, hydrate, routerReady } from "sol";
+        return `import { configureRouterBase, configureRouterNavigation, hydrate, routerReady } from "sol";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
 const target = document.querySelector("#app");
 if (!target) throw new Error("The #app hydration target is missing");
 document.querySelectorAll("link[${DEV_STYLE_ATTRIBUTE}]").forEach((link) => link.remove());
+configureRouterNavigation(${JSON.stringify(staticBuild ? "document" : "history")});
 await configureRouterBase(import.meta.env.BASE_URL);
 await routerReady;
 await hydrate(Root, target);
 document.documentElement.dataset.solkitHydrated = "true";`;
       }
+      if (id === RESOLVED_ADAPTER_ENTRY) return "export {};";
       if (id === RESOLVED_SERVER_ENTRY) {
-        const staticPathImport = staticBuild
-          ? `import { staticPaths } from ${JSON.stringify(options.entry)};`
+        const rootImport = staticBuild
+          ? `import * as __solkit_entry from ${JSON.stringify(options.entry)};
+const Root = __solkit_entry[${JSON.stringify(exportName)}];
+import { staticRoutePaths, staticRoutes } from "virtual:sol/routes";`
+          : `import { ${exportName} as Root } from ${JSON.stringify(options.entry)};`;
+        const staticPathExport = staticBuild
+          ? `export const staticPaths = __solkit_entry.staticPaths;
+export { staticRoutePaths, staticRoutes };`
           : "";
-        const staticPathExport = staticBuild ? "export { staticPaths };" : "";
         return `import { createRequestHandler } from "solkit";
 import { configureRouteBase } from "sol/compiler-runtime";
 import endpoints from "virtual:sol/server-endpoints";
-import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
-${staticPathImport}
+${rootImport}
 configureRouteBase(${JSON.stringify(config.base)});
 export const handle = createRequestHandler(Root, endpoints, { logicalPaths: ${staticBuild}, maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });
 ${staticPathExport}`;
@@ -237,12 +270,33 @@ ${staticPathExport}`;
         });
       };
     },
-    async closeBundle() {
-      if (!serverBuild) return;
-      await options.adapter.write({
-        serverDirectory: resolve(config.root, config.build.outDir),
-        clientDirectory: resolve(config.root, clientOutDir),
-      });
+    generateBundle: {
+      order: "pre",
+      async handler(_output, bundle) {
+        if (!adapterBuild) return;
+        for (const fileName of Object.keys(bundle)) delete bundle[fileName];
+        const outputDirectory = resolve(config.root, config.build.outDir);
+        const serverDirectory = resolve(
+          config.root,
+          staticBuild ? "dist/.solkit/server" : "dist/server",
+        );
+        await options.adapter.write({
+          serverDirectory,
+          clientDirectory: resolve(config.root, clientOutDir),
+          writeFile: (file, source) => {
+            const fileName = normalizePath(relative(outputDirectory, file));
+            if (
+              !fileName ||
+              fileName === ".." ||
+              fileName.startsWith("../") ||
+              isAbsolute(fileName)
+            ) {
+              throw new TypeError(`Adapter output ${file} must be inside ${outputDirectory}`);
+            }
+            this.emitFile({ type: "asset", fileName, source });
+          },
+        });
+      },
     },
   };
 }

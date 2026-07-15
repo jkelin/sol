@@ -508,7 +508,7 @@ export function compileFunction(
   const body = compileBlockBody(compiler, returned, compiledSetup.bindings, compiledSetup.scope);
   compiler.propsName = previousPropsName;
   return {
-    code: `${exported ? "export " : ""}const ${name} = __sol_component(${declaration.async ? "async " : ""}(${parameterCode}, __sol_frame) => {
+    code: `${exported ? "export " : ""}const ${name} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_component(${declaration.async ? "async " : ""}(${parameterCode}, __sol_frame) => {
       ${compiledSetup.code}
       ${body}
     }, { name: ${JSON.stringify(name)}, file: ${JSON.stringify(compiler.filename)}, line: ${declaration.loc?.start.line ?? 0} });`,

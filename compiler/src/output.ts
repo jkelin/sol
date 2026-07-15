@@ -18,7 +18,7 @@ export function emitCompilation(state: CompilationState): CompileResult {
         propertyValueElements: propertyValueElements(template.operations),
       };
       const signature = templateSignature(template.html, template.operations);
-      return `const __sol_template_${index} = __sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
+      return `const __sol_template_${index} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
     })
     .join("\n");
   const serverRuntimeImport =

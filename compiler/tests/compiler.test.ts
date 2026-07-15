@@ -58,6 +58,15 @@ describe("compiler", () => {
     );
     expect(result.code).toContain('"specificity":[1,0]');
 
+    const handle = compile(
+      `import { Page } from "./Page";
+       export const page = $route({ path: "/page" }, Page);`,
+      "page.sol.tsx",
+      { routeMode: "handle" },
+    );
+    expect(handle.code).toContain("export const page = __sol_route_handle");
+    expect(handle.code).not.toContain("__sol_route({");
+
     for (const extension of ["ts", "tsx"]) {
       const routeModule = compile(
         `import { Page } from "./Page";
@@ -2102,6 +2111,33 @@ test("the Vite plugin rejects canonically equivalent route declarations", async 
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("Duplicate route matcher");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the route manifest creates one lazy loader per route file and infers literal paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-route-manifest-"));
+  try {
+    await writeFile(
+      join(root, "pages.sol.tsx"),
+      `import { $route } from "sol";
+       import { Index, Detail } from "./Pages";
+       export const index = $route({ path: "/docs" }, Index);
+       export const detail = $route({ path: "/docs/:slug" }, Detail);`,
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const source = await (plugin.load as (id: string) => Promise<string>)("\0virtual:sol/routes");
+
+    expect(source.match(/import\("\/@fs\//g)).toHaveLength(1);
+    expect(source.match(/__sol_lazy_route\(/g)).toHaveLength(2);
+    expect(source).toContain('export const staticRoutePaths = ["/docs"]');
+    expect(source).toContain('"assetKey":"pages.sol.tsx?sol-route-page"');
+    expect(source).not.toContain("import * as __sol_route_module");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

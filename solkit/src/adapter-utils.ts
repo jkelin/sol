@@ -20,6 +20,14 @@ export async function writeLauncher(context: SolkitAdapterContext, source: strin
   if (typeof context.clientDirectory !== "string" || !context.clientDirectory) {
     throw new TypeError("Adapter clientDirectory must be a non-empty string");
   }
+  if (context.writeFile !== undefined && typeof context.writeFile !== "function") {
+    throw new TypeError("Adapter writeFile must be a function");
+  }
+  const file = join(context.serverDirectory, "index.mjs");
+  if (context.writeFile) {
+    await context.writeFile(file, source);
+    return;
+  }
   await mkdir(context.serverDirectory, { recursive: true });
-  await writeFile(join(context.serverDirectory, "index.mjs"), source, "utf8");
+  await writeFile(file, source, "utf8");
 }

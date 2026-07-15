@@ -23,4 +23,5 @@ if (command !== "build" || process.argv.length !== 3) {
 } else {
   await viteBuild();
   await viteBuild("server");
+  await viteBuild("adapter");
 }

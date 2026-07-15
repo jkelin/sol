@@ -36,7 +36,7 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 - `diagnostics.ts` creates authored code frames and preserves source-map origins while accepting the
   client-safe source content emitted by `output.ts`.
 - `route-path.ts` validates route templates, rejects URL-normalized dot segments, and produces
-  canonical compiled matching metadata.
+  canonical matching metadata for compiled declarations and lazy manifests.
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
 - `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
@@ -56,10 +56,11 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 - `runtime-import.ts` resolves referenced compiler-runtime identifiers from generated syntax and emits one minimal import; output adds
   a target-specific endpoint import only for modules containing server declarations.
 - `compile.ts` validates input, creates compilation state, and sequences analysis, declaration lowering, final validation, and emission.
-- `vite.ts` discovers `.sol.ts` and `.sol.tsx` modules, provides UI-route and server-endpoint
-  manifests, emits both RPC declaration kinds as `POST /api/rpc/:name`, rejects matcher collisions,
-  invalidates both manifests during development, injects the opt-out development devtools entry,
-  and selects client or server compilation before Vite's JSX transform.
+- `vite.ts` discovers `.sol.ts` and `.sol.tsx` modules, provides lazy route-file and server-endpoint
+  manifests, infers literal static paths, emits both RPC declaration kinds as
+  `POST /api/rpc/:name`, rejects matcher collisions, invalidates both manifests during development,
+  injects the opt-out development devtools entry, and compiles metadata-only route handles
+  separately from page implementations before Vite's JSX transform.
 
 ## How it works
 

@@ -7,4 +7,5 @@ export interface CompileResult {
 
 export interface CompileOptions {
   readonly target?: "client" | "server";
+  readonly routeMode?: "handle" | "page";
 }

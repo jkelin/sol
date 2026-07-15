@@ -17,8 +17,10 @@ query/mutation locations, routing, and form validation, or access the
 same data through `globalThis.__sol` and supported browsers' WebMCP tooling. The production build
 does not include devtools.
 
-Development runs through Solkit's Vite SSR middleware. The production build writes browser assets to
-`example/dist/client` and a bundled SSR handler plus Bun launcher to `example/dist/server`. The
+Development runs through Solkit's Vite SSR middleware. Route files load as per-page browser and
+server chunks while the shared shell and typed route handles remain in the entry chunk. The
+production build writes browser assets to `example/dist/client` and a bundled SSR handler plus Bun
+launcher to `example/dist/server`. The
 build-output test checks that readable compiler output contains Sol templates, routes, reactivity,
 and transitions. The query declarations import their validators and a fake secret from
 `src/notes-backend.ts`; the build-output test requires those markers in the server bundle and rejects

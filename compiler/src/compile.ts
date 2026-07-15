@@ -47,6 +47,7 @@ export function compile(
     nextListId: 0,
     nextAsyncId: 0,
     target: options.target ?? "server",
+    routeMode: options.routeMode ?? "page",
   };
   const state: CompilationState = {
     ast: parse(source, {

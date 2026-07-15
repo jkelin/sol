@@ -139,7 +139,10 @@ export function compileRouteDeclarations(state: CompilationState): void {
     edits.push({
       start: statement.start!,
       end: statement.end!,
-      code: `${exported ? "export " : ""}const ${variable.id.name} = __sol_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
+      code:
+        compiler.routeMode === "handle"
+          ? `${exported ? "export " : ""}const ${variable.id.name} = __sol_route_handle(${generate(config).code}, ${JSON.stringify(parsedPath)});`
+          : `${exported ? "export " : ""}const ${variable.id.name} = __sol_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
     });
     routeCallRanges.add(`${call.start}:${call.end}`);
   }

@@ -71,6 +71,7 @@ export interface CompilerContext {
   nextListId: number;
   nextAsyncId: number;
   target: "client" | "server";
+  routeMode: "handle" | "page";
 }
 
 export interface CompilationState {

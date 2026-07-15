@@ -61,15 +61,16 @@ removes those temporary links and Vite owns the styles and their hot updates.
 
 ### Static sites
 
-Use `staticAdapter()` and export the canonical application paths to render at build time. Static
-paths are logical root-relative pathnames without queries, hashes, dot segments, backslashes, or a
-trailing slash. Parameterized routes must be expanded by the application because Solkit cannot infer
-their values.
+Use `staticAdapter()` to render canonical application paths at build time. Solkit automatically
+includes every route without a pathname parameter. Export `staticPaths` only to add concrete
+parameterized paths; explicit literal paths remain accepted and are deduplicated with inferred
+paths. Static paths are logical root-relative pathnames without queries, hashes, dot segments,
+backslashes, or a trailing slash.
 
 ```tsx
 // src/entry.tsx
 export { App } from "./App.tsx";
-export const staticPaths = ["/", "/docs", "/docs/routing"] as const;
+export const staticPaths = ["/docs/routing"] as const;
 ```
 
 ```ts
@@ -80,10 +81,15 @@ solkit({ entry: "/src/entry.tsx", adapter: staticAdapter() });
 
 `solkit build` renders `/` to `dist/index.html` and every other path to its nested
 `index.html`. The directory is a self-contained deployment artifact containing the prerendered
-documents and Vite's CSS, JavaScript, and assets. Its temporary SSR bundle is removed after
-prerendering. Rendering fails rather than overwriting an existing nested `index.html`. Link to
-nested documents with directory URLs such as `/docs/`; the logical `staticPaths` value remains
-`/docs`.
+documents and Vite's shared and route-specific CSS, JavaScript, and assets. Each document preloads
+only its matched route-file chunk and static navigation performs a document load. The temporary SSR
+bundle and client manifest are removed after prerendering. Rendering fails rather than overwriting
+an existing nested `index.html`. Link to nested documents with directory URLs such as `/docs/`; the
+logical route and `staticPaths` values omit the trailing slash.
+
+Solkit emits adapted files through Vite's output-generation pipeline. Prerendered HTML therefore
+appears in Vite's build report and is visible to subsequent `generateBundle` and `writeBundle`
+hooks instead of being copied into `dist` after the bundle has closed.
 
 For a project site such as GitHub Pages, set Vite's root-relative `base` (for example `/sol/`).
 Solkit configures server-rendered route links and browser routing with that base before hydration.
@@ -102,10 +108,13 @@ the browser through the Sol hydration protocol.
 ### Custom adapters
 
 Implement the exported `SolkitAdapter` interface to target another host. An adapter has a non-empty
-`name` and a `write(context)` method. Solkit calls `write` after the server build completes, passing
-absolute `serverDirectory` and `clientDirectory` paths in `SolkitAdapterContext`. The adapter writes
-its launcher into the server directory without modifying the bundled `app.mjs` handler or client
-assets. Public adapter implementations should validate these paths before writing.
+`name` and a `write(context)` method. After the client and server bundles complete, Solkit calls
+`write` inside a final Vite output-generation phase. `SolkitAdapterContext` supplies absolute
+`serverDirectory` and `clientDirectory` paths plus a `writeFile` function that emits the requested
+file through Vite. Adapters can fall back to direct filesystem writes when invoked independently,
+but production `solkit build` output remains visible to Vite output hooks and reporting. An adapter
+must not modify the bundled `app.mjs` handler or client assets, and public implementations should
+validate their context before writing.
 
 ## Low-level request handler
 
@@ -135,13 +144,13 @@ const response = await handle(request, { template });
   root, and composes full HTML.
 - `types.ts` defines the request handler, Vite options, adapter, and build context contracts.
 - `vite.ts` provides virtual browser/server entries, streaming Vite development request bridging,
-  build targets, hydration readiness, and adapter handoff.
-- `cli.ts` runs the paired Vite client and SSR production builds with Bun.
+  build targets, hydration readiness, and Vite-emitted adapter output.
+- `cli.ts` runs the Vite client, SSR, and adapter-finalization production builds with Bun.
 - `adapter-utils.ts` loads launcher source through Bun's text loader or Node's file API, validates
-  adapter output paths, and writes launchers.
+  adapter output paths, and emits or directly writes launchers.
 - `adapters/bun.ts` emits the Bun static-file and Fetch-handler host.
 - `adapters/node.ts` emits the Node.js HTTP/static-file host and bridges Web responses.
-- `adapters/static.ts` validates an entry's static paths and writes prerendered documents beside the
+- `adapters/static.ts` validates an entry's static paths and emits prerendered documents beside the
   built client assets.
 - `adapters/bun-launcher.mjs` is the formatted launcher source loaded as text by the Bun adapter.
 - `adapters/node-launcher.mjs` is the formatted launcher source loaded as text by the Node adapter.

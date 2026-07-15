@@ -19,11 +19,19 @@ The root `bun run verify` includes the website's Markdown/compiler tests. Root `
 `bun run dev:web` includes Sol devtools by default: use the circular `S` launcher or
 `globalThis.__sol` to inspect the component ownership tree, loaders and requests with authored
 query/mutation locations, routing, and form validation.
-Production builds omit devtools and prerender the landing page plus every canonical documentation route into `dist`; pass `{ devtools: false }` to `sol()` to opt out during development. Set `BASE_URL` to a root-relative deployment base such as `/sol/` when building for a project site.
+Production builds omit devtools and infer the literal landing and documentation-index pages, while
+`staticPaths` expands documentation slugs. The static adapter prerenders every page into `dist`,
+emits separate landing and documentation route chunks, and uses document navigation. Pass
+`{ devtools: false }` to `sol()` to opt out during development. Set `BASE_URL` to a root-relative
+deployment base such as `/sol/` when building for a project site.
+
+Every documentation Markdown file begins with validated YAML frontmatter. Its required `title` and
+`description` fields generate the page's `<title>` and description `<meta>` element through Sol's
+`Head` component, so development, server rendering, and prerendered HTML share the same metadata.
 
 ## Source structure
 
-- `src/main.tsx` imports the application styles and exports both the root component and generated static paths.
+- `src/main.tsx` imports application styles, exports the root, and expands parameterized docs paths.
 - `src/App.tsx` owns the shared header, responsive navigation, route outlet, pending state, and footer.
 - `src/landing.sol.tsx` contains the landing page and imports its three interactive examples.
 - `src/examples/` contains the importable landing examples and their plain CSS. The rendered

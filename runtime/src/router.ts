@@ -21,9 +21,11 @@ import {
 import {
   canonicalizePathname,
   defineRouteValue,
+  isRouteDefinition,
   registerRouter,
   resolveRoute,
   type NavigateOptions,
+  type LazyRouteDefinition,
   type RawRouteParams,
   type RouteConfig,
   type RouteDefinition,
@@ -43,6 +45,17 @@ export interface Router {
   navigate(path: string, options?: NavigateOptions): void;
 }
 
+export type RouterNavigationMode = "history" | "document";
+
+let navigationMode: RouterNavigationMode = "history";
+
+export function configureRouterNavigation(mode: unknown): void {
+  if (mode !== "history" && mode !== "document") {
+    throw new TypeError('Router navigation mode must be "history" or "document"');
+  }
+  navigationMode = mode;
+}
+
 interface RouterState {
   pathname: string;
   matchesBase: boolean;
@@ -52,19 +65,20 @@ interface RouterState {
   values: RouteValues | null;
   route: RouteConfig | null;
   pattern: string | null;
+  definition: RouteDefinition | null;
   status: "ready" | "pending" | "error";
   error: unknown;
 }
 
 interface RouteMatch {
-  definition: RouteDefinition;
+  definition: LazyRouteDefinition | RouteDefinition;
   params: RawRouteParams;
 }
 
 const EMPTY_ROUTE_VALUES: Router["params"] = Object.freeze({});
 
 interface PreparedRoute {
-  readonly definition: RouteDefinition;
+  readonly definition: LazyRouteDefinition | RouteDefinition;
   readonly matcher: RegExp;
 }
 
@@ -86,6 +100,7 @@ function readLocation(frame?: RenderFrame): RouterState {
     values: null,
     route: null,
     pattern: null,
+    definition: null,
     status: "ready",
     error: undefined,
   };
@@ -117,7 +132,10 @@ function setRouterState(next: RouterState): void {
   });
 }
 
-function compareRoutes(left: RouteDefinition, right: RouteDefinition): number {
+function compareRoutes(
+  left: LazyRouteDefinition | RouteDefinition,
+  right: LazyRouteDefinition | RouteDefinition,
+): number {
   const length = Math.max(left.compiled.specificity.length, right.compiled.specificity.length);
   for (let index = 0; index < length; index += 1) {
     const difference =
@@ -127,7 +145,9 @@ function compareRoutes(left: RouteDefinition, right: RouteDefinition): number {
   return left.config.path.localeCompare(right.config.path);
 }
 
-function prepareRoutes(definitions: readonly RouteDefinition[]): readonly PreparedRoute[] {
+function prepareRoutes(
+  definitions: readonly (LazyRouteDefinition | RouteDefinition)[],
+): readonly PreparedRoute[] {
   const patterns = new Set<string>();
   for (const definition of definitions) {
     if (patterns.has(definition.compiled.pattern)) {
@@ -187,19 +207,34 @@ function matchRoute(pathname: string, searchParams?: URLSearchParams): RouteMatc
   return null;
 }
 
+function resolveDefinition(
+  location: RouterState,
+  definition: RouteDefinition,
+  params: RawRouteParams,
+): RouterState | PromiseLike<RouterState> {
+  const result = resolveRoute(definition, params);
+  if (isPromiseLike(result)) {
+    return Promise.resolve(result).then((resolution) =>
+      resolution.matched
+        ? resolvedState(location, definition, resolution.values)
+        : unmatchedState(location),
+    );
+  }
+  return result.matched
+    ? resolvedState(location, definition, result.values)
+    : unmatchedState(location);
+}
+
 function resolveLocation(location: RouterState): RouterState | PromiseLike<RouterState> {
   if (!location.matchesBase) return unmatchedState(location);
   const match = matchRoute(location.pathname, location.searchParams);
   if (!match) return unmatchedState(location);
-  const result = resolveRoute(match.definition, match.params);
-  if (isPromiseLike(result)) {
-    return Promise.resolve(result).then((resolution) =>
-      resolution.matched
-        ? resolvedState(location, match, resolution.values)
-        : unmatchedState(location),
-    );
+  if (isRouteDefinition(match.definition)) {
+    return resolveDefinition(location, match.definition, match.params);
   }
-  return result.matched ? resolvedState(location, match, result.values) : unmatchedState(location);
+  return match.definition
+    .load()
+    .then((definition) => resolveDefinition(location, definition, match.params));
 }
 
 function currentState(frame = runtimeState.activeFrame): RouterState {
@@ -208,10 +243,17 @@ function currentState(frame = runtimeState.activeFrame): RouterState {
   const existing = serverStates.get(url);
   if (existing) return existing;
   const location = readLocation(frame);
-  const resolved = resolveLocation(location);
-  const initial = isPromiseLike(resolved)
-    ? { ...unmatchedState(location), status: "pending" as const }
-    : resolved;
+  const resolution = resolveLocation(location);
+  if (!isPromiseLike(resolution)) {
+    serverStates.set(url, resolution);
+    return resolution;
+  }
+  const initial = { ...unmatchedState(location), status: "pending" as const };
+  void Promise.resolve(resolution).then(
+    (resolved) => serverStates.set(url, resolved),
+    (error: unknown) =>
+      serverStates.set(url, { ...unmatchedState(location), status: "error", error }),
+  );
   serverStates.set(url, initial);
   return initial;
 }
@@ -222,17 +264,23 @@ function unmatchedState(location: RouterState): RouterState {
     values: null,
     route: null,
     pattern: null,
+    definition: null,
     status: "ready",
     error: undefined,
   };
 }
 
-function resolvedState(location: RouterState, match: RouteMatch, values: RouteValues): RouterState {
+function resolvedState(
+  location: RouterState,
+  definition: RouteDefinition,
+  values: RouteValues,
+): RouterState {
   return {
     ...location,
     values,
-    route: match.definition.config,
-    pattern: match.definition.compiled.pattern,
+    route: definition.config,
+    pattern: definition.compiled.pattern,
+    definition,
     status: "ready",
     error: undefined,
   };
@@ -253,30 +301,22 @@ function synchronizeLocation(): void | Promise<void> {
     return;
   }
 
-  let result;
+  let resolution: RouterState | PromiseLike<RouterState>;
   try {
-    result = resolveRoute(match.definition, match.params);
+    resolution = resolveLocation(location);
   } catch (error) {
     setRouterState({ ...unmatchedState(location), status: "error", error });
     return;
   }
-
-  if (!isPromiseLike(result)) {
-    setRouterState(
-      result.matched ? resolvedState(location, match, result.values) : unmatchedState(location),
-    );
+  if (!isPromiseLike(resolution)) {
+    setRouterState(resolution);
     return;
   }
-
   setRouterState({ ...unmatchedState(location), status: "pending" });
-  return Promise.resolve(result).then(
-    (resolution) => {
+  return Promise.resolve(resolution).then(
+    (resolved) => {
       if (currentResolution !== resolutionId) return;
-      setRouterState(
-        resolution.matched
-          ? resolvedState(location, match, resolution.values)
-          : unmatchedState(location),
-      );
+      setRouterState(resolved);
     },
     (error: unknown) => {
       if (currentResolution !== resolutionId) return;
@@ -318,12 +358,14 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   if (destination.origin !== window.location.origin) {
     throw new TypeError("router.navigate() only supports same-origin paths");
   }
+  const deployed = `${deployedPath(destination.pathname)}${destination.search}${destination.hash}`;
+  if (navigationMode === "document") {
+    if (options.replace) window.location.replace(deployed);
+    else window.location.assign(deployed);
+    return;
+  }
   const method = options.replace ? "replaceState" : "pushState";
-  window.history[method](
-    null,
-    "",
-    `${deployedPath(destination.pathname)}${destination.search}${destination.hash}`,
-  );
+  window.history[method](null, "", deployed);
   void synchronizeLocation();
 }
 
@@ -381,13 +423,13 @@ configureServerRenderPreparation((frame) => {
   const url = frame.url;
   if (!url) return undefined;
   const resolution = resolveLocation(readLocation(frame));
-  if (isPromiseLike(resolution)) {
-    return Promise.resolve(resolution).then((resolved) => {
-      serverStates.set(url, resolved);
-    });
+  if (!isPromiseLike(resolution)) {
+    serverStates.set(url, resolution);
+    return undefined;
   }
-  serverStates.set(url, resolution);
-  return undefined;
+  return Promise.resolve(resolution).then((resolved) => {
+    serverStates.set(url, resolved);
+  });
 });
 
 function listenForNavigation(): () => void {
@@ -395,6 +437,7 @@ function listenForNavigation(): () => void {
     void synchronizeLocation();
   };
   const handleClick = (event: MouseEvent): void => {
+    if (navigationMode === "document") return;
     if (
       event.defaultPrevented ||
       event.button !== 0 ||
@@ -457,10 +500,9 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
     const resolution = (frame.url && serverStates.get(frame.url)) ?? resolveLocation(location);
     const render = (resolved: RouterState): Block => {
       if (frame.url) serverStates.set(frame.url, resolved);
-      const match = resolved.pattern ? matchRoute(resolved.pathname, resolved.searchParams) : null;
       const region = view.regions[0]!;
-      const renderedRoute = match
-        ? renderRouteComponent(match.definition.component, frame, region)
+      const renderedRoute = resolved.definition
+        ? renderRouteComponent(resolved.definition.component, frame, region)
         : undefined;
       if (!isServerRegion(region)) throw new Error("Expected a server route region");
       renderedRoute?.mount(region);
@@ -475,15 +517,15 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
     runtimeEffect(() => {
       const location = state.value;
       if (location.status === "error") throw location.error;
-      const match = location.pattern ? matchRoute(location.pathname) : null;
+      const definition = location.definition;
       const locationKey = `${location.pathname}${location.search}`;
       if (
-        activeDefinition === match?.definition &&
+        activeDefinition === definition &&
         activeLocation === locationKey &&
         activeStatus === location.status
       )
         return;
-      activeDefinition = match?.definition;
+      activeDefinition = definition ?? undefined;
       activeLocation = locationKey;
       activeStatus = location.status;
       outgoing?.dispose();
@@ -503,8 +545,8 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
           ? props.pending
             ? renderRouteComponent(props.pending, frame, view.regions[0]!)
             : undefined
-          : match
-            ? renderRouteComponent(match.definition.component, frame, view.regions[0]!)
+          : definition
+            ? renderRouteComponent(definition.component, frame, view.regions[0]!)
             : undefined;
       const region = view.regions[0]!;
       if (isServerRegion(region)) throw new Error("Expected a browser route region");

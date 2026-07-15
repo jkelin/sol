@@ -78,6 +78,10 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
     expect(generated.code).toContain(
       'import { CodePanel, ExampleViewToggle, type ExampleMode } from "/src/components/ui/index.ts";',
     );
+    expect(generated.code).toContain('<Head><title>{"Example"}</title>');
+    expect(generated.code).toContain(
+      '<meta name="description" content="A valid documentation page." />',
+    );
   });
 
   test("rejects raw HTML and unsupported live boundaries", async () => {

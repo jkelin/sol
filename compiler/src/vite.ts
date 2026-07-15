@@ -7,7 +7,11 @@ import { normalizePath } from "vite";
 import { traverse } from "./ast.ts";
 import { compile } from "./compile.ts";
 import { canonicalHttpRoutePath } from "./http-path.ts";
-import { canonicalizeStaticRouteSegment } from "./route-path.ts";
+import {
+  canonicalizeStaticRouteSegment,
+  compileRoutePath,
+  type ParsedRoutePath,
+} from "./route-path.ts";
 
 const virtualRoutes = "virtual:sol/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
@@ -47,16 +51,36 @@ async function discoverRoutes(root: string): Promise<string[]> {
   return files.toSorted((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
 }
 
-function routeManifest(files: readonly string[]): string {
-  const imports = files.map((file, index) => {
-    const specifier = `/@fs/${normalizePath(file)}`;
-    return `import * as __sol_route_module_${index} from ${JSON.stringify(specifier)};`;
+async function routeManifest(files: readonly string[], root: string): Promise<string> {
+  const declarations = await Promise.all(
+    files.map(async (file) => declaredRoutes(await readFile(file, "utf8"), file)),
+  );
+  const loaders = files.map((file, index) => {
+    const specifier = `/@fs/${normalizePath(file)}?sol-route-page`;
+    return `const __sol_load_route_module_${index} = () => import(${JSON.stringify(specifier)});`;
   });
-  const modules = files.map((_, index) => `__sol_route_module_${index}`).join(", ");
-  return `${imports.join("\n")}
-import { isRouteDefinition as __sol_is_route } from "sol/compiler-runtime";
-const __sol_modules = [${modules}];
-export default __sol_modules.flatMap(module => Object.values(module).filter(__sol_is_route));`;
+  const routes = declarations.flatMap((items, fileIndex) =>
+    items.map(
+      (declaration) =>
+        `__sol_lazy_route(${JSON.stringify(declaration.path)}, ${JSON.stringify(declaration.compiled)}, () => __sol_load_route_module_${fileIndex}().then(module => module[${JSON.stringify(declaration.exportName)}]))`,
+    ),
+  );
+  const staticPaths = declarations
+    .flat()
+    .filter((route) => route.compiled.pathnameParameterNames.length === 0)
+    .map((route) => route.path.split("?", 1)[0]);
+  const staticRoutes = declarations.flatMap((items, fileIndex) =>
+    items.map((declaration) => ({
+      path: declaration.path,
+      compiled: declaration.compiled,
+      assetKey: `${normalizePath(relative(root, files[fileIndex]!))}?sol-route-page`,
+    })),
+  );
+  return `import { lazyRoute as __sol_lazy_route } from "sol/compiler-runtime";
+${loaders.join("\n")}
+export const staticRoutePaths = ${JSON.stringify([...new Set(staticPaths)])};
+export const staticRoutes = ${JSON.stringify(staticRoutes)};
+export default [${routes.join(",\n")}];`;
 }
 
 function endpointManifest(files: readonly string[]): string {
@@ -146,7 +170,13 @@ function manifestExportedNames(ast: t.File): Set<string> {
   return names;
 }
 
-function declaredRoutePaths(source: string, filename: string): string[] {
+interface DeclaredRoute {
+  readonly exportName: string;
+  readonly path: string;
+  readonly compiled: ParsedRoutePath;
+}
+
+function declaredRoutes(source: string, filename: string): DeclaredRoute[] {
   const ast = parse(source, {
     sourceType: "module",
     sourceFilename: filename,
@@ -154,7 +184,7 @@ function declaredRoutePaths(source: string, filename: string): string[] {
   });
   const helpers = declarationHelperBindings(ast);
   const exportedNames = manifestExportedNames(ast);
-  const paths: string[] = [];
+  const routes: DeclaredRoute[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
     if (!t.isVariableDeclaration(declaration)) continue;
@@ -174,11 +204,15 @@ function declaredRoutePaths(source: string, filename: string): string[] {
           t.isIdentifier(property.key, { name: "path" }),
       );
       if (path && t.isObjectProperty(path) && t.isStringLiteral(path.value)) {
-        paths.push(path.value.value);
+        routes.push({
+          exportName: variable.id.name,
+          path: path.value.value,
+          compiled: compileRoutePath(path.value.value),
+        });
       }
     }
   }
-  return paths;
+  return routes;
 }
 
 interface DeclaredEndpoint {
@@ -249,7 +283,7 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
       const source = await readFile(file, "utf8");
       return {
         file,
-        paths: declaredRoutePaths(source, file),
+        paths: declaredRoutes(source, file).map((route) => route.path),
         endpoints: declaredEndpoints(source, file),
       };
     }),
@@ -341,7 +375,9 @@ export function sol(options: SolPluginOptions = {}): Plugin {
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
       const files = await discoverRoutes(config.root);
       await validateRouteCollisions(files);
-      return id === resolvedVirtualRoutes ? routeManifest(files) : endpointManifest(files);
+      return id === resolvedVirtualRoutes
+        ? await routeManifest(files, config.root)
+        : endpointManifest(files);
     },
     configureServer(server) {
       const changed = (file: string): void => invalidateManifest(server, file);
@@ -357,6 +393,7 @@ export function sol(options: SolPluginOptions = {}): Plugin {
         }
         return compile(source, id.split("?", 1)[0], {
           target: transformOptions?.ssr ? "server" : "client",
+          routeMode: id.includes("?sol-route-page") ? "page" : "handle",
         });
       },
     },

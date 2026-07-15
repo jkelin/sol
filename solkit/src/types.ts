@@ -16,6 +16,7 @@ export interface RequestHandlerOptions {
 export interface SolkitAdapterContext {
   readonly serverDirectory: string;
   readonly clientDirectory: string;
+  readonly writeFile?: (file: string, source: string | Uint8Array) => void | Promise<void>;
 }
 
 export interface SolkitAdapter {

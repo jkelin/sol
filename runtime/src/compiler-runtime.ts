@@ -41,8 +41,10 @@ export {
 } from "./rendering.ts";
 export {
   isRouteDefinition,
+  lazyRoute,
   resolveRoute,
   route,
+  routeHandle,
   routeHref,
   routeObject,
   routeRead,
@@ -50,6 +52,7 @@ export {
   type RawRouteParams,
   type RouteConfig,
   type RouteDefinition,
+  type LazyRouteDefinition,
   type RouteValues,
 } from "./routes.ts";
 export { transition } from "./transitions.ts";

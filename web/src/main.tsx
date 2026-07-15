@@ -13,8 +13,4 @@ import { docs } from "virtual:sol-docs";
 
 export { App };
 
-export const staticPaths = [
-  "/",
-  "/docs",
-  ...docs.slice(1).map((document) => `/docs/${document.slug}`),
-] as const;
+export const staticPaths = docs.slice(1).map((document) => `/docs/${document.slug}`);

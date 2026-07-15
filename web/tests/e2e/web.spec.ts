@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
+import { readdir, readFile } from "node:fs/promises";
 
 let server: ChildProcess | undefined;
 
@@ -32,7 +33,39 @@ test("serves prerendered HTML for nested routes", async () => {
   const response = await fetch("http://127.0.0.1:4174/docs/routing/");
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("text/html");
-  expect(await response.text()).toContain('data-testid="docs-shell"');
+  const html = await response.text();
+  expect(html).toContain('data-testid="docs-shell"');
+  expect(html).toMatch(/<title(?: [^>]*)?>Routing<\/title>/);
+  expect(html).toContain(
+    '<meta name="description" content="Discover route declarations at compile time and navigate with typed parameters and browser history.">',
+  );
+  expect(html.match(/<title(?:\s|>)/g)).toHaveLength(1);
+  expect(html.match(/<meta name="description"/g)).toHaveLength(1);
+});
+
+test("emits isolated landing and documentation route chunks", async () => {
+  const files = await readdir("dist/assets");
+  const landingFile = files.find((file) => file.startsWith("landing.sol-") && file.endsWith(".js"));
+  const docsFile = files.find((file) => file.startsWith("docs.sol-") && file.endsWith(".js"));
+  expect(landingFile).toBeTruthy();
+  expect(docsFile).toBeTruthy();
+  const landing = await readFile(`dist/assets/${landingFile}`, "utf8");
+  const docs = await readFile(`dist/assets/${docsFile}`, "utf8");
+  expect(landing).toContain('data-testid="counter-example"');
+  expect(landing).not.toContain('data-testid="docs-shell"');
+  expect(docs).toContain('data-testid="docs-shell"');
+  expect(docs).not.toContain('data-testid="counter-example"');
+
+  const rootDocument = await readFile("dist/index.html", "utf8");
+  const docsDocument = await readFile("dist/docs/index.html", "utf8");
+  expect(rootDocument).toMatch(/<title(?: [^>]*)?>Sol — build in sunlight<\/title>/);
+  expect(rootDocument).toContain(
+    '<meta name="description" content="Sol compiles familiar JSX into static templates and precise DOM operations.">',
+  );
+  expect(rootDocument).toContain(`href="/assets/${landingFile}"`);
+  expect(rootDocument).not.toContain(`href="/assets/${docsFile}"`);
+  expect(docsDocument).toContain(`href="/assets/${docsFile}"`);
+  expect(docsDocument).not.toContain(`href="/assets/${landingFile}"`);
 });
 
 test("runs landing examples and preserves preview state across view modes", async ({ page }) => {
@@ -83,6 +116,12 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await form.getByLabel("Email address").fill("hello@sol.dev");
   await form.getByRole("button", { name: "Validate" }).click();
   await expect(form.getByText("Accepted: hello@sol.dev")).toBeVisible();
+  await Promise.all([
+    page.waitForNavigation(),
+    page.getByRole("link", { name: "Start assembling" }).click(),
+  ]);
+  await waitForHydration(page);
+  await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

@@ -8,7 +8,7 @@ import {
   type ResolvedConfig,
   type ViteDevServer,
 } from "vite";
-import type { RequestHandler, SolkitOptions } from "./types.ts";
+import type { RequestHandler, SolkitAdapter, SolkitOptions } from "./types.ts";
 
 const CLIENT_ENTRY = "virtual:solkit/client";
 const SERVER_ENTRY = "virtual:solkit/server";
@@ -36,6 +36,10 @@ function validateOptions(options: unknown): asserts options is SolkitOptions {
     typeof candidate.adapter.write !== "function"
   ) {
     throw new TypeError("solkit() adapter must provide a name and write() method");
+  }
+  const staticMarker = (candidate.adapter as SolkitAdapter & { static?: unknown }).static;
+  if (staticMarker !== undefined && typeof staticMarker !== "boolean") {
+    throw new TypeError("solkit() adapter static marker must be a boolean");
   }
   const unexpected = Object.keys(options).find(
     (key) => key !== "entry" && key !== "exportName" && key !== "adapter" && key !== "maxBodyBytes",
@@ -132,6 +136,8 @@ function injectDevStyles(template: string, styles: string[]): string {
 export function solkit(options: SolkitOptions): Plugin {
   validateOptions(options);
   const exportName = options.exportName ?? "App";
+  const staticBuild = (options.adapter as SolkitAdapter & { static?: boolean }).static === true;
+  const clientOutDir = staticBuild ? "dist" : "dist/client";
   let config: ResolvedConfig;
   let serverBuild = false;
 
@@ -144,7 +150,7 @@ export function solkit(options: SolkitOptions): Plugin {
         return {
           build: {
             ssr: true,
-            outDir: "dist/server",
+            outDir: staticBuild ? "dist/.solkit/server" : "dist/server",
             emptyOutDir: false,
             rollupOptions: {
               input: SERVER_ENTRY,
@@ -154,9 +160,9 @@ export function solkit(options: SolkitOptions): Plugin {
           ssr: { noExternal: true },
         };
       }
-      return environment.command === "serve"
+      return environment.command === "serve" && !environment.isPreview
         ? { appType: "custom" }
-        : { build: { outDir: "dist/client", emptyOutDir: true } };
+        : { build: { outDir: clientOutDir, emptyOutDir: true } };
     },
     configResolved(resolved) {
       config = resolved;
@@ -171,20 +177,28 @@ export function solkit(options: SolkitOptions): Plugin {
     },
     load(id) {
       if (id === RESOLVED_CLIENT_ENTRY) {
-        return `import { hydrate, routerReady } from "sol";
+        return `import { configureRouterBase, hydrate, routerReady } from "sol";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
 const target = document.querySelector("#app");
 if (!target) throw new Error("The #app hydration target is missing");
 document.querySelectorAll("link[${DEV_STYLE_ATTRIBUTE}]").forEach((link) => link.remove());
+await configureRouterBase(import.meta.env.BASE_URL);
 await routerReady;
 await hydrate(Root, target);
 document.documentElement.dataset.solkitHydrated = "true";`;
       }
       if (id === RESOLVED_SERVER_ENTRY) {
+        const staticPaths = staticBuild
+          ? `import { configureRouteBase } from "sol/compiler-runtime";
+import { staticPaths } from ${JSON.stringify(options.entry)};
+configureRouteBase(${JSON.stringify(config.base)});
+export { staticPaths };`
+          : "";
         return `import { createRequestHandler } from "solkit";
 import endpoints from "virtual:sol/server-endpoints";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
-export const handle = createRequestHandler(Root, endpoints, { maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });`;
+export const handle = createRequestHandler(Root, endpoints, { maxBodyBytes: ${JSON.stringify(options.maxBodyBytes)} });
+${staticPaths}`;
       }
       return null;
     },
@@ -226,7 +240,7 @@ export const handle = createRequestHandler(Root, endpoints, { maxBodyBytes: ${JS
       if (!serverBuild) return;
       await options.adapter.write({
         serverDirectory: resolve(config.root, config.build.outDir),
-        clientDirectory: resolve(config.root, "dist/client"),
+        clientDirectory: resolve(config.root, clientOutDir),
       });
     },
   };

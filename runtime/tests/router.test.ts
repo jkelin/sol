@@ -148,7 +148,7 @@ const routes = [
 
 await mock.module("virtual:sol/routes", () => ({ default: routes }));
 const devtools = installDevtools()!;
-const { Route, router } = await import("../src/router.ts");
+const { configureRouterBase, Route, router } = await import("../src/router.ts");
 
 afterAll(() => window.close());
 
@@ -252,4 +252,42 @@ test("validates navigation options", () => {
   expect(() => router.navigate("/", { [Symbol("extra")]: true } as never)).toThrow(
     "unknown property",
   );
+});
+
+test("matches and navigates beneath a configured deployment base", async () => {
+  await configureRouterBase("/sol/");
+  try {
+    router.navigate("/second?source=base#details");
+    expect(window.location.pathname).toBe("/sol/second");
+    expect(router.pathname).toBe("/second");
+    expect(router.search).toBe("?source=base");
+    expect(router.hash).toBe("#details");
+
+    window.history.pushState(null, "", "/sol/plain");
+    window.dispatchEvent(new window.Event("popstate"));
+    expect(router.pathname).toBe("/plain");
+    expect(router.route?.path).toBe("/plain");
+
+    window.history.pushState(null, "", "/sol/second/");
+    window.dispatchEvent(new window.Event("popstate"));
+    expect(router.pathname).toBe("/second");
+    expect(router.route?.path).toBe("/second");
+  } finally {
+    await configureRouterBase("/");
+    router.navigate("/");
+  }
+});
+
+test("validates deployment bases", () => {
+  for (const base of [
+    "sol/",
+    "//sol/",
+    "/sol",
+    "/sol\\docs/",
+    "/sol//docs/",
+    "/sol/../docs/",
+    "/sol/%2e%2e/docs/",
+  ]) {
+    expect(() => configureRouterBase(base)).toThrow("Route base");
+  }
 });

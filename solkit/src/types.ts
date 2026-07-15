@@ -22,6 +22,8 @@ export interface SolkitAdapter {
   write(context: SolkitAdapterContext): void | Promise<void>;
 }
 
+export type StaticPaths = readonly string[];
+
 export interface SolkitOptions {
   readonly entry: string;
   readonly exportName?: string;

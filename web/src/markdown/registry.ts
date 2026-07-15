@@ -56,10 +56,11 @@ export async function registrySource(root: string): Promise<string> {
       `{props.slug === ${JSON.stringify(document.metadata.slug)} && <Doc${index} />}`,
   );
   return `import { $component } from "sol";
+import { siteHref } from "/src/urls.ts";
 ${imports.join("\n")}
 export const docs = ${JSON.stringify(ordered.map((document) => document.metadata))} as const;
 export const DocsContent = $component<{ readonly slug: string }>(function DocsContent(props) {
   const found = docs.some(document => document.slug === props.slug);
-  return <>{!found && <section class="border-[3px] border-ink bg-solar p-8 shadow-block"><p class="font-mono text-xs font-bold uppercase">Uncatalogued block</p><h1 class="mt-3 font-display text-4xl uppercase">This documentation page does not exist.</h1><a class="mt-6 inline-flex border-[3px] border-ink bg-cobalt px-4 py-3 font-mono text-xs font-bold uppercase text-white shadow-block-sm" href="/docs">Return to getting started</a></section>}${cases.join("")}</>;
+  return <>{!found && <section class="border-[3px] border-ink bg-solar p-8 shadow-block"><p class="font-mono text-xs font-bold uppercase">Uncatalogued block</p><h1 class="mt-3 font-display text-4xl uppercase">This documentation page does not exist.</h1><a class="mt-6 inline-flex border-[3px] border-ink bg-cobalt px-4 py-3 font-mono text-xs font-bold uppercase text-white shadow-block-sm" href={siteHref("/docs")}>Return to getting started</a></section>}${cases.join("")}</>;
 });`;
 }

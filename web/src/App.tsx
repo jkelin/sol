@@ -1,4 +1,5 @@
 import { $component, Route } from "sol";
+import { siteHref } from "./urls.ts";
 
 const RoutePending = $component(function RoutePending() {
   return (
@@ -26,7 +27,7 @@ export const App = $component(function App() {
           class="sunblock-container flex items-center justify-between gap-4 py-3"
           aria-label="Primary navigation"
         >
-          <a href="/" class="group flex items-center gap-3" aria-label="Sol home">
+          <a href={siteHref("/")} class="group flex items-center gap-3" aria-label="Sol home">
             <span
               class="grid size-10 place-items-center rounded-full border-[3px] border-ink bg-solar transition-transform group-hover:rotate-12"
               aria-hidden="true"
@@ -48,15 +49,21 @@ export const App = $component(function App() {
             {menuOpen ? "Close ×" : "Menu +"}
           </button>
           <div class="hidden items-center gap-6 font-mono text-xs font-bold uppercase md:flex">
-            <a class="border-b-2 border-transparent py-2 hover:border-ink" href="/#mechanism">
+            <a
+              class="border-b-2 border-transparent py-2 hover:border-ink"
+              href={siteHref("/#mechanism")}
+            >
               How it works
             </a>
-            <a class="border-b-2 border-transparent py-2 hover:border-ink" href="/#examples">
+            <a
+              class="border-b-2 border-transparent py-2 hover:border-ink"
+              href={siteHref("/#examples")}
+            >
               Examples
             </a>
             <a
               class="border-[3px] border-ink bg-cobalt px-4 py-2.5 text-white shadow-block-sm transition hover:-translate-y-0.5 hover:shadow-block"
-              href="/docs"
+              href={siteHref("/docs")}
             >
               Read docs →
             </a>
@@ -70,21 +77,21 @@ export const App = $component(function App() {
           <div class="grid gap-2 font-mono text-sm font-bold uppercase">
             <a
               class="border-2 border-ink bg-cream p-3"
-              href="/#mechanism"
+              href={siteHref("/#mechanism")}
               onClick={() => (menuOpen = false)}
             >
               How it works
             </a>
             <a
               class="border-2 border-ink bg-cream p-3"
-              href="/#examples"
+              href={siteHref("/#examples")}
               onClick={() => (menuOpen = false)}
             >
               Examples
             </a>
             <a
               class="border-2 border-ink bg-cobalt p-3 text-white"
-              href="/docs"
+              href={siteHref("/docs")}
               onClick={() => (menuOpen = false)}
             >
               Read docs →

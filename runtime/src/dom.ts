@@ -22,6 +22,7 @@ import {
 } from "./rendering.ts";
 import { devtoolsComponentPropsUpdated } from "./devtools-hook.ts";
 import { routeHref, type RouteDefinition, type RouteValues } from "./routes.ts";
+import { deployedPath } from "./route-base.ts";
 import { CONTEXT, ROUTE } from "./symbols.ts";
 import {
   isServerElement,
@@ -333,7 +334,7 @@ export function link<Path extends string, Values extends RouteValues>(
   ) {
     throw new TypeError("Link must decorate an anchor element");
   }
-  const href = (): string => {
+  const logicalHref = (): string => {
     const definition = getRoute();
     if (
       !definition ||
@@ -344,6 +345,7 @@ export function link<Path extends string, Values extends RouteValues>(
     }
     return routeHref(definition, getDestination());
   };
+  const href = (): string => deployedPath(logicalHref());
   if (isServerElement(element)) {
     setServerAttribute(element, "href", href());
     return;
@@ -379,7 +381,7 @@ export function link<Path extends string, Values extends RouteValues>(
         const replace = getReplace();
         if (typeof replace !== "boolean") throw new TypeError("Link replace must be a boolean");
         domEvent.preventDefault();
-        routeRuntime.navigate(href(), { replace });
+        routeRuntime.navigate(logicalHref(), { replace });
       };
       element.addEventListener("click", listener);
       return () => element.removeEventListener("click", listener);

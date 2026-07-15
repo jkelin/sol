@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "solkit build",
-    "start": "bun dist/server/index.mjs",
+    "start": "vite preview --outDir dist",
     "test": "bun test tests/markdown.test.ts tests/ui.test.ts",
     "test:e2e": "bun run build && playwright test",
     "typecheck": "tsc --noEmit -p tsconfig.json"

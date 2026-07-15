@@ -8,5 +8,12 @@ import "@fontsource/familjen-grotesk/600.css";
 import "@fontsource/familjen-grotesk/700.css";
 import { App } from "./App.tsx";
 import "./styles.css";
+import { docs } from "virtual:sol-docs";
 
 export { App };
+
+export const staticPaths = [
+  "/",
+  "/docs",
+  ...docs.slice(1).map((document) => `/docs/${document.slug}`),
+] as const;

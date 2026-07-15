@@ -8,8 +8,8 @@ async function waitForHydration(page: import("@playwright/test").Page): Promise<
 }
 
 test.beforeAll(async () => {
-  server = spawn("bun", ["dist/server/index.mjs"], {
-    env: { ...process.env, HOST: "127.0.0.1", PORT: "4174" },
+  server = spawn("bun", ["run", "start", "--", "--host", "127.0.0.1", "--port", "4174"], {
+    env: process.env,
     stdio: "inherit",
   });
   await expect
@@ -28,11 +28,11 @@ test.afterAll(async () => {
   if (server.exitCode === null) await new Promise<void>((resolve) => server?.once("exit", resolve));
 });
 
-test("dispatches the production HTTP route", async () => {
-  const response = await fetch("http://127.0.0.1:4174/api/health");
+test("serves prerendered HTML for nested routes", async () => {
+  const response = await fetch("http://127.0.0.1:4174/docs/routing/");
   expect(response.status).toBe(200);
-  expect(response.headers.get("content-type")).toContain("application/json");
-  expect(await response.json()).toEqual({ ok: true, framework: "sol" });
+  expect(response.headers.get("content-type")).toContain("text/html");
+  expect(await response.text()).toContain('data-testid="docs-shell"');
 });
 
 test("runs landing examples and preserves preview state across view modes", async ({ page }) => {
@@ -63,9 +63,6 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await expect(counter.getByRole("button", { name: "Add one" })).toBeHidden();
   await counter.getByRole("button", { name: "both", exact: true }).click();
   await expect(counter.locator("output")).toHaveText("1");
-  await counter.getByRole("button", { name: "Call named RPC" }).click();
-  await expect(counter.getByText("Validated on the Sol server.", { exact: true })).toBeVisible();
-
   const list = page.getByTestId("list-example");
   const template = list.getByRole("button", { name: /Static template/ });
   await expect(template).toContainText("Ready");
@@ -90,7 +87,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1632, height: 1000 });
-  await page.goto("/docs");
+  await page.goto("/docs/");
   await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible();
   const sidebar = page.getByRole("complementary", {
@@ -104,16 +101,16 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   );
 
   const documentationPages = [
-    { href: "/docs", title: "Getting Started" },
-    { href: "/docs/mental-model", title: "Mental Model and Compilation" },
-    { href: "/docs/components-and-jsx", title: "Components and JSX" },
-    { href: "/docs/reactivity", title: "Reactivity" },
-    { href: "/docs/forms-and-validation", title: "Forms and Validation" },
-    { href: "/docs/routing", title: "Routing" },
-    { href: "/docs/queries-and-mutations", title: "Queries and Mutations" },
-    { href: "/docs/async-and-context", title: "Async Rendering and Context" },
-    { href: "/docs/transitions", title: "Transitions" },
-    { href: "/docs/api-reference", title: "API Reference" },
+    { href: "/docs/", title: "Getting Started" },
+    { href: "/docs/mental-model/", title: "Mental Model and Compilation" },
+    { href: "/docs/components-and-jsx/", title: "Components and JSX" },
+    { href: "/docs/reactivity/", title: "Reactivity" },
+    { href: "/docs/forms-and-validation/", title: "Forms and Validation" },
+    { href: "/docs/routing/", title: "Routing" },
+    { href: "/docs/queries-and-mutations/", title: "Queries and Mutations" },
+    { href: "/docs/async-and-context/", title: "Async Rendering and Context" },
+    { href: "/docs/transitions/", title: "Transitions" },
+    { href: "/docs/api-reference/", title: "API Reference" },
   ] as const;
   const visitDocumentationPage = async (index: number): Promise<void> => {
     const document = documentationPages[index];
@@ -128,7 +125,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   };
   await visitDocumentationPage(0);
 
-  await page.goto("/docs/components-and-jsx");
+  await page.goto("/docs/components-and-jsx/");
   await waitForHydration(page);
   const portalExample = page.locator('[data-live-example="PortalDemo"]');
   const localToggle = portalExample.getByRole("button", { name: "Toggle local portal" });
@@ -154,7 +151,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
     .getByRole("link", { name: /Reactivity/ })
     .first()
     .click();
-  await expect(page).toHaveURL(/\/docs\/reactivity$/);
+  await expect(page).toHaveURL(/\/docs\/reactivity\/$/);
   await expect(page.getByRole("heading", { name: "Reactivity" })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: /Reactivity/ })).toHaveAttribute(
     "aria-current",
@@ -189,7 +186,10 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   await example.getByRole("button", { name: "Copy code" }).click();
   await expect(example.getByRole("status")).toHaveText("Code copied to clipboard");
 
-  await page.goto("/docs/not-a-real-page");
+  await page.evaluate(() => {
+    window.history.pushState(null, "", "/docs/not-a-real-page/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
   await expect(
     page.getByRole("heading", { name: "This documentation page does not exist." }),
   ).toBeVisible();
@@ -252,7 +252,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
   expect(wideHeroLayout).toEqual({ headlineClearsWritableBlock: true, cardsContained: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/docs");
+  await page.goto("/docs/");
   await waitForHydration(page);
   const browse = page.getByRole("button", { name: "Browse pages" });
   await browse.click();
@@ -269,7 +269,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
     .getByRole("link", { name: /Forms and Validation/ })
     .last()
     .click();
-  await expect(page).toHaveURL(/\/docs\/forms-and-validation$/);
+  await expect(page).toHaveURL(/\/docs\/forms-and-validation\/$/);
   await expect
     .poll(() =>
       page.evaluate(() => document.body.scrollWidth <= document.documentElement.clientWidth),

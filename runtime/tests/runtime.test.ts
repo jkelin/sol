@@ -18,6 +18,7 @@ import {
   blockLifecycle,
   child,
   component,
+  configureRouteBase,
   configureRouteRuntime,
   instantiate,
   list,
@@ -1160,6 +1161,42 @@ describe("compiled DOM runtime", () => {
 
     expect(navigations).toEqual(["/blog/hello%20world"]);
     for (const cleanup of cleanups.toReversed()) cleanup();
+  });
+
+  test("prefixes Link hrefs with the configured route base", () => {
+    const Empty = component(() => block(document.createDocumentFragment()));
+    const docs = route({ path: "/docs" }, Empty, {
+      pattern: "^/docs$",
+      parameterNames: [],
+      pathnameParameterNames: [],
+      queryParameters: [],
+      specificity: [1],
+    });
+    const anchor = document.createElement("a");
+    const navigations: string[] = [];
+    configureRouteRuntime({
+      getParams: () => ({}),
+      getPathname: () => "/",
+      isActive: () => false,
+      navigate: (path) => navigations.push(path),
+    });
+    configureRouteBase("/sol/");
+    try {
+      const cleanups: Array<() => void> = [];
+      link(
+        anchor,
+        () => docs,
+        () => ({}),
+        () => false,
+        cleanups,
+      );
+      expect(anchor.getAttribute("href")).toBe("/sol/docs");
+      anchor.click();
+      expect(navigations).toEqual(["/docs"]);
+      for (const cleanup of cleanups.toReversed()) cleanup();
+    } finally {
+      configureRouteBase("/");
+    }
   });
 
   test("updates normalized DOM classes reactively", () => {

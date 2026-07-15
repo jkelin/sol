@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bunAdapter } from "../src/adapters/bun.ts";
 import { nodeAdapter } from "../src/adapters/node.ts";
+import { staticAdapter } from "../src/adapters/static.ts";
 
 const directories: string[] = [];
 const processes: Bun.Subprocess[] = [];
@@ -14,6 +15,15 @@ async function waitForResponse(url: string, attempts = 40): Promise<Response> {
   if (attempts <= 1) throw new Error(`Server did not respond at ${url}`);
   await Bun.sleep(25);
   return waitForResponse(url, attempts - 1);
+}
+
+async function rejection(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+    return undefined;
+  } catch (error) {
+    return error;
+  }
 }
 
 afterEach(async () => {
@@ -144,3 +154,80 @@ for (const [name, adapter, command] of [
     expect(output).toContain(`Solkit listening on http://127.0.0.1:${port}`);
   });
 }
+
+test("static adapter renders root and nested HTML beside client assets", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "solkit-static-"));
+  directories.push(directory);
+  const serverDirectory = join(directory, "server");
+  const clientDirectory = join(directory, "client");
+  await mkdir(serverDirectory, { recursive: true });
+  await mkdir(join(clientDirectory, "assets"), { recursive: true });
+  await writeFile(
+    join(clientDirectory, "index.html"),
+    '<!doctype html><html><head><!--solkit-head--><script src="/assets/app.js"></script></head><body><div id="app"><!--solkit-body--></div></body></html>',
+  );
+  await writeFile(join(clientDirectory, "assets", "app.js"), "export const built = true;");
+  await writeFile(
+    join(serverDirectory, "app.mjs"),
+    `export const staticPaths = ["/", "/docs/guide"];
+let rendering = false;
+export async function handle(request, context) {
+  if (rendering) throw new Error("Static renders must be isolated");
+  rendering = true;
+  await new Promise((resolve) => setTimeout(resolve, 1));
+  const path = new URL(request.url).pathname;
+  const response = new Response(
+    context.template.replace("<!--solkit-head-->", "<title>" + path + "</title>").replace("<!--solkit-body-->", "<main>" + path + "</main>"),
+    { headers: { "content-type": "text/html; charset=utf-8" } },
+  );
+  rendering = false;
+  return response;
+}`,
+  );
+
+  await staticAdapter().write({ serverDirectory, clientDirectory });
+
+  expect(await readFile(join(clientDirectory, "index.html"), "utf8")).toContain("<main>/</main>");
+  expect(await readFile(join(clientDirectory, "docs", "guide", "index.html"), "utf8")).toContain(
+    "<title>/docs/guide</title>",
+  );
+  expect(await readFile(join(clientDirectory, "assets", "app.js"), "utf8")).toContain(
+    "built = true",
+  );
+  expect(await Bun.file(join(serverDirectory, "app.mjs")).exists()).toBe(false);
+});
+
+test("static adapter validates its public inputs and generated paths", async () => {
+  expect(() => Reflect.apply(staticAdapter, undefined, [{}])).toThrow("does not accept options");
+  expect(await rejection(staticAdapter().write(null as never))).toBeInstanceOf(TypeError);
+
+  await Promise.all(
+    (
+      [
+        ["empty", []],
+        ["duplicate", ["/", "/"]],
+        ["query", ["/docs?draft=true"]],
+        ["trailing", ["/docs/"]],
+        ["empty-segment", ["/docs//guide"]],
+        ["encoded-separator", ["/docs%2Fguide"]],
+        ["dot", ["/docs/../admin"]],
+      ] as const
+    ).map(async ([name, paths]) => {
+      const directory = await mkdtemp(join(tmpdir(), `solkit-static-${name}-`));
+      directories.push(directory);
+      const serverDirectory = join(directory, "server");
+      const clientDirectory = join(directory, "client");
+      await mkdir(serverDirectory, { recursive: true });
+      await mkdir(clientDirectory, { recursive: true });
+      await writeFile(join(clientDirectory, "index.html"), "<!--solkit-head--><!--solkit-body-->");
+      await writeFile(
+        join(serverDirectory, "app.mjs"),
+        `export const staticPaths = ${JSON.stringify(paths)};
+export async function handle() { return new Response("ok", { headers: { "content-type": "text/html" } }); }`,
+      );
+      expect(
+        await rejection(staticAdapter().write({ serverDirectory, clientDirectory })),
+      ).toBeInstanceOf(Error);
+    }),
+  );
+});

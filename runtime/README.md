@@ -44,13 +44,16 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, safe parsed-value validation, URL generation, and route handles.
+- `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
+  application paths.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned document-head mounting and reactive raw text.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
 - `router.ts` connects compiled route definitions to browser history, request URLs, SSR route rendering,
-  initial asynchronous route readiness, and hydration of the active route.
+  initial asynchronous route readiness, deployment-base translation, trailing-slash directory URL
+  normalization, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.
@@ -114,6 +117,9 @@ boundary timers, marking those descendants uncaptured without rendering hidden f
 `routerReady` resolves after the browser's initial asynchronous route schema settles. Solkit awaits
 it automatically; custom hydration entries should await it before `hydrate()` when asynchronous
 route schemas can affect shell, Head, or route output.
+Solkit also calls `configureRouterBase(import.meta.env.BASE_URL)` before hydration. Custom Vite
+entries deployed below `/` can do the same; router state remains expressed in logical application
+paths while browser history retains the configured base.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or

@@ -83,4 +83,5 @@ export type {
   SolkitAdapterContext,
   SolkitOptions,
   SolkitRoot,
+  StaticPaths,
 } from "./types.ts";

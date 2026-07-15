@@ -1,6 +1,7 @@
 import { $component, $route } from "sol";
 import { DocsContent, docs } from "virtual:sol-docs";
 import { Badge, buttonClass } from "./components/ui/index.ts";
+import { siteHref } from "./urls.ts";
 
 const DocsPage = $component(function DocsPage() {
   let sidebarOpen = false;
@@ -79,7 +80,9 @@ const DocsPage = $component(function DocsPage() {
             {docs.map((document) => (
               <a
                 key={document.slug}
-                href={document.slug === docs[0]!.slug ? "/docs" : `/docs/${document.slug}`}
+                href={siteHref(
+                  document.slug === docs[0]!.slug ? "/docs" : `/docs/${document.slug}`,
+                )}
                 classNames={[
                   "group border-2 border-ink p-3 transition",
                   {
@@ -126,7 +129,9 @@ const DocsPage = $component(function DocsPage() {
               {previous ? (
                 <a
                   class="border-[3px] border-ink bg-paper p-5 shadow-block-sm transition hover:-translate-y-1"
-                  href={previous.slug === docs[0]!.slug ? "/docs" : `/docs/${previous.slug}`}
+                  href={siteHref(
+                    previous.slug === docs[0]!.slug ? "/docs" : `/docs/${previous.slug}`,
+                  )}
                 >
                   <span class="font-mono text-[0.625rem] font-bold uppercase text-cobalt">
                     ← Previous block
@@ -141,7 +146,7 @@ const DocsPage = $component(function DocsPage() {
               {next ? (
                 <a
                   class="border-[3px] border-ink bg-solar p-5 text-right shadow-block-sm transition hover:-translate-y-1"
-                  href={`/docs/${next.slug}`}
+                  href={siteHref(`/docs/${next.slug}`)}
                 >
                   <span class="font-mono text-[0.625rem] font-bold uppercase text-cobalt">
                     Next block →
@@ -189,7 +194,9 @@ const DocsPage = $component(function DocsPage() {
             {docs.map((document) => (
               <a
                 key={document.slug}
-                href={document.slug === docs[0]!.slug ? "/docs" : `/docs/${document.slug}`}
+                href={siteHref(
+                  document.slug === docs[0]!.slug ? "/docs" : `/docs/${document.slug}`,
+                )}
                 classNames={[
                   "border-2 border-ink p-3",
                   {

@@ -28,6 +28,7 @@ import {
   type RouteValues,
 } from "./routes.ts";
 import { isServerRegion } from "./server-rendering.ts";
+import { configureRouteBase, deployedPath, logicalPathname } from "./route-base.ts";
 
 export interface Router {
   readonly pathname: string;
@@ -65,8 +66,11 @@ interface PreparedRoute {
 function readLocation(frame?: RenderFrame): RouterState {
   const location = frame?.url ?? (typeof window === "undefined" ? null : window.location);
   const search = location?.search ?? "";
+  const pathname = location?.pathname ?? "/";
+  const logicalPath = frame ? pathname : (logicalPathname(pathname) ?? pathname);
   return {
-    pathname: location?.pathname ?? "/",
+    pathname:
+      logicalPath.length > 1 && logicalPath.endsWith("/") ? logicalPath.slice(0, -1) : logicalPath,
     search,
     hash: location?.hash ?? "",
     searchParams: new URLSearchParams(search),
@@ -269,6 +273,12 @@ function synchronizeLocation(): void | Promise<void> {
 /** Resolves once the browser's initial route parameters are ready for hydration. */
 export const routerReady: Promise<void> = Promise.resolve(synchronizeLocation());
 
+/** Configures the root-relative path where browser routes are deployed. */
+export function configureRouterBase(base: unknown): void | Promise<void> {
+  configureRouteBase(base);
+  return synchronizeLocation();
+}
+
 function navigate(path: string, options: NavigateOptions = {}): void {
   if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) {
     throw new TypeError("router.navigate() expects a same-origin root-relative path");
@@ -297,7 +307,7 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   window.history[method](
     null,
     "",
-    `${destination.pathname}${destination.search}${destination.hash}`,
+    `${deployedPath(destination.pathname)}${destination.search}${destination.hash}`,
   );
   void synchronizeLocation();
 }
@@ -381,8 +391,10 @@ function listenForNavigation(): () => void {
     if (target && target.toLowerCase() !== "_self") return;
     const destination = new URL(anchor.href, window.location.href);
     if (destination.origin !== window.location.origin) return;
+    const pathname = logicalPathname(destination.pathname);
+    if (!pathname) return;
     event.preventDefault();
-    navigate(`${destination.pathname}${destination.search}${destination.hash}`);
+    navigate(`${pathname}${destination.search}${destination.hash}`);
   };
   window.addEventListener("popstate", handlePopState);
   window.addEventListener("hashchange", handlePopState);

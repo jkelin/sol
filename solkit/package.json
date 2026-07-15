@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./vite": "./src/vite.ts",
     "./adapters/bun": "./src/adapters/bun.ts",
-    "./adapters/node": "./src/adapters/node.ts"
+    "./adapters/node": "./src/adapters/node.ts",
+    "./adapters/static": "./src/adapters/static.ts"
   },
   "scripts": {
     "test": "bun test tests",

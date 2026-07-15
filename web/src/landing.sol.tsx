@@ -1,4 +1,4 @@
-import { $component, $form, $httpRoute, $query, $route, $rpcQuery, type HttpRouteInput } from "sol";
+import { $component, $form, $route } from "sol";
 import * as v from "valibot";
 import { counterLines, formLines, listLines } from "virtual:sol-code-tokens";
 import { counterSource, formSource, listSource } from "./code-samples.ts";
@@ -9,29 +9,12 @@ import {
   ExampleViewToggle,
   type ExampleMode,
 } from "./components/ui/index.ts";
-
-export const websiteMessage = $rpcQuery("website-message", { schema: v.tuple([]) }, async () => ({
-  message: "Validated on the Sol server.",
-}));
-
-export const websiteHealth = $httpRoute(
-  {
-    method: "GET",
-    path: "/api/health",
-    schema: (input: HttpRouteInput) => input,
-  },
-  async () => Response.json({ ok: true, framework: "sol" }),
-);
+import { siteHref } from "./urls.ts";
 
 const CounterExample = $component(function CounterExample() {
   let mode = "both" as ExampleMode;
   let count = 0;
   const doubled = count * 2;
-  const serverMessage = $query({
-    queryKey: ["website", "message"],
-    query: websiteMessage,
-    enabled: false,
-  });
 
   return (
     <article class="border-[3px] border-ink bg-paper shadow-block" data-testid="counter-example">
@@ -62,14 +45,6 @@ const CounterExample = $component(function CounterExample() {
               <Button label="−" variant="outline" disabled={count === 0} onClick={() => count--} />
               <Button label="Add one" variant="solar" onClick={() => count++} />
             </div>
-            <button
-              type="button"
-              class="mt-4 font-mono text-xs font-bold uppercase text-solar underline"
-              onClick={() => void serverMessage.refetch({ suspense: false })}
-            >
-              {serverMessage.isFetching ? "Calling server…" : "Call named RPC"}
-            </button>
-            {serverMessage.data && <p class="mt-2 text-sm">{serverMessage.data.message}</p>}
           </div>
         </div>
       </div>
@@ -249,7 +224,7 @@ const LandingPage = $component(function LandingPage() {
               </p>
               <div class="mt-8 flex flex-wrap gap-4">
                 <a
-                  href="/docs"
+                  href={siteHref("/docs")}
                   class="cut-corner inline-flex border-[3px] border-ink bg-cobalt px-6 py-4 font-mono text-sm font-bold uppercase text-white shadow-block transition hover:-translate-x-1 hover:-translate-y-1"
                 >
                   Start assembling →
@@ -425,7 +400,7 @@ const LandingPage = $component(function LandingPage() {
           </h2>
           <div class="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             <a
-              href="/docs/forms-and-validation"
+              href={siteHref("/docs/forms-and-validation")}
               class="border-[3px] border-ink bg-paper p-5 shadow-block-sm transition hover:-translate-y-1"
             >
               <Badge label="Forms" tone="tomato" />
@@ -433,7 +408,7 @@ const LandingPage = $component(function LandingPage() {
               <p class="mt-3">Valibot, Zod, or any compatible parser can own validation.</p>
             </a>
             <a
-              href="/docs/routing"
+              href={siteHref("/docs/routing")}
               class="border-[3px] border-ink bg-cobalt p-5 text-white shadow-block-sm transition hover:-translate-y-1"
             >
               <Badge label="Routing" tone="solar" />
@@ -441,7 +416,7 @@ const LandingPage = $component(function LandingPage() {
               <p class="mt-3">Compile-time discovery, typed params, browser history.</p>
             </a>
             <a
-              href="/docs/async-and-context"
+              href={siteHref("/docs/async-and-context")}
               class="border-[3px] border-ink bg-mint p-5 shadow-block-sm transition hover:-translate-y-1"
             >
               <Badge label="Async" tone="neutral" />
@@ -449,7 +424,7 @@ const LandingPage = $component(function LandingPage() {
               <p class="mt-3">Suspense, Await, context, and errors compose directly.</p>
             </a>
             <a
-              href="/docs/transitions"
+              href={siteHref("/docs/transitions")}
               class="border-[3px] border-ink bg-tomato p-5 text-white shadow-block-sm transition hover:-translate-y-1"
             >
               <Badge label="Motion" tone="solar" />
@@ -458,7 +433,7 @@ const LandingPage = $component(function LandingPage() {
             </a>
           </div>
           <a
-            href="/docs"
+            href={siteHref("/docs")}
             class="mt-12 inline-flex border-[3px] border-ink bg-ink px-6 py-4 font-mono text-sm font-bold uppercase text-white shadow-[8px_8px_0_#2447D8] transition hover:-translate-y-1"
           >
             Open the field manual →

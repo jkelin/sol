@@ -3,8 +3,8 @@
 `solkit` is the backend runtime and Vite integration for full-stack Sol applications. It renders
 the same compiled root component on the server, injects managed `Head` output into the document,
 and hydrates the server tree in the browser. Development requests run through Vite middleware;
-production builds emit separate client and SSR bundles plus a Bun or Node.js launcher. The same
-request pipeline dispatches compiled RPC and HTTP endpoints before document rendering.
+production builds can emit a Bun or Node.js server, or prerender a multipage static site. The same
+request pipeline dispatches compiled RPC and HTTP endpoints before server-hosted document rendering.
 Named queries and mutations share the JSON `POST /api/rpc/:name` protocol; lower-level HTTP routes
 retain their explicitly declared methods and body modes.
 
@@ -59,6 +59,37 @@ server-rendered document before it is sent. CSS imported by the entry, nested co
 modules is therefore available for first paint. Once Vite has evaluated the client imports, Solkit
 removes those temporary links and Vite owns the styles and their hot updates.
 
+### Static sites
+
+Use `staticAdapter()` and export the canonical application paths to render at build time. Static
+paths are logical root-relative pathnames without queries, hashes, dot segments, backslashes, or a
+trailing slash. Parameterized routes must be expanded by the application because Solkit cannot infer
+their values.
+
+```tsx
+// src/entry.tsx
+export { App } from "./App.tsx";
+export const staticPaths = ["/", "/docs", "/docs/routing"] as const;
+```
+
+```ts
+import { staticAdapter } from "solkit/adapters/static";
+
+solkit({ entry: "/src/entry.tsx", adapter: staticAdapter() });
+```
+
+`solkit build` renders `/` to `dist/index.html` and every other path to its nested
+`index.html`. The directory is a self-contained deployment artifact containing the prerendered
+documents and Vite's CSS, JavaScript, and assets. Its temporary SSR bundle is removed after
+prerendering. Rendering fails rather than overwriting an existing nested `index.html`. Link to
+nested documents with directory URLs such as `/docs/`; the logical `staticPaths` value remains
+`/docs`.
+
+For a project site such as GitHub Pages, set Vite's root-relative `base` (for example `/sol/`).
+Solkit configures browser routing with that base before hydration. Literal application anchors
+should use `import.meta.env.BASE_URL`, while route state, `router.navigate()`, route handles, and
+`staticPaths` continue to use logical paths beginning at `/`.
+
 `nodeAdapter()` from `solkit/adapters/node` emits the equivalent Node.js HTTP launcher. Both
 adapters serve built static files from `dist/client`, dispatch `.sol` RPC and HTTP endpoints, and
 send HTML-accepting GET or HEAD requests through the SSR renderer. Extensionless routes with an
@@ -108,6 +139,8 @@ const response = await handle(request, { template });
   adapter output paths, and writes launchers.
 - `adapters/bun.ts` emits the Bun static-file and Fetch-handler host.
 - `adapters/node.ts` emits the Node.js HTTP/static-file host and bridges Web responses.
+- `adapters/static.ts` validates an entry's static paths and writes prerendered documents beside the
+  built client assets.
 - `adapters/bun-launcher.mjs` is the formatted launcher source loaded as text by the Bun adapter.
 - `adapters/node-launcher.mjs` is the formatted launcher source loaded as text by the Node adapter.
 

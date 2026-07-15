@@ -10,5 +10,8 @@ test("validates Vite integration options", () => {
   expect(() => solkit({ entry: "/src/app.tsx", adapter: bunAdapter(), maxBodyBytes: 1.5 })).toThrow(
     "maxBodyBytes",
   );
+  expect(() =>
+    solkit({ entry: "/src/app.tsx", adapter: { name: "bad", static: "yes", write() {} } as never }),
+  ).toThrow("static marker");
   expect(solkit({ entry: "/src/app.tsx", adapter: bunAdapter() }).name).toBe("solkit");
 });

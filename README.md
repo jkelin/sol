@@ -281,10 +281,11 @@ metadata; router diagnostics include every compiled route definition. Use
 `subscribe(listener)` for integrations. These interfaces validate their inputs and are intended
 only for trusted development environments.
 
-For full-document SSR, add the `solkit` Vite plugin after the compiler, export the application root
-from an entry module, and select `bunAdapter()` or `nodeAdapter()`. Development HTML requests render
-through Vite middleware with imported stylesheets available for the initial render; `solkit build`
-creates client and server bundles plus the selected launcher.
+For full-document rendering, add the `solkit` Vite plugin after the compiler and export the
+application root from an entry module. Select `bunAdapter()` or `nodeAdapter()` for request-time SSR,
+or `staticAdapter()` plus an exported `staticPaths` array for multipage static HTML. Development HTML
+requests render through Vite middleware with imported stylesheets available for the initial render;
+`solkit build` creates the selected deployment output.
 The generated launcher prints its bound HTTP address once it starts listening.
 See `solkit/README.md` for the document outlets and complete configuration.
 
@@ -514,4 +515,4 @@ bun run test:e2e
 
 `bun run verify` fixes formatting and lint issues before running the test suite. `bun run verify:ci` checks formatting and lint without modifying files, then runs the same tests.
 
-GitHub Actions runs `bun run verify:ci` and `bun run test:e2e` in separate `Verify` and `End-to-end tests` jobs for every push and pull request. The E2E job installs Chromium before running the browser suites for the example application and website. Successful pushes to `master` also build `web/` and deploy it to GitHub Pages.
+GitHub Actions runs `bun run verify:ci` and `bun run test:e2e` in separate `Verify` and `End-to-end tests` jobs for every push and pull request. The E2E job installs Chromium before running the browser suites for the example application and website. Successful pushes to `master` prerender every website route beneath the `/sol/` Vite base and deploy `web/dist` to GitHub Pages.

@@ -2288,7 +2288,7 @@ test("replays eagerly initialized promises and Promise.all helper sites", async 
   const eagerModule = await loadCompiled(`
     export const App = $component(async function App() {
       const request = globalThis.integrationLoad("eager");
-      const value = await request;
+      const value = await (request satisfies Promise<string>);
       return <p id="eager-result">{String(value)}</p>;
     });
   `);

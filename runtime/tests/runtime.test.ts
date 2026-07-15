@@ -810,6 +810,74 @@ describe("reactivity", () => {
     delete state.value.answer;
 
     expect(observations).toEqual([false, true, false]);
+
+    const undefinedState = $signal<Record<string, undefined>>({});
+    const presence: boolean[] = [];
+    const keys: string[] = [];
+    runtimeEffect(() => presence.push("answer" in undefinedState.value));
+    runtimeEffect(() => keys.push(Object.keys(undefinedState.value).join(",")));
+    undefinedState.value.answer = undefined;
+    expect(presence).toEqual([false, true]);
+    expect(keys).toEqual(["", "answer"]);
+
+    const array = $signal<Array<undefined>>([]);
+    const lengths: number[] = [];
+    runtimeEffect(() => lengths.push(array.value.length));
+    array.value[0] = undefined;
+    expect(lengths).toEqual([0, 1]);
+  });
+
+  test("tracks property definitions", () => {
+    const state = $signal<{ value: number; added?: number }>({ value: 1 });
+    const values: number[] = [];
+    const keys: string[] = [];
+    runtimeEffect(() => values.push(state.value.value));
+    runtimeEffect(() => keys.push(Object.keys(state.value).join(",")));
+
+    Object.defineProperty(state.value, "value", {
+      value: 2,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    Reflect.defineProperty(state.value, "added", {
+      value: 3,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+
+    expect(values).toEqual([1, 2]);
+    expect(keys).toEqual(["value", "value,added"]);
+
+    const array = $signal<number[]>([]);
+    const lengths: number[] = [];
+    runtimeEffect(() => lengths.push(array.value.length));
+    Object.defineProperty(array.value, "0", {
+      value: 1,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    expect(lengths).toEqual([0, 1]);
+
+    const accessorTarget = { changed: 0 } as { changed: number; update?: number };
+    Object.defineProperty(accessorTarget, "update", {
+      configurable: true,
+      set(value: number) {
+        Object.defineProperty(this, "changed", {
+          value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      },
+    });
+    const accessorState = $signal(accessorTarget);
+    const changes: number[] = [];
+    runtimeEffect(() => changes.push(accessorState.value.changed));
+    accessorState.value.update = 2;
+    expect(changes).toEqual([0, 2]);
   });
 
   test("flushes combined property, iteration, and length dependencies once", () => {

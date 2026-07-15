@@ -598,14 +598,7 @@ function instrumentAwaitExpressions(
   traverse(file, {
     AwaitExpression(path: NodePath<t.AwaitExpression>) {
       if (path.getFunctionParent()?.node !== declaration) return;
-      let argument = path.node.argument;
-      while (
-        t.isTSAsExpression(argument) ||
-        t.isTSTypeAssertion(argument) ||
-        t.isTSNonNullExpression(argument)
-      ) {
-        argument = argument.expression;
-      }
+      const argument = unwrapTransparentExpression(path.node.argument);
       if (!t.isIdentifier(argument)) return;
       const binding = path.scope.getBinding(argument.name);
       if (!binding?.constant || !binding.path.isVariableDeclarator()) return;
@@ -647,27 +640,13 @@ function instrumentAwaitExpressions(
   };
 
   const directlyAwaitedHelper = (argument: t.Expression): LocalFunction | undefined => {
-    let expression = argument;
-    while (
-      t.isTSAsExpression(expression) ||
-      t.isTSTypeAssertion(expression) ||
-      t.isTSNonNullExpression(expression)
-    ) {
-      expression = expression.expression;
-    }
+    const expression = unwrapTransparentExpression(argument);
     if (!t.isCallExpression(expression) || !t.isIdentifier(expression.callee)) return undefined;
     return callTargets.get(expression);
   };
 
   const capturedHelperAggregate = (argument: t.Expression): boolean => {
-    let expression = argument;
-    while (
-      t.isTSAsExpression(expression) ||
-      t.isTSTypeAssertion(expression) ||
-      t.isTSNonNullExpression(expression)
-    ) {
-      expression = expression.expression;
-    }
+    const expression = unwrapTransparentExpression(argument);
     if (
       !t.isCallExpression(expression) ||
       !t.isMemberExpression(expression.callee) ||

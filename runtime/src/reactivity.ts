@@ -283,10 +283,53 @@ function unwrap<T>(value: T): T {
   return (proxyTargets.get(value) ?? value) as T;
 }
 
+function descriptorsEqual(
+  left: PropertyDescriptor | undefined,
+  right: PropertyDescriptor | undefined,
+): boolean {
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    "value" in left === "value" in right &&
+    Object.is(left.value, right.value) &&
+    left.get === right.get &&
+    left.set === right.set &&
+    left.writable === right.writable &&
+    left.enumerable === right.enumerable &&
+    left.configurable === right.configurable
+  );
+}
+
 export function reactive<T extends object>(target: T): T {
   if (proxyTargets.has(target)) return target;
   const cached = proxyCache.get(target);
   if (cached) return cached as T;
+
+  const setOperations: Array<{ key: PropertyKey; handled: boolean }> = [];
+  const invalidate = (
+    key: PropertyKey,
+    wasPresent: boolean,
+    oldLength: number,
+    iterationChanged: boolean,
+  ): void => {
+    if (Array.isArray(target) && key === "length") {
+      const removed = dependencies.get(target)
+        ? [...dependencies.get(target)!.keys()].filter(
+            (dependency) =>
+              dependency === ITERATE ||
+              (typeof dependency === "string" &&
+                /^(0|[1-9]\d*)$/.test(dependency) &&
+                Number(dependency) >= target.length),
+          )
+        : [];
+      triggerMany(target, ["length", ...removed]);
+      return;
+    }
+    const affected: PropertyKey[] = [key];
+    if (!wasPresent || iterationChanged) affected.push(ITERATE);
+    if (Array.isArray(target) && target.length !== oldLength) affected.push("length");
+    triggerMany(target, affected);
+  };
 
   const proxy = new Proxy(target, {
     get(object, key, receiver) {
@@ -310,29 +353,37 @@ export function reactive<T extends object>(target: T): T {
       const oldValue = unwrap(Reflect.get(object, key, receiver) as unknown);
       const nextValue = unwrap(value);
       const oldLength = Array.isArray(object) ? object.length : 0;
-      const changed = Reflect.set(object, key, nextValue, receiver);
-      if (changed && !Object.is(oldValue, nextValue)) {
-        if (Array.isArray(object) && key === "length" && typeof nextValue === "number") {
-          const removed = dependencies.get(object)
-            ? [...dependencies.get(object)!.keys()].filter(
-                (dependency) =>
-                  dependency === ITERATE ||
-                  (typeof dependency === "string" &&
-                    /^(0|[1-9]\d*)$/.test(dependency) &&
-                    Number(dependency) >= nextValue),
-              )
-            : [];
-          triggerMany(object, ["length", ...removed]);
-        } else {
-          const affected: PropertyKey[] = [key];
-          if (!wasPresent) affected.push(ITERATE);
-          if (Array.isArray(object) && key !== "length" && object.length !== oldLength) {
-            affected.push("length");
-          }
-          triggerMany(object, affected);
-        }
+      const operation = { key, handled: false };
+      setOperations.push(operation);
+      let changed: boolean;
+      try {
+        changed = Reflect.set(object, key, nextValue, receiver);
+      } finally {
+        setOperations.pop();
+      }
+      if (changed && !operation.handled && (!wasPresent || !Object.is(oldValue, nextValue))) {
+        invalidate(key, wasPresent, oldLength, !wasPresent);
       }
       return changed;
+    },
+    defineProperty(object, key, descriptor) {
+      const previous = Object.getOwnPropertyDescriptor(object, key);
+      const oldLength = Array.isArray(object) ? object.length : 0;
+      const defined = Reflect.defineProperty(object, key, descriptor);
+      if (defined) {
+        const current = Object.getOwnPropertyDescriptor(object, key);
+        if (!descriptorsEqual(previous, current)) {
+          const operation = setOperations.at(-1);
+          if (operation?.key === key) operation.handled = true;
+          invalidate(
+            key,
+            previous !== undefined,
+            oldLength,
+            previous?.enumerable !== current?.enumerable,
+          );
+        }
+      }
+      return defined;
     },
     deleteProperty(object, key) {
       const wasPresent = Object.prototype.hasOwnProperty.call(object, key);

@@ -662,7 +662,20 @@ export function compileIntrinsicElement(
     const name = isClass ? "class" : sourceName === "htmlFor" ? "for" : sourceName;
     const staticValue = staticAttributeValue(compiler, attribute);
     const stringBoolean = name.startsWith("aria-") || name.startsWith("data-");
-    if (typeof staticValue === "boolean" && stringBoolean) {
+    if (name === "value" && (tag === "textarea" || tag === "select")) {
+      const value =
+        staticValue !== undefined
+          ? JSON.stringify(staticValue)
+          : expressionCode(expressionAttribute(compiler, attribute), scope);
+      propertyValueElement = true;
+      deferredOperations.push((element) =>
+        mappedCode(
+          compiler,
+          attribute,
+          `__sol_attribute(__sol_view.elements[${element}], "value", () => (${value}), __sol_cleanups);`,
+        ),
+      );
+    } else if (typeof staticValue === "boolean" && stringBoolean) {
       attributes.push(`${name}="${String(staticValue)}"`);
     } else if (staticValue === true) attributes.push(name);
     else if (typeof staticValue === "string")
@@ -769,7 +782,7 @@ export function compileLinkElement(
     : "false";
   compileIntrinsicElement(compiler, anchor, context, bindings, scope, [
     (element) =>
-      `__sol_link(__sol_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => Boolean(${replace}), __sol_cleanups);`,
+      `__sol_link(__sol_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => (${replace}), __sol_cleanups);`,
   ]);
 }
 

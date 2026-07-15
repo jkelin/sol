@@ -250,6 +250,34 @@ describe("forms", () => {
     expect(form.errors["constructor"]).toEqual(["Constructor issue"]);
   });
 
+  test("clones cyclic and aliased form values without sharing input state", () => {
+    interface CyclicValues {
+      [key: string]: unknown;
+      left: { value: number };
+      right: { value: number };
+      self?: CyclicValues;
+    }
+    const sharedChild = { value: 1 };
+    const defaults: CyclicValues = { left: sharedChild, right: sharedChild };
+    defaults.self = defaults;
+    const form = ownedForm(
+      { schema: (value: CyclicValues) => value, defaultValues: defaults },
+      () => {},
+    );
+    expect(form.values).not.toBe(defaults);
+    expect(form.values.self).toBe(form.values);
+    expect(form.values.left).toBe(form.values.right);
+    expect(form.values.left).not.toBe(sharedChild);
+
+    const resetChild = { value: 2 };
+    const reset: CyclicValues = { left: resetChild, right: resetChild };
+    reset.self = reset;
+    form.reset(reset);
+    expect(form.values.self).toBe(form.values);
+    expect(form.values.left).toBe(form.values.right);
+    expect(form.values.left).not.toBe(resetChild);
+  });
+
   test("submits transformed Valibot output and resets controller-owned values", async () => {
     const schema = v.object({
       title: v.pipe(

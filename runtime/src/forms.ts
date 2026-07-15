@@ -36,15 +36,24 @@ interface ValidationFailure {
   issues: ValidationIssue[];
 }
 
-function cloneFormValue<T>(value: T): T {
-  if (Array.isArray(value)) return value.map(cloneFormValue) as T;
+function cloneFormValue<T>(value: T, clones = new WeakMap<object, unknown>()): T {
   if (!isObject(value)) return value;
-  const prototype = Object.getPrototypeOf(value) as unknown;
-  if (prototype !== Object.prototype && prototype !== null) return value;
-  const clone = Object.create(prototype) as Record<PropertyKey, unknown>;
-  for (const key of Reflect.ownKeys(value)) {
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return value;
+  const existing = clones.get(value);
+  if (existing !== undefined) return existing as T;
+  const clone = (Array.isArray(value) ? [] : Object.create(prototype)) as Record<
+    PropertyKey,
+    unknown
+  >;
+  clones.set(value, clone);
+  const keys = Reflect.ownKeys(value);
+  if (Array.isArray(value)) {
+    keys.sort((left, right) => (left === "length" ? 1 : right === "length" ? -1 : 0));
+  }
+  for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-    if ("value" in descriptor) descriptor.value = cloneFormValue(descriptor.value);
+    if ("value" in descriptor) descriptor.value = cloneFormValue(descriptor.value, clones);
     Object.defineProperty(clone, key, descriptor);
   }
   return clone as T;

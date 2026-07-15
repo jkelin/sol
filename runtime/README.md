@@ -29,9 +29,10 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
   complete reactive-flush failure reporting and primary-failure-preserving teardown.
-- `forms.ts` implements form controllers, descriptor-snapshotted configs, descriptor-safe value and
-  validation-issue reads, reset-boundary validation, validation normalization, disposal-safe
-  submission state, and frame-explicit ownership for async component setup.
+- `forms.ts` implements form controllers, descriptor-snapshotted configs, graph-preserving plain
+  value snapshots, descriptor-safe value and validation-issue reads, reset-boundary validation,
+  validation normalization, disposal-safe submission state, and frame-explicit ownership for async
+  component setup.
 - `queries.ts` implements descriptor-snapshotted cached query and mutation controllers, request
   deduplication, setup-lifetime enforcement, polling, eviction, Suspense participation,
   request-isolated server caches, hydration replay, and compiler-authored diagnostic source
@@ -53,9 +54,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   array entries without scanning unused indexes, rejecting lossy built-in extensions, and
   preserving descriptor guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
-  and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
-  envelopes with canonical array-index validation, snapshotted endpoint configs, validated dispatch
-  options, and development-safe failures.
+  and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, prepared
+  endpoint indexes, JSON response envelopes with canonical array-index validation, snapshotted
+  endpoint configs, validated dispatch options, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
   before asynchronous rendering.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.

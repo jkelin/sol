@@ -272,7 +272,8 @@ describe("compiler", () => {
       export const blog = $route({ path: "/blog/:id", schema }, Blog);
       export const Navigation = $component(function Navigation() {
         const params = { id: "first" };
-        return <RouteLink route={blog} params={params}><a class="entry">Open</a></RouteLink>;
+        const replace: any = "false";
+        return <RouteLink route={blog} params={params} replace={replace}><a class="entry">Open</a></RouteLink>;
       });
     `,
       "blog.sol.tsx",
@@ -280,6 +281,7 @@ describe("compiler", () => {
 
     expect(result.code).toContain('__sol_route({\n  path: "/blog/:id",\n  schema\n}');
     expect(result.code).toContain("__sol_link(__sol_view.elements[0]");
+    expect(result.code).not.toContain("Boolean(replace)");
     expect(result.code).toContain('class="entry"');
     expect(result.code).not.toContain("<RouteLink");
   });

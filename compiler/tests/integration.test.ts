@@ -1980,6 +1980,35 @@ test("hydrates dynamic textarea and select values as DOM properties", async () =
   expect(mismatchedNote.value).toBe("server note");
 });
 
+test("mounts and hydrates static textarea and select values as DOM properties", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      return <main>
+        <select id="static-select" value="second">
+          <option value="first">First</option>
+          <option value="second">Second</option>
+        </select>
+        <textarea id="static-note" value="server note"></textarea>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+  const mounted = document.createElement("div");
+  const disposeMount = mount(App, mounted);
+  expect(mounted.querySelector<HTMLSelectElement>("#static-select")!.value).toBe("second");
+  expect(mounted.querySelector<HTMLTextAreaElement>("#static-note")!.value).toBe("server note");
+  disposeMount();
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expect(target.querySelector<HTMLSelectElement>("#static-select")!.value).toBe("second");
+  expect(target.querySelector<HTMLTextAreaElement>("#static-note")!.value).toBe("server note");
+  const disposeHydration = await hydrate(App, target);
+  expect(target.querySelector<HTMLSelectElement>("#static-select")!.value).toBe("second");
+  expect(target.querySelector<HTMLTextAreaElement>("#static-note")!.value).toBe("server note");
+  disposeHydration();
+});
+
 test("hydration rejects a Link destination mismatch without rewriting href", async () => {
   const module = await loadCompiled(`
     import { Link } from "sol";

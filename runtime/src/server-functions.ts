@@ -629,6 +629,42 @@ function matcherCompare(left: HttpEndpoint, right: HttpEndpoint): number {
   );
 }
 
+interface PreparedEndpoints {
+  readonly endpoints: readonly ServerEndpoint[];
+  readonly http: readonly HttpEndpoint[];
+  readonly rpc: ReadonlyMap<string, readonly RpcEndpoint[]>;
+}
+
+const preparedEndpoints = new WeakMap<readonly ServerEndpoint[], PreparedEndpoints>();
+
+function prepareEndpoints(endpoints: readonly ServerEndpoint[]): PreparedEndpoints {
+  const cached = preparedEndpoints.get(endpoints);
+  if (
+    cached &&
+    cached.endpoints.length === endpoints.length &&
+    cached.endpoints.every((endpoint, index) => endpoint === endpoints[index])
+  ) {
+    return cached;
+  }
+  const rpc = new Map<string, RpcEndpoint[]>();
+  const http: HttpEndpoint[] = [];
+  for (const endpoint of endpoints) {
+    if (endpoint.kind === "http") http.push(endpoint);
+    else {
+      const path = rpc.get(endpoint.path);
+      if (path) path.push(endpoint);
+      else rpc.set(endpoint.path, [endpoint]);
+    }
+  }
+  const prepared = {
+    endpoints: [...endpoints],
+    http: http.toSorted(matcherCompare),
+    rpc,
+  };
+  preparedEndpoints.set(endpoints, prepared);
+  return prepared;
+}
+
 export async function dispatchServerEndpoint(
   endpoints: readonly ServerEndpoint[],
   request: Request,
@@ -638,9 +674,8 @@ export async function dispatchServerEndpoint(
   const url = new URL(request.url);
   const pathname = logicalPathname(url.pathname);
   if (pathname === undefined) return undefined;
-  const rpcPath = endpoints.filter(
-    (endpoint): endpoint is RpcEndpoint => endpoint.kind !== "http" && endpoint.path === pathname,
-  );
+  const prepared = prepareEndpoints(endpoints);
+  const rpcPath = prepared.rpc.get(pathname) ?? [];
   const rpc = rpcPath.find((endpoint) => endpoint.method === request.method);
   if (rpcPath.length === 0 && pathname.startsWith(RPC_PREFIX)) {
     cancelRequestBody(request);
@@ -677,20 +712,18 @@ export async function dispatchServerEndpoint(
       return rpcResponse({ ok: false, error: errorDetail(error, development) }, status);
     }
   }
-  const matchingPath = endpoints
-    .filter((endpoint): endpoint is HttpEndpoint => endpoint.kind === "http")
-    .map((endpoint) => ({ endpoint, match: endpoint.compiled.pattern.exec(pathname) }))
-    .filter((candidate): candidate is { endpoint: HttpEndpoint; match: RegExpExecArray } =>
-      Boolean(candidate.match),
-    )
-    .toSorted((left, right) => matcherCompare(left.endpoint, right.endpoint));
-  const selected = matchingPath.find(({ endpoint }) => endpoint.method === request.method);
+  let selected: { endpoint: HttpEndpoint; match: RegExpExecArray } | undefined;
+  const matchingMethods = new Set<HttpMethod>();
+  for (const endpoint of prepared.http) {
+    const match = endpoint.compiled.pattern.exec(pathname);
+    if (!match) continue;
+    matchingMethods.add(endpoint.method);
+    if (!selected && endpoint.method === request.method) selected = { endpoint, match };
+  }
   if (!selected) {
-    if (matchingPath.length === 0) return undefined;
+    if (matchingMethods.size === 0) return undefined;
     cancelRequestBody(request);
-    const allow = [...new Set(matchingPath.map(({ endpoint }) => endpoint.method))]
-      .toSorted()
-      .join(", ");
+    const allow = [...matchingMethods].toSorted().join(", ");
     return new Response("Method Not Allowed", { status: 405, headers: { allow } });
   }
   try {

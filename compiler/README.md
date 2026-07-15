@@ -21,7 +21,8 @@ the schema and route-owned stylesheet imports; bundlers can consequently remove 
 schema, and page-only dependency graphs. The Vite adapter resolves extensionless and aliased module
 specifiers and rewrites named or default route-handle imports to a dedicated metadata projection,
 even when an import also names ordinary exports. Multiple public aliases of one route share one
-manifest entry and one projected handle. The ordinary side
+manifest entry and one projected handle, including declarations published with `export default
+routeName`. Type-only exports do not publish runtime declarations. The ordinary side
 of a mixed import retains the route module's full JavaScript, stylesheet, and side-effect semantics.
 Namespace imports and direct re-exports of route modules are rejected because they cannot preserve
 the lazy implementation boundary; use named imports and an explicit local export instead.
@@ -46,7 +47,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   assignments, effect statements, attached comments, and exported dependency closures used only
   by stripped server expressions. Declaration helpers are resolved through named, aliased, or
   namespace Sol import bindings and may be published by inline or later export declarations;
-  ambiguous mixed frontend/server effects receive a diagnostic instead of being deleted.
+  identifier default exports are supported, type-only exports are ignored, and ambiguous mixed
+  frontend/server effects receive a diagnostic instead of being deleted.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
 - `output.ts` applies edits, injects runtime imports and dual-lane signed templates,
   redacts stripped server ranges from client source content, and creates the final source map.
@@ -84,7 +86,9 @@ dependencies; route handles referenced by endpoint code are projected again as m
   separately from page implementations before Vite's JSX transform. Every projection emits a
   source map. Route-import maps compose with compiler maps to retain authored locations and source
   content, while generated handle and endpoint projections expose only their projected source so
-  lazy or server-only implementation text cannot leak into eager maps.
+  lazy or server-only implementation text cannot leak into eager maps. Unchanged modules avoid
+  projection-map allocation. File inspection is cached across route imports, collision checks, and
+  manifests; endpoint manifests omit route-only files and deduplicate aliased endpoint identities.
 
 ## How it works
 

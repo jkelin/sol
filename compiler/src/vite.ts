@@ -55,10 +55,15 @@ async function discoverRoutes(root: string): Promise<string[]> {
   return files.toSorted((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
 }
 
-async function routeManifest(files: readonly string[], root: string): Promise<string> {
-  const declarations = await Promise.all(
-    files.map(async (file) => declaredRoutes(await readFile(file, "utf8"), file)),
-  );
+interface InspectedRouteFile {
+  readonly file: string;
+  readonly routes: readonly DeclaredRoute[];
+  readonly endpoints: readonly DeclaredEndpoint[];
+}
+
+function routeManifest(inspections: readonly InspectedRouteFile[], root: string): string {
+  const files = inspections.map((inspection) => inspection.file);
+  const declarations = inspections.map((inspection) => inspection.routes);
   const loaders = files.map((file, index) => {
     const specifier = `/@fs/${normalizePath(file)}`;
     return `const __sol_load_route_module_${index} = () => import(${JSON.stringify(specifier)});`;
@@ -89,16 +94,17 @@ export const staticRoutes = [${routes.map((route) => `{ path: ${route.name}.conf
 export default [${routes.map((route) => route.name).join(",\n")}];`;
 }
 
-function endpointManifest(files: readonly string[]): string {
-  const imports = files.map((file, index) => {
+function endpointManifest(inspections: readonly InspectedRouteFile[]): string {
+  const endpointFiles = inspections.filter((inspection) => inspection.endpoints.length > 0);
+  const imports = endpointFiles.map(({ file }, index) => {
     const specifier = `/@fs/${normalizePath(file)}?sol-endpoints`;
     return `import * as __sol_endpoint_module_${index} from ${JSON.stringify(specifier)};`;
   });
-  const modules = files.map((_, index) => `__sol_endpoint_module_${index}`).join(", ");
+  const modules = endpointFiles.map((_, index) => `__sol_endpoint_module_${index}`).join(", ");
   return `${imports.join("\n")}
 import { isServerEndpoint as __sol_is_endpoint } from "sol/compiler-runtime";
 const __sol_modules = [${modules}];
-export default __sol_modules.flatMap(module => Object.values(module).filter(__sol_is_endpoint));`;
+export default [...new Set(__sol_modules.flatMap(module => Object.values(module).filter(__sol_is_endpoint)))];`;
 }
 
 function routeHandleProjection(source: string, filename: string): string {
@@ -121,7 +127,7 @@ ${exports.join("\n")}`;
 
 interface Projection {
   readonly code: string;
-  readonly map: SourceMap | string;
+  readonly map?: SourceMap | string;
 }
 
 function sourceMapJson(map: SourceMap | string): RawSourceMap {
@@ -365,8 +371,9 @@ function endpointProjection(source: string, filename: string): string {
 async function routeImportSource(
   importer: string,
   specifier: string,
+  inspectRouteFile: (file: string) => Promise<InspectedRouteFile>,
   resolveImport?: (specifier: string, importer: string) => Promise<string | undefined>,
-): Promise<{ target: string; source: string } | undefined> {
+): Promise<InspectedRouteFile | undefined> {
   const base = resolve(dirname(importer), specifier);
   const resolved = await resolveImport?.(specifier, importer);
   const candidates = [
@@ -377,7 +384,7 @@ async function routeImportSource(
   const loaded = await Promise.all(
     candidates.filter(isRouteFile).map(async (target) => {
       try {
-        return { target, source: await readFile(target, "utf8") };
+        return await inspectRouteFile(target);
       } catch {
         return undefined;
       }
@@ -389,6 +396,7 @@ async function routeImportSource(
 async function projectRouteImports(
   input: Projection,
   importer: string,
+  inspectRouteFile: (file: string) => Promise<InspectedRouteFile>,
   resolveImport?: (specifier: string, importer: string) => Promise<string | undefined>,
 ): Promise<Projection> {
   const { code: source } = input;
@@ -407,21 +415,20 @@ async function projectRouteImports(
   const projections = await Promise.all(
     candidates.map(async ({ statement, specifier }) => ({
       statement,
-      resolved: await routeImportSource(importer, specifier, resolveImport),
+      resolved: await routeImportSource(importer, specifier, inspectRouteFile, resolveImport),
     })),
   );
   for (const projection of projections) {
     if (!projection.resolved) continue;
     const { statement, resolved } = projection;
-    const { target, source: targetSource } = resolved;
-    const routeNames = new Set(
-      declaredRoutes(targetSource, target).flatMap((route) => route.exportNames),
-    );
+    const routeNames = new Set(resolved.routes.flatMap((route) => route.exportNames));
     if (t.isExportNamedDeclaration(statement)) {
+      if (statement.exportKind === "type") continue;
       const exportsRoute = statement.specifiers.some(
         (specifier) =>
           t.isExportNamespaceSpecifier(specifier) ||
           (t.isExportSpecifier(specifier) &&
+            specifier.exportKind !== "type" &&
             t.isIdentifier(specifier.local) &&
             routeNames.has(specifier.local.name)),
       );
@@ -467,7 +474,7 @@ async function projectRouteImports(
   const code = edits.toString();
   if (code === source) return input;
   const map = edits.generateMap({ hires: true, source: importer, includeContent: true });
-  return { code, map: composeSourceMaps(map, input.map, importer) };
+  return { code, map: input.map ? composeSourceMaps(map, input.map, importer) : map };
 }
 
 type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
@@ -537,7 +544,12 @@ function manifestExportedNames(ast: t.File): Map<string, string[]> {
     names.set(local, exports);
   };
   for (const statement of ast.program.body) {
+    if (t.isExportDefaultDeclaration(statement) && t.isIdentifier(statement.declaration)) {
+      add(statement.declaration.name, "default");
+      continue;
+    }
     if (!t.isExportNamedDeclaration(statement) || statement.source) continue;
+    if (statement.exportKind === "type") continue;
     if (statement.declaration) {
       for (const name of Object.keys(t.getBindingIdentifiers(statement.declaration)))
         add(name, name);
@@ -545,6 +557,7 @@ function manifestExportedNames(ast: t.File): Map<string, string[]> {
     for (const specifier of statement.specifiers) {
       if (
         t.isExportSpecifier(specifier) &&
+        specifier.exportKind !== "type" &&
         t.isIdentifier(specifier.local) &&
         t.isIdentifier(specifier.exported)
       ) {
@@ -562,14 +575,31 @@ interface DeclaredRoute {
   readonly compiled: ParsedRoutePath;
 }
 
-function declaredRoutes(source: string, filename: string): DeclaredRoute[] {
+interface DeclarationAnalysis {
+  readonly ast: t.File;
+  readonly helpers: ReturnType<typeof declarationHelperBindings>;
+  readonly exportedNames: Map<string, string[]>;
+}
+
+function declarationAnalysis(source: string, filename: string): DeclarationAnalysis {
   const ast = parse(source, {
     sourceType: "module",
     sourceFilename: filename,
     plugins: ["typescript", "jsx"],
   });
-  const helpers = declarationHelperBindings(ast);
-  const exportedNames = manifestExportedNames(ast);
+  return {
+    ast,
+    helpers: declarationHelperBindings(ast),
+    exportedNames: manifestExportedNames(ast),
+  };
+}
+
+function declaredRoutes(
+  source: string,
+  filename: string,
+  analysis = declarationAnalysis(source, filename),
+): DeclaredRoute[] {
+  const { ast, helpers, exportedNames } = analysis;
   const routes: DeclaredRoute[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
@@ -607,14 +637,12 @@ interface DeclaredEndpoint {
   readonly path: string;
 }
 
-function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[] {
-  const ast = parse(source, {
-    sourceType: "module",
-    sourceFilename: filename,
-    plugins: ["typescript", "jsx"],
-  });
-  const helpers = declarationHelperBindings(ast);
-  const exportedNames = manifestExportedNames(ast);
+function declaredEndpoints(
+  source: string,
+  filename: string,
+  analysis = declarationAnalysis(source, filename),
+): DeclaredEndpoint[] {
+  const { ast, helpers, exportedNames } = analysis;
   const endpoints: DeclaredEndpoint[] = [];
   for (const statement of ast.program.body) {
     const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
@@ -664,20 +692,10 @@ function declaredEndpoints(source: string, filename: string): DeclaredEndpoint[]
   return endpoints;
 }
 
-async function validateRouteCollisions(files: readonly string[]): Promise<void> {
-  const declarations = await Promise.all(
-    files.map(async (file) => {
-      const source = await readFile(file, "utf8");
-      return {
-        file,
-        paths: declaredRoutes(source, file).map((route) => route.path),
-        endpoints: declaredEndpoints(source, file),
-      };
-    }),
-  );
+function validateRouteCollisions(inspections: readonly InspectedRouteFile[]): void {
   const matchers = new Map<string, { file: string; path: string }>();
-  for (const declaration of declarations) {
-    for (const path of declaration.paths) {
+  for (const inspection of inspections) {
+    for (const { path } of inspection.routes) {
       const matcher = path
         .split("?", 1)[0]!
         .split("/")
@@ -686,15 +704,15 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
       const existing = matchers.get(matcher);
       if (existing) {
         throw new Error(
-          `Duplicate route matcher ${existing.path} in ${existing.file} and ${path} in ${declaration.file}`,
+          `Duplicate route matcher ${existing.path} in ${existing.file} and ${path} in ${inspection.file}`,
         );
       }
-      matchers.set(matcher, { file: declaration.file, path });
+      matchers.set(matcher, { file: inspection.file, path });
     }
   }
   const endpointMatchers = new Map<string, { file: string; path: string }>();
-  for (const declaration of declarations) {
-    for (const endpoint of declaration.endpoints) {
+  for (const inspection of inspections) {
+    for (const endpoint of inspection.endpoints) {
       const matcher = `${endpoint.method} ${endpoint.path
         .split("/")
         .map((segment) => (segment.startsWith(":") ? ":" : segment))
@@ -702,10 +720,10 @@ async function validateRouteCollisions(files: readonly string[]): Promise<void> 
       const existing = endpointMatchers.get(matcher);
       if (existing) {
         throw new Error(
-          `Duplicate server endpoint ${endpoint.method} ${existing.path} in ${existing.file} and ${endpoint.path} in ${declaration.file}`,
+          `Duplicate server endpoint ${endpoint.method} ${existing.path} in ${existing.file} and ${endpoint.path} in ${inspection.file}`,
         );
       }
-      endpointMatchers.set(matcher, { file: declaration.file, path: endpoint.path });
+      endpointMatchers.set(matcher, { file: inspection.file, path: endpoint.path });
     }
   }
 }
@@ -719,8 +737,26 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   }
   let config: ResolvedConfig;
   let devtoolsEnabled = false;
+  const fileInspections = new Map<string, Promise<InspectedRouteFile>>();
+  const inspectRouteFile = (file: string): Promise<InspectedRouteFile> => {
+    let inspection = fileInspections.get(file);
+    if (!inspection) {
+      inspection = readFile(file, "utf8").then((source) => {
+        const analysis = declarationAnalysis(source, file);
+        return {
+          file,
+          routes: declaredRoutes(source, file, analysis),
+          endpoints: declaredEndpoints(source, file, analysis),
+        };
+      });
+      fileInspections.set(file, inspection);
+    }
+    return inspection;
+  };
   const invalidateManifest = (server: ViteDevServer, file: string): void => {
-    if (!isRouteFile(file) || relative(config.root, file).startsWith("..")) return;
+    if (!isRouteFile(file)) return;
+    fileInspections.delete(file);
+    if (relative(config.root, file).startsWith("..")) return;
     for (const id of [resolvedVirtualRoutes, resolvedVirtualEndpoints]) {
       const module = server.moduleGraph.getModuleById(id);
       if (module) server.moduleGraph.invalidateModule(module);
@@ -761,10 +797,11 @@ export function sol(options: SolPluginOptions = {}): Plugin {
       if (id === resolvedDevtoolsBuildEntry) return 'import "sol/devtools";';
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
       const files = await discoverRoutes(config.root);
-      await validateRouteCollisions(files);
+      const inspections = await Promise.all(files.map(inspectRouteFile));
+      validateRouteCollisions(inspections);
       return id === resolvedVirtualRoutes
-        ? await routeManifest(files, config.root)
-        : endpointManifest(files);
+        ? routeManifest(inspections, config.root)
+        : endpointManifest(inspections);
     },
     configureServer(server) {
       const changed = (file: string): void => invalidateManifest(server, file);
@@ -792,14 +829,17 @@ export function sol(options: SolPluginOptions = {}): Plugin {
             routeHandleProjection(source, filename),
             filename,
           );
-          return await projectRouteImports(handles, filename, resolveImport);
+          return await projectRouteImports(handles, filename, inspectRouteFile, resolveImport);
         }
-        const projection = replacementProjection(
-          source,
-          id.includes("?sol-endpoints") ? endpointProjection(source, filename) : source,
+        const projection = id.includes("?sol-endpoints")
+          ? replacementProjection(source, endpointProjection(source, filename), filename)
+          : { code: source };
+        const projected = await projectRouteImports(
+          projection,
           filename,
+          inspectRouteFile,
+          resolveImport,
         );
-        const projected = await projectRouteImports(projection, filename, resolveImport);
         if (!componentFile.test(id) && !solFile.test(id)) {
           return projected.code === source ? null : projected;
         }
@@ -810,17 +850,17 @@ export function sol(options: SolPluginOptions = {}): Plugin {
         const compiledSourceContent = compiled.map
           ? sourceMapJson(compiled.map).sourcesContent?.[0]
           : undefined;
-        return compiled.map
-          ? {
-              code: compiled.code,
-              map: composeSourceMaps(
-                compiled.map,
-                projected.map,
-                filename,
-                compiledSourceContent === projected.code ? undefined : compiledSourceContent,
-              ),
-            }
-          : projected;
+        if (!compiled.map) return projected.map ? projected : null;
+        if (!projected.map) return compiled;
+        return {
+          code: compiled.code,
+          map: composeSourceMaps(
+            compiled.map,
+            projected.map,
+            filename,
+            compiledSourceContent === projected.code ? undefined : compiledSourceContent,
+          ),
+        };
       },
     },
   };

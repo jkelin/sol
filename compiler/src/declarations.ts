@@ -19,13 +19,22 @@ export function declarationCallHelper(
 function exportedLocalNames(ast: t.File): Set<string> {
   const names = new Set<string>();
   for (const statement of ast.program.body) {
+    if (t.isExportDefaultDeclaration(statement) && t.isIdentifier(statement.declaration)) {
+      names.add(statement.declaration.name);
+      continue;
+    }
     if (!t.isExportNamedDeclaration(statement) || statement.source) continue;
+    if (statement.exportKind === "type") continue;
     if (statement.declaration) {
       for (const name of Object.keys(t.getBindingIdentifiers(statement.declaration)))
         names.add(name);
     }
     for (const specifier of statement.specifiers) {
-      if (t.isExportSpecifier(specifier) && t.isIdentifier(specifier.local)) {
+      if (
+        t.isExportSpecifier(specifier) &&
+        specifier.exportKind !== "type" &&
+        t.isIdentifier(specifier.local)
+      ) {
         names.add(specifier.local.name);
       }
     }

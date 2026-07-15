@@ -665,6 +665,49 @@ describe("compiler", () => {
     ).toThrow("may contain only path and schema");
   });
 
+  test("requires runtime exports for routes and server endpoints", () => {
+    const component = `import { $component, $route, $rpcQuery } from "sol";
+      const Page = $component(function Page() { return <p>Page</p>; });`;
+    expect(() =>
+      compile(
+        `${component}
+         const page = $route({ path: "/typed" }, Page);
+         export type { page };`,
+        "typed-route.sol.tsx",
+      ),
+    ).toThrow("$route() declarations must be exported");
+    expect(() =>
+      compile(
+        `${component}
+         const load = $rpcQuery("load", { schema: value => value }, async () => 1);
+         export type { load };`,
+        "typed-endpoint.sol.tsx",
+      ),
+    ).toThrow("$rpcQuery() declarations must be exported");
+  });
+
+  test("accepts identifier default exports for routes and server endpoints", () => {
+    const routeResult = compile(
+      `import { $component, $route } from "sol";
+       const Page = $component(function Page() { return <p>Page</p>; });
+       const page = $route({ path: "/page" }, Page);
+       export default page;`,
+      "default-route.sol.tsx",
+    );
+    expect(routeResult.code).toContain("export default page");
+    expect(routeResult.code).toContain("const page = __sol_route");
+
+    const endpointResult = compile(
+      `import { $rpcQuery } from "sol";
+       const load = $rpcQuery("load", { schema: value => value }, async () => 1);
+       export default load;`,
+      "default-endpoint.sol.ts",
+      { target: "client" },
+    );
+    expect(endpointResult.code).toContain("export default load");
+    expect(endpointResult.code).toContain('const load = __sol_rpc_query_client("load")');
+  });
+
   test("compiles $component setup into inferred signals, computeds, and DOM effects", () => {
     const source = `
       import { $component } from "sol";
@@ -2239,12 +2282,16 @@ test("the route manifest creates one lazy loader per route file and infers liter
 test("deduplicates route aliases and projects default route handles", async () => {
   const root = await mkdtemp(join(import.meta.dir, "route-aliases-"));
   try {
+    await writeFile(join(root, "Page.tsx"), "export const Page = () => null;");
     await writeFile(
       join(root, "page.sol.tsx"),
       `import { $route } from "sol";
        import { Page } from "./Page";
+       console.log("DEFAULT_PAGE_IMPLEMENTATION");
        const internal = $route({ path: "/page" }, Page);
-       export { internal as page, internal as default };`,
+       export type { internal as PageType };
+       export { internal as page };
+       export default internal;`,
     );
     await writeFile(
       join(root, "entry.ts"),
@@ -2258,6 +2305,7 @@ test("deduplicates route aliases and projects default route handles", async () =
     const manifest = await (plugin.load as (id: string) => Promise<string>)("\0virtual:sol/routes");
     expect(manifest.match(/__sol_lazy_route\(/g)).toHaveLength(1);
     expect(manifest).toContain('module["page"]');
+    expect(manifest).not.toContain("PageType");
 
     const result = await build({
       root,
@@ -2269,6 +2317,54 @@ test("deduplicates route aliases and projects default route handles", async () =
       .flatMap((item) => ("output" in item ? item.output : []))
       .find((item) => item.type === "chunk" && item.isEntry);
     expect(entry?.type === "chunk" ? entry.code : "").not.toContain("export const default");
+    expect(entry?.type === "chunk" ? entry.code : "").not.toContain("DEFAULT_PAGE_IMPLEMENTATION");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("returns null for unchanged TSX modules", async () => {
+  const transform = sol().transform as unknown as {
+    handler: (
+      this: { resolve(): Promise<null> },
+      source: string,
+      id: string,
+      options: { ssr: boolean },
+    ) => Promise<unknown>;
+  };
+  const result = await transform.handler.call(
+    { resolve: async () => null },
+    "export const value = 1;",
+    "/tmp/plain.tsx",
+    { ssr: false },
+  );
+  expect(result).toBeNull();
+});
+
+test("deduplicates endpoint aliases in the virtual manifest", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-endpoint-aliases-"));
+  try {
+    await writeFile(
+      join(root, "api.sol.ts"),
+      `import { $rpcQuery } from "sol";
+       const load = $rpcQuery("load", { schema: value => value }, async () => 1);
+       export { load as first, load as second };`,
+    );
+    await writeFile(
+      join(root, "page.sol.ts"),
+      `import { $route } from "sol";
+       export const page = $route({ path: "/page" }, Page);`,
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const manifest = await (plugin.load as (id: string) => Promise<string>)(
+      "\0virtual:sol/server-endpoints",
+    );
+    expect(manifest).toContain("[...new Set(");
+    expect(manifest).not.toContain("page.sol.ts?sol-endpoints");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

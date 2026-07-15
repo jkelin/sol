@@ -156,3 +156,5 @@ Map reactive arrays with a stable `key`:
 ```
 
 Keys preserve DOM identity during reordering and let removed rows dispose their owned work correctly.
+Compiled map callbacks accept an item and an optional index identifier. A third `Array.map()`
+callback parameter is rejected because compiled keyed rows do not expose the source collection.

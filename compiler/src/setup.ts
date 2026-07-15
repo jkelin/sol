@@ -9,6 +9,7 @@ import {
   referencesReactive,
   statementCode,
   unwrapTransparentExpression,
+  validateErasedFunctionArguments,
   validateReservedIdentifier,
   type ReactiveKind,
 } from "./codegen.ts";
@@ -450,6 +451,7 @@ export function compileFunction(
   }
   if (declaration.generator)
     codeFrame(compiler, declaration, "Components must not be generator functions");
+  validateErasedFunctionArguments(compiler, declaration);
   instrumentRequestSources(compiler, declaration);
   instrumentAwaitExpressions(compiler, declaration);
   if (declaration.params.length > 1)

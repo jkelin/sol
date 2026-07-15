@@ -632,6 +632,9 @@ describe("compiler", () => {
       compile(linkSource(`<Link route={detail}><a href="/bad">Open</a></Link>`), "App.tsx"),
     ).toThrow("provides its anchor href");
     expect(() =>
+      compile(linkSource(`<Link route={detail}><a HREF="/bad">Open</a></Link>`), "App.tsx"),
+    ).toThrow("provides its anchor href");
+    expect(() =>
       compile(linkSource(`<Link route={detail}><a>One</a><a>Two</a></Link>`), "App.tsx"),
     ).toThrow("exactly one anchor child");
     expect(() =>
@@ -862,6 +865,66 @@ describe("compiler", () => {
     expect(result.code).toContain("__sol_when");
     expect(result.code).toContain("__sol_list");
     expect(result.code).toContain("__sol_child");
+  });
+
+  test("rejects unsupported JSX map callback parameters", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map((item, index, array) => <li key={item}>{array.length}</li>)}</ul>;
+        });`,
+        "MapParameters.tsx",
+      ),
+    ).toThrow("JSX .map() callbacks accept only item and index parameters");
+  });
+
+  test("rejects arguments references from compiled-away component scopes", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const count = arguments.length;
+          return <p>{count}</p>;
+        });`,
+        "ComponentArguments.tsx",
+      ),
+    ).toThrow("arguments cannot be used because its function scope is compiled away");
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          function count() { return arguments.length; }
+          return <p>{count()}</p>;
+        });`,
+        "NestedArguments.tsx",
+      ),
+    ).not.toThrow();
+  });
+
+  test("rejects arguments references from compiled-away renderer scopes", () => {
+    expect(() =>
+      compile(
+        `import { Await } from "@soljs/sol";
+        const App = $component(function App() {
+          return <Await $promise={Promise.resolve(1)}>{function (value) {
+            return <p>{arguments.length}:{value}</p>;
+          }}</Await>;
+        });`,
+        "RendererArguments.tsx",
+      ),
+    ).toThrow("arguments cannot be used because its function scope is compiled away");
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map(function (item) {
+            return <li key={item}>{arguments.length}</li>;
+          })}</ul>;
+        });`,
+        "MapArguments.tsx",
+      ),
+    ).toThrow("arguments cannot be used because its function scope is compiled away");
   });
 
   test("compiles intrinsic transition directives and rejects invalid placements", () => {

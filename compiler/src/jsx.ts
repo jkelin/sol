@@ -11,6 +11,7 @@ import {
   normalizeJsxText,
   region,
   staticAttributeValue,
+  validateErasedFunctionArguments,
   type ReactiveKind,
 } from "./codegen.ts";
 import {
@@ -233,6 +234,7 @@ export function renderFunctionFactory(
   if (!t.isArrowFunctionExpression(expression) && !t.isFunctionExpression(expression)) {
     codeFrame(compiler, expression, "Error and data renderers must be inline functions");
   }
+  if (t.isFunctionExpression(expression)) validateErasedFunctionArguments(compiler, expression);
   if (expression.params.length !== 1 || !t.isIdentifier(expression.params[0])) {
     codeFrame(
       compiler,
@@ -822,10 +824,7 @@ export function compileLinkElement(
   if (!t.isJSXIdentifier(anchor.openingElement.name, { name: "a" })) {
     codeFrame(compiler, anchor, "Link child must be an intrinsic anchor element");
   }
-  const anchorHref = anchor.openingElement.attributes.find(
-    (attribute) =>
-      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "href" }),
-  );
+  const anchorHref = findIntrinsicAttribute(compiler, anchor, "href");
   if (anchorHref) codeFrame(compiler, anchorHref, "Link provides its anchor href");
 
   const attributes = new Map<string, t.JSXAttribute>();
@@ -884,6 +883,14 @@ export function mapDetails(
   if (!t.isArrowFunctionExpression(callback) && !t.isFunctionExpression(callback)) {
     codeFrame(compiler, expression, "JSX .map() requires an inline function");
   }
+  if (callback.params.length > 2) {
+    codeFrame(
+      compiler,
+      callback.params[2]!,
+      "JSX .map() callbacks accept only item and index parameters",
+    );
+  }
+  if (t.isFunctionExpression(callback)) validateErasedFunctionArguments(compiler, callback);
   const [itemParameter, indexParameter] = callback.params;
   if (!t.isIdentifier(itemParameter) || (indexParameter && !t.isIdentifier(indexParameter))) {
     codeFrame(compiler, callback, "JSX .map() parameters must be identifiers");

@@ -149,6 +149,28 @@ export function validateReservedIdentifier(
   }
 }
 
+export function validateErasedFunctionArguments(
+  compiler: CompilerContext,
+  declaration: t.FunctionExpression,
+): void {
+  const cloned = t.cloneNode(declaration, true);
+  const file = t.file(t.program([t.expressionStatement(cloned)]));
+  traverse(file, {
+    ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
+      if (!t.isIdentifier(path.node, { name: "arguments" })) return;
+      let owner = path.getFunctionParent();
+      while (owner?.isArrowFunctionExpression()) owner = owner.getFunctionParent();
+      if (owner?.node === cloned) {
+        codeFrame(
+          compiler,
+          path.node,
+          "arguments cannot be used because its function scope is compiled away",
+        );
+      }
+    },
+  });
+}
+
 export function reactiveHelperCall(
   compiler: CompilerContext,
   expression: t.Expression | null | undefined,

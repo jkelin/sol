@@ -2341,6 +2341,59 @@ test("returns null for unchanged TSX modules", async () => {
   expect(result).toBeNull();
 });
 
+test("preserves queried and type-only imports from route modules", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-route-import-kinds-"));
+  try {
+    const routeFile = join(root, "page.sol.ts");
+    await writeFile(
+      routeFile,
+      `import { $route } from "sol";
+       export const page = $route({ path: "/page" }, Page);`,
+    );
+    const transform = sol().transform as unknown as {
+      handler: (
+        this: { resolve(specifier: string): Promise<{ id: string } | null> },
+        source: string,
+        id: string,
+        options: { ssr: boolean },
+      ) => Promise<{ code: string } | null>;
+    };
+    const context = {
+      resolve: async (specifier: string) => ({ id: specifier.split("?", 1)[0]! }),
+    };
+    const queried = await Promise.all(
+      ["raw", "url"].map(async (query) => {
+        const source = `import asset from ${JSON.stringify(`${routeFile}?${query}`)}; console.log(asset);`;
+        const result = await transform.handler.call(context, source, join(root, `${query}.ts`), {
+          ssr: false,
+        });
+        return { query, source, result };
+      }),
+    );
+    for (const { query, source, result } of queried) {
+      expect(result?.code ?? source).toContain(`${routeFile}?${query}`);
+      expect(result?.code ?? source).not.toContain("sol-route-handles");
+    }
+
+    const typeSource = `import type DefaultPage from ${JSON.stringify(routeFile)};
+      import type { page as NamedPage } from ${JSON.stringify(routeFile)};
+      import type * as Pages from ${JSON.stringify(routeFile)};
+      import { type page as Page, page } from ${JSON.stringify(routeFile)};
+      type Route = typeof DefaultPage | typeof NamedPage | typeof Pages.page | typeof Page;
+      console.log(page);`;
+    const typeResult = await transform.handler.call(context, typeSource, join(root, "types.ts"), {
+      ssr: false,
+    });
+    expect(typeResult?.code).toContain(`import type * as Pages from ${JSON.stringify(routeFile)}`);
+    expect(typeResult?.code).toContain(`import type DefaultPage from ${JSON.stringify(routeFile)}`);
+    expect(typeResult?.code).toContain(`import type { page as NamedPage }`);
+    expect(typeResult?.code).toContain(`type page as Page`);
+    expect(typeResult?.code).toContain(`${routeFile}?sol-route-handles`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("deduplicates endpoint aliases in the virtual manifest", async () => {
   const root = await mkdtemp(join(tmpdir(), "sol-endpoint-aliases-"));
   try {
@@ -2365,6 +2418,50 @@ test("deduplicates endpoint aliases in the virtual manifest", async () => {
     );
     expect(manifest).toContain("[...new Set(");
     expect(manifest).not.toContain("page.sol.ts?sol-endpoints");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("discovers and projects string-named route exports", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-string-route-export-"));
+  try {
+    const routeFile = join(root, "page.sol.ts");
+    await writeFile(
+      routeFile,
+      `import { $route, $rpcQuery } from "sol";
+       const page = $route({ path: "/string" }, Page);
+       const endpoint = $rpcQuery("string-endpoint", { schema: value => value }, async () => 1);
+       export { page as "string-route", endpoint as "string-endpoint" };`,
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const manifest = await (plugin.load as (id: string) => Promise<string>)("\0virtual:sol/routes");
+    expect(manifest).toContain('module["string-route"]');
+    const endpoints = await (plugin.load as (id: string) => Promise<string>)(
+      "\0virtual:sol/server-endpoints",
+    );
+    expect(endpoints).toContain("page.sol.ts?sol-endpoints");
+
+    const transform = plugin.transform as unknown as {
+      handler: (
+        this: { resolve(): Promise<null> },
+        source: string,
+        id: string,
+        options: { ssr: boolean },
+      ) => Promise<{ code: string }>;
+    };
+    const source = await Bun.file(routeFile).text();
+    const projected = await transform.handler.call(
+      { resolve: async () => null },
+      source,
+      `${routeFile}?sol-route-handles`,
+      { ssr: false },
+    );
+    expect(projected.code).toContain('as "string-route"');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

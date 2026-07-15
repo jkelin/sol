@@ -6,6 +6,7 @@ import {
   rpcQueryClient,
   rpcQueryServer,
   type HttpRouteInput,
+  type ServerDispatchOptions,
   type ServerEndpoint,
 } from "../src/server-functions.ts";
 import { configureRouteBase } from "../src/route-base.ts";
@@ -646,6 +647,38 @@ describe("server declarations", () => {
       error: { name: string; message: string; stack?: string };
     };
     expect(productionBody.error).toEqual({ name: "Error", message: "Internal Server Error" });
+  });
+
+  test("validates dispatch options before handling a request", async () => {
+    const endpoint = rpcQueryServer(
+      "secret",
+      { schema: (args: readonly []) => args as [] },
+      async () => {
+        throw new Error("SECRET_DIAGNOSTIC");
+      },
+    ) as unknown as ServerEndpoint;
+    const request = rpcRequest("secret", []);
+    const failures = await Promise.all(
+      (
+        [
+          null,
+          [],
+          Object.create({}),
+          { development: "yes" },
+          { maxBodyBytes: "5" },
+          { maxBodyBytes: -1 },
+          { extra: true },
+        ] as unknown as ServerDispatchOptions[]
+      ).map((options) =>
+        dispatchServerEndpoint([endpoint], request.clone(), options).catch(
+          (error: unknown) => error,
+        ),
+      ),
+    );
+    for (const failure of failures) {
+      expect(failure).toBeInstanceOf(TypeError);
+      expect(failure).not.toBeInstanceOf(Response);
+    }
   });
 
   test("rejects non-JSON RPC arguments and results", async () => {

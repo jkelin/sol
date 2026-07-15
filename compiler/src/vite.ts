@@ -117,7 +117,9 @@ function routeHandleProjection(source: string, filename: string): string {
     route.exportNames.map((exportName) =>
       exportName === "default"
         ? `export default __sol_projected_route_${index};`
-        : `export { __sol_projected_route_${index} as ${exportName} };`,
+        : `export { __sol_projected_route_${index} as ${
+            t.isValidIdentifier(exportName) ? exportName : JSON.stringify(exportName)
+          } };`,
     ),
   );
   return `import { routeHandle as __sol_route_handle } from "sol/compiler-runtime";
@@ -169,19 +171,12 @@ function composeSourceMaps(
   return combined.toString();
 }
 
-function expressionIsPure(expression: t.Expression): boolean {
-  const ast = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
-  let pure = false;
-  traverse(ast, {
-    ExpressionStatement(path) {
-      pure = path.get("expression").isPure();
-      path.stop();
-    },
-  });
-  return pure;
-}
-
-function effectfulDeclaration(statement: t.Statement): boolean {
+function effectfulDeclaration(
+  statement: t.Statement,
+  expressionPurity: WeakMap<t.Expression, boolean>,
+): boolean {
+  const expressionIsPure = (expression: t.Expression): boolean =>
+    expressionPurity.get(expression) ?? false;
   const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
   if (t.isVariableDeclaration(declaration)) {
     return declaration.declarations.some(
@@ -215,7 +210,25 @@ function dependencyProjection(source: string, filename: string): string {
   const exportedNames = manifestExportedNames(ast);
   const roots = new Set<string>();
   const routeRoots = new Set<string>();
+  const expressionPurity = new WeakMap<t.Expression, boolean>();
   traverse(ast, {
+    Expression(path) {
+      const parent = path.parent;
+      const declarationInitializer = t.isVariableDeclarator(parent) && parent.init === path.node;
+      const classValue =
+        (t.isClassProperty(parent) || t.isClassPrivateProperty(parent)) &&
+        parent.static &&
+        parent.value === path.node;
+      const classKey =
+        t.isClassBody(path.parentPath?.parent) &&
+        "computed" in parent &&
+        parent.computed &&
+        "key" in parent &&
+        parent.key === path.node;
+      if (declarationInitializer || classValue || classKey) {
+        expressionPurity.set(path.node, path.isPure());
+      }
+    },
     VariableDeclarator(path) {
       const helper = t.isCallExpression(path.node.init)
         ? manifestCallHelper(helpers, path.node.init.callee)
@@ -252,67 +265,93 @@ function dependencyProjection(source: string, filename: string): string {
   });
   if (!programScope) throw new Error("Expected endpoint projection program scope");
   const scope = programScope;
+  const bindingDependencies = new Map<string, Set<string>>();
+  for (const [name, binding] of Object.entries(scope.bindings)) {
+    const dependencies = new Set<string>();
+    binding.path.traverse({
+      ReferencedIdentifier(path) {
+        const dependency = path.node.name;
+        if (scope.bindings[dependency] === path.scope.getBinding(dependency)) {
+          dependencies.add(dependency);
+        }
+      },
+    });
+    bindingDependencies.set(name, dependencies);
+  }
   const closure = (initial: ReadonlySet<string>): Set<string> => {
     const names = new Set(initial);
     const queue = [...initial];
     while (queue.length) {
-      const binding = scope.bindings[queue.pop()!];
-      if (!binding) continue;
-      binding.path.traverse({
-        ReferencedIdentifier(path) {
-          const dependency = path.node.name;
-          if (
-            scope.bindings[dependency] !== path.scope.getBinding(dependency) ||
-            names.has(dependency)
-          )
-            return;
-          names.add(dependency);
-          queue.push(dependency);
-        },
-      });
+      for (const dependency of bindingDependencies.get(queue.pop()!) ?? []) {
+        if (names.has(dependency)) continue;
+        names.add(dependency);
+        queue.push(dependency);
+      }
     }
     return names;
   };
   const routeOwned = closure(routeRoots);
   const needed = closure(roots);
   const effects = new Set<t.Statement>();
-  const statementBindings = (statement: t.Statement): string[] =>
-    Object.values(scope.bindings)
-      .filter((binding) =>
-        binding.referencePaths.some(
-          (reference) =>
-            reference.node.start! >= statement.start! && reference.node.end! <= statement.end!,
-        ),
-      )
-      .map((binding) => binding.identifier.name);
-  const statementMutations = (statement: t.Statement): string[] =>
-    Object.values(scope.bindings)
-      .filter((binding) =>
-        binding.constantViolations.some(
-          (violation) =>
-            violation.node.start! >= statement.start! && violation.node.end! <= statement.end!,
-        ),
-      )
-      .map((binding) => binding.identifier.name);
+  interface StatementFacts {
+    readonly declaredNames: readonly string[];
+    readonly references: Set<string>;
+    readonly mutations: Set<string>;
+    readonly authoredEffect: boolean;
+  }
+  const facts = new Map<t.Statement, StatementFacts>(
+    ast.program.body.map((statement) => [
+      statement,
+      {
+        declaredNames: Object.keys(t.getBindingIdentifiers(statement)),
+        references: new Set<string>(),
+        mutations: new Set<string>(),
+        authoredEffect: effectfulDeclaration(statement, expressionPurity),
+      },
+    ]),
+  );
+  const containingStatement = (position: number | null | undefined): t.Statement | undefined => {
+    if (position == null) return undefined;
+    let low = 0;
+    let high = ast.program.body.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      const statement = ast.program.body[middle]!;
+      if (position < statement.start!) high = middle - 1;
+      else if (position >= statement.end!) low = middle + 1;
+      else return statement;
+    }
+    return undefined;
+  };
+  for (const [name, binding] of Object.entries(scope.bindings)) {
+    for (const reference of binding.referencePaths) {
+      const statement = containingStatement(reference.node.start);
+      if (statement) facts.get(statement)!.references.add(name);
+    }
+    for (const violation of binding.constantViolations) {
+      const statement = containingStatement(violation.node.start);
+      if (statement) facts.get(statement)!.mutations.add(name);
+    }
+  }
   let changed = true;
   while (changed) {
     changed = false;
     for (const statement of ast.program.body) {
       if (t.isImportDeclaration(statement) || effects.has(statement)) continue;
-      const references = statementBindings(statement);
-      const mutations = statementMutations(statement);
-      const declaredNames = Object.keys(t.getBindingIdentifiers(statement));
+      const { references, mutations, declaredNames, authoredEffect } = facts.get(statement)!;
       const routeOwnedDeclaration =
         declaredNames.some((name) => routeOwned.has(name)) &&
         !declaredNames.some((name) => needed.has(name));
       if (routeOwnedDeclaration) continue;
       const required =
-        mutations.some((name) => needed.has(name)) || references.some((name) => needed.has(name));
+        [...mutations].some((name) => needed.has(name)) ||
+        [...references].some((name) => needed.has(name));
       const authoredDeclarationEffect =
-        effectfulDeclaration(statement) && !declaredNames.some((name) => routeOwned.has(name));
+        authoredEffect && !declaredNames.some((name) => routeOwned.has(name));
       if (!required && !authoredDeclarationEffect) continue;
       effects.add(statement);
-      for (const name of [...references, ...mutations]) needed.add(name);
+      for (const name of references) needed.add(name);
+      for (const name of mutations) needed.add(name);
       for (const name of declaredNames) needed.add(name);
       const expanded = closure(needed);
       for (const name of expanded) needed.add(name);
@@ -406,7 +445,8 @@ async function projectRouteImports(
     if (
       (t.isImportDeclaration(statement) || t.isExportNamedDeclaration(statement)) &&
       statement.source &&
-      statement.source.value !== "sol"
+      statement.source.value !== "sol" &&
+      !/[?#]/.test(statement.source.value)
     ) {
       return [{ statement, specifier: statement.source.value }];
     }
@@ -439,6 +479,7 @@ async function projectRouteImports(
       }
       continue;
     }
+    if (statement.importKind === "type") continue;
     if (statement.specifiers.some((specifier) => t.isImportNamespaceSpecifier(specifier))) {
       throw new Error(
         `Automatic route splitting does not support namespace route imports from ${statement.source.value}; use named imports`,
@@ -446,10 +487,11 @@ async function projectRouteImports(
     }
     const handles = statement.specifiers.filter(
       (specifier) =>
-        (t.isImportDefaultSpecifier(specifier) && routeNames.has("default")) ||
-        (t.isImportSpecifier(specifier) &&
-          t.isIdentifier(specifier.imported) &&
-          routeNames.has(specifier.imported.name)),
+        (!t.isImportSpecifier(specifier) || specifier.importKind !== "type") &&
+        ((t.isImportDefaultSpecifier(specifier) && routeNames.has("default")) ||
+          (t.isImportSpecifier(specifier) &&
+            t.isIdentifier(specifier.imported) &&
+            routeNames.has(specifier.imported.name))),
     );
     if (!handles.length) continue;
     const ordinary = statement.specifiers.filter((specifier) => !handles.includes(specifier));
@@ -559,9 +601,12 @@ function manifestExportedNames(ast: t.File): Map<string, string[]> {
         t.isExportSpecifier(specifier) &&
         specifier.exportKind !== "type" &&
         t.isIdentifier(specifier.local) &&
-        t.isIdentifier(specifier.exported)
+        (t.isIdentifier(specifier.exported) || t.isStringLiteral(specifier.exported))
       ) {
-        add(specifier.local.name, specifier.exported.name);
+        add(
+          specifier.local.name,
+          t.isIdentifier(specifier.exported) ? specifier.exported.name : specifier.exported.value,
+        );
       }
     }
   }

@@ -50,7 +50,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   preserving descriptor guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
-  envelopes with canonical array-index validation, and development-safe failures.
+  envelopes with canonical array-index validation, validated dispatch options, and
+  development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
@@ -100,7 +101,9 @@ and automatic JSON/text or explicit byte bodies before passing the still-readabl
 to a handler. Endpoint bodies are capped at 1 MiB by default; Solkit's `maxBodyBytes` option changes
 the limit and oversized requests receive a structured 413 response. Static HTTP path segments are
 canonicalized to URL pathname encoding, while query, fragment, backslash, control, and dot-segment
-syntax is rejected.
+syntax is rejected. Server dispatch options must be a plain object containing only a boolean
+`development` flag and a non-negative safe-integer `maxBodyBytes`, preventing malformed truthy
+values from enabling diagnostic error details.
 
 Public interfaces validate inputs before mutating runtime state. Keep that validation intact when moving implementation details between modules.
 

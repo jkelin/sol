@@ -22,7 +22,9 @@ schema, and page-only dependency graphs. The Vite adapter resolves extensionless
 specifiers and rewrites named or default route-handle imports to a dedicated metadata projection,
 even when an import also names ordinary exports. Multiple public aliases of one route share one
 manifest entry and one projected handle, including declarations published with `export default
-routeName`. Type-only exports do not publish runtime declarations. The ordinary side
+routeName` or an arbitrary string export name. Type-only exports do not publish runtime
+declarations, type-only imports remain type-only, and queried or fragment-bearing imports such as
+`?raw` and `?url` are left to Vite instead of being split. The ordinary side
 of a mixed import retains the route module's full JavaScript, stylesheet, and side-effect semantics.
 Namespace imports and direct re-exports of route modules are rejected because they cannot preserve
 the lazy implementation boundary; use named imports and an explicit local export instead.
@@ -89,6 +91,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   lazy or server-only implementation text cannot leak into eager maps. Unchanged modules avoid
   projection-map allocation. File inspection is cached across route imports, collision checks, and
   manifests; endpoint manifests omit route-only files and deduplicate aliased endpoint identities.
+  Endpoint projection precomputes binding dependencies and top-level statement facts once before
+  closing over the declarations and initialization effects required by the server endpoints.
 
 ## How it works
 

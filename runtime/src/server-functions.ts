@@ -445,12 +445,37 @@ function headerRecord(headers: Headers): Readonly<Record<string, string>> {
   return Object.freeze(Object.fromEntries(headers));
 }
 
-function bodyLimit(options: ServerDispatchOptions): number {
-  const value = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
-  if (!Number.isSafeInteger(value) || value < 0) {
+function dispatchOptions(options: unknown): Required<ServerDispatchOptions> {
+  if (!isObject(options) || Array.isArray(options)) {
+    throw new TypeError("Server dispatch options must be a plain object");
+  }
+  let prototype: object | null;
+  let keys: readonly PropertyKey[];
+  try {
+    prototype = Object.getPrototypeOf(options);
+    keys = Reflect.ownKeys(options);
+  } catch {
+    throw new TypeError("Server dispatch options must be a plain object");
+  }
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError("Server dispatch options must be a plain object");
+  }
+  const unexpected = keys.find((key) => key !== "development" && key !== "maxBodyBytes");
+  if (unexpected !== undefined) {
+    throw new TypeError(`Server dispatch options contain unknown property ${String(unexpected)}`);
+  }
+  const value = options as Record<PropertyKey, unknown>;
+  if (value.development !== undefined && typeof value.development !== "boolean") {
+    throw new TypeError("development must be a boolean");
+  }
+  const maxBodyBytes = value.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  if (!Number.isSafeInteger(maxBodyBytes) || (maxBodyBytes as number) < 0) {
     throw new TypeError("maxBodyBytes must be a non-negative safe integer");
   }
-  return value;
+  return {
+    development: value.development ?? false,
+    maxBodyBytes: maxBodyBytes as number,
+  };
 }
 
 function cancelRequestBody(request: Request): void {
@@ -575,7 +600,7 @@ export async function dispatchServerEndpoint(
   request: Request,
   options: ServerDispatchOptions = {},
 ): Promise<Response | undefined> {
-  const maxBodyBytes = bodyLimit(options);
+  const { development, maxBodyBytes } = dispatchOptions(options);
   const url = new URL(request.url);
   const pathname = logicalPathname(url.pathname);
   if (pathname === undefined) return undefined;
@@ -614,11 +639,8 @@ export async function dispatchServerEndpoint(
     } catch (error) {
       cancelRequestBody(request);
       const status = validationError(error) ? 400 : (requestErrorStatus(error) ?? 500);
-      if (status === 500 && !options.development) console.error(error);
-      return rpcResponse(
-        { ok: false, error: errorDetail(error, options.development ?? false) },
-        status,
-      );
+      if (status === 500 && !development) console.error(error);
+      return rpcResponse({ ok: false, error: errorDetail(error, development) }, status);
     }
   }
   const matchingPath = endpoints
@@ -662,7 +684,7 @@ export async function dispatchServerEndpoint(
     cancelRequestBody(request);
     const status = validationError(error) ? 400 : (requestErrorStatus(error) ?? 500);
     if (status === 500) console.error(error);
-    const detail = errorDetail(error, options.development ?? false);
+    const detail = errorDetail(error, development);
     return Response.json({ error: detail }, { status });
   }
 }

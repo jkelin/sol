@@ -20,10 +20,14 @@ export const GlobalPortal = (() => {
 }) as (props: Readonly<GlobalPortalProps>) => JSX.Element;
 
 function validateTarget(target: unknown, name: "Portal" | "GlobalPortal"): Element {
-  if (!target || !(target instanceof Element)) {
+  const ownerDocument = (target as { ownerDocument?: Document } | null)?.ownerDocument;
+  const ownerElement = ownerDocument?.defaultView?.Element;
+  const ambientElement = typeof Element === "undefined" ? undefined : Element;
+  const constructor = ownerElement ?? ambientElement;
+  if (!constructor || !(target instanceof constructor)) {
     throw new TypeError(`${name} target must be a DOM Element`);
   }
-  return target;
+  return target as Element;
 }
 
 function mountPortal(

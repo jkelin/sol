@@ -2332,6 +2332,23 @@ test("mounts and hydrates static textarea and select values as DOM properties", 
   disposeHydration();
 });
 
+test("SSR controlled selects choose only the first duplicate-valued option", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      return <select id="duplicate-select" value="same">
+        <option value="same">First</option>
+        <option value="same">Second</option>
+      </select>;
+    });
+  `);
+  const App = module.App as Component;
+
+  const html = await renderToStringAsync(App);
+  expect(html.match(/\sselected(?:\s|>)/g)).toHaveLength(1);
+  expect(html).toMatch(/<option value="same" selected>First<\/option>/);
+  expect(html).toMatch(/<option value="same">Second<\/option>/);
+});
+
 test("binds mixed-case checkbox types through their checked property", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App(props: { initial: boolean }) {

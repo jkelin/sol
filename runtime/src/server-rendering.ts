@@ -241,6 +241,7 @@ function renderSpecialElementContent(
   }
   const value = element.attributes.get("value");
   if (element.tag !== "select" || typeof value !== "string") return content;
+  let matched = false;
   return content.replaceAll(
     /<option\b([^>]*)>([\s\S]*?)<\/option\s*>/gi,
     (option, attributes: string, optionContent: string) => {
@@ -248,9 +249,9 @@ function renderSpecialElementContent(
         /\sselected(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/i,
         "",
       );
-      const selected =
-        optionValue(withoutSelected, optionContent, elements) === value ? " selected" : "";
-      return `<option${withoutSelected}${selected}>${optionContent}</option>`;
+      const selected = !matched && optionValue(withoutSelected, optionContent, elements) === value;
+      if (selected) matched = true;
+      return `<option${withoutSelected}${selected ? " selected" : ""}>${optionContent}</option>`;
     },
   );
 }

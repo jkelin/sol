@@ -2619,6 +2619,50 @@ describe("compiled DOM runtime", () => {
     owner.dispose();
   });
 
+  test("mounts and moves Portal content across DOM realms", () => {
+    const foreignWindow = new Window();
+    try {
+      const foreignTarget = foreignWindow.document.body as unknown as Element;
+      const localTarget = document.createElement("aside");
+      const target = $signal<Element>(foreignTarget);
+      const cleanups: Array<() => void> = [];
+      const lifecycle = blockLifecycle();
+      let clicks = 0;
+      let button!: HTMLButtonElement;
+      portal(
+        () => target.value,
+        () => {
+          const fragment = document.createDocumentFragment();
+          button = document.createElement("button");
+          button.textContent = "Cross realm";
+          button.addEventListener("click", () => {
+            clicks += 1;
+          });
+          fragment.append(button);
+          return block(fragment);
+        },
+        cleanups,
+        lifecycle,
+        rootFrame(),
+      );
+      const owner = block(document.createDocumentFragment(), cleanups, lifecycle);
+
+      owner.mount(document.createElement("main"));
+      expect(foreignWindow.document.body.textContent).toBe("Cross realm");
+      button.click();
+      expect(clicks).toBe(1);
+
+      target.value = localTarget;
+      expect(foreignWindow.document.body.textContent).toBe("");
+      expect(button.parentElement === localTarget).toBe(true);
+      expect(localTarget.textContent).toBe("Cross realm");
+      owner.dispose();
+      expect(localTarget.textContent).toBe("");
+    } finally {
+      foreignWindow.close();
+    }
+  });
+
   test("validates mount boundaries", () => {
     const target = document.createElement("main");
     const Valid = component(() => block(document.createDocumentFragment()));

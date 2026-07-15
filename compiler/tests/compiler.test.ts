@@ -567,6 +567,14 @@ describe("compiler", () => {
     expect(() =>
       compile(`${component} export const blog = $route({ path: "/blog/" }, Blog);`, "blog.sol.tsx"),
     ).toThrow("empty or trailing segments");
+    for (const path of ["/docs/../admin", "/./docs", "/docs/%2e%2e/admin"]) {
+      expect(() =>
+        compile(
+          `${component} export const blog = $route({ path: ${JSON.stringify(path)} }, Blog);`,
+          "blog.sol.tsx",
+        ),
+      ).toThrow("dot segments");
+    }
     expect(() =>
       compile(
         `${component} export const blog = $route({ path: "/blog?draft=1" }, Blog);`,

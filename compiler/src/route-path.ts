@@ -42,13 +42,16 @@ export function parseRoutePath(context: CompilerContext, node: t.StringLiteral):
           .map((segment) => {
             if (!segment.startsWith(":")) {
               specificity.push(1);
-              let canonical: string;
+              let decoded: string;
               try {
-                canonical = canonicalizeStaticRouteSegment(segment);
+                decoded = decodeURIComponent(segment);
               } catch {
                 codeFrame(context, node, `Invalid percent encoding in route segment ${segment}`);
               }
-              return escapeRegExp(canonical!);
+              if (decoded === "." || decoded === "..") {
+                codeFrame(context, node, "Route paths must not contain dot segments");
+              }
+              return escapeRegExp(encodeURIComponent(decoded));
             }
             const name = segment.slice(1);
             if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {

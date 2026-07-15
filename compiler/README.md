@@ -34,7 +34,8 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
   redacts stripped server ranges from client source content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames and preserves source-map origins while accepting the
   client-safe source content emitted by `output.ts`.
-- `route-path.ts` validates route templates and produces compiled matching metadata.
+- `route-path.ts` validates route templates, rejects URL-normalized dot segments, and produces
+  canonical compiled matching metadata.
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
 - `codegen.ts` owns identifier rewriting and reusable Babel-to-code helpers.

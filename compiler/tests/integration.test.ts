@@ -1634,6 +1634,40 @@ test("normalizes NUL in folded templates, attributes, and primitive branches", a
   );
 });
 
+test("normalizes NUL in controlled textarea values without colliding with element slots", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { note: string }) {
+      let bound = props.note;
+      return <section>
+        <textarea id="literal" value={"literal\\0sol:element:0\\0value"}></textarea>
+        <textarea id="dynamic" value={props.note}></textarea>
+        <textarea id="bound" $bind={bound}></textarea>
+      </section>;
+    });
+  `);
+  const App = module.App as Component<{ note: string }>;
+  const props = { note: "dynamic\0sol:element:0\0value" };
+  const expectedLiteral = "literal\uFFFDsol:element:0\uFFFDvalue";
+  const expectedDynamic = "dynamic\uFFFDsol:element:0\uFFFDvalue";
+  const html = await renderToStringAsync(App, props);
+  expect(html).not.toContain("\0");
+
+  const target = document.createElement("div");
+  target.innerHTML = html;
+  const disposeHydrated = await hydrate(App, target, props);
+  expect((target.querySelector("#literal") as HTMLTextAreaElement).value).toBe(expectedLiteral);
+  expect((target.querySelector("#dynamic") as HTMLTextAreaElement).value).toBe(expectedDynamic);
+  expect((target.querySelector("#bound") as HTMLTextAreaElement).value).toBe(expectedDynamic);
+  disposeHydrated();
+
+  const mounted = document.createElement("div");
+  const disposeMounted = mount(App, mounted, props);
+  expect((mounted.querySelector("#literal") as HTMLTextAreaElement).value).toBe(expectedLiteral);
+  expect((mounted.querySelector("#dynamic") as HTMLTextAreaElement).value).toBe(expectedDynamic);
+  expect((mounted.querySelector("#bound") as HTMLTextAreaElement).value).toBe(expectedDynamic);
+  disposeMounted();
+});
+
 test("server rendering selects options whose values are dynamic", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

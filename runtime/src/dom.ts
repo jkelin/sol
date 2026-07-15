@@ -277,6 +277,16 @@ function isWritableProperty(element: Element, property: string): boolean {
   return writable;
 }
 
+const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
+
+function textControlString(value: unknown): string {
+  return String(value ?? "").replaceAll("\0", "\uFFFD");
+}
+
+function textControlValue(tag: string, name: string, value: unknown): unknown {
+  return name === "value" && TEXT_VALUE_ELEMENTS.has(tag) ? textControlString(value) : value;
+}
+
 function setDomValue(element: Element, name: string, value: unknown): void {
   const property = name === "className" ? "className" : name === "htmlFor" ? "htmlFor" : name;
   if (name.startsWith("aria-") || name.startsWith("data-")) {
@@ -296,20 +306,20 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     }
     return;
   }
+  const normalized = textControlValue(element.tagName.toLowerCase(), name, value);
   if (property in element && isWritableProperty(element, property)) {
-    (element as unknown as Record<string, unknown>)[property] = value == null ? "" : value;
+    (element as unknown as Record<string, unknown>)[property] =
+      normalized == null ? "" : normalized;
   } else if (value == null || value === false) {
     element.removeAttribute(name);
   } else {
-    element.setAttribute(name, value === true ? "" : String(value));
+    element.setAttribute(name, normalized === true ? "" : String(normalized));
   }
 }
 
-const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
-
 function setServerValue(element: ServerElement, name: string, value: unknown): void {
   if (name === "value" && TEXT_VALUE_ELEMENTS.has(element.tag)) {
-    setServerAttribute(element, name, String(value ?? ""));
+    setServerAttribute(element, name, textControlString(value));
   } else if (name.startsWith("aria-") || name.startsWith("data-")) {
     setServerAttribute(element, name, value == null ? undefined : String(value));
   } else if (isBooleanAttribute(name)) {
@@ -364,9 +374,7 @@ export function attribute(
             ).value
           : element.getAttribute(property);
         const expected = formValue
-          ? value == null
-            ? ""
-            : String(value)
+          ? textControlString(value)
           : serializedAttribute(property, value);
         if (actual !== expected) {
           throw new HydrationMismatchError(`dynamic attribute ${property} differs`);
@@ -478,7 +486,7 @@ export function bindValue(
   let hydrating = element.hasAttribute("data-sol-e");
   const stopEffect = runtimeEffect(() => {
     const next = getValue();
-    const expected = property === "checked" ? Boolean(next) : displayValue(next);
+    const expected = property === "checked" ? Boolean(next) : textControlString(next);
     const actual = property === "checked" ? (element as HTMLInputElement).checked : element.value;
     if (hydrating) {
       hydrating = false;

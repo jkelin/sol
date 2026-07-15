@@ -87,6 +87,7 @@ export function compile(
     declarationHelperCalls: new WeakMap(),
     declarationHelperNamespaceImports: new Set(),
     requestHelpers: new Map(),
+    runtimeHelpers: new Set(),
     mappingMarkerPrefix,
     mappingOrigins: [],
     nextListId: 0,

@@ -1,7 +1,7 @@
 import * as t from "@babel/types";
 import { generate, traverse } from "./ast.ts";
 import { isSolFilename } from "./codegen.ts";
-import type { CompilationState } from "./context.ts";
+import { useRuntimeHelper, type CompilationState } from "./context.ts";
 import { codeFrame } from "./diagnostics.ts";
 import { canonicalHttpRoutePath } from "./http-path.ts";
 import { parseRoutePath } from "./route-path.ts";
@@ -147,6 +147,10 @@ export function compileRouteDeclarations(state: CompilationState): void {
       codeFrame(compiler, candidate, "$route() component must reference a compiled component");
     }
     const parsedPath = parseRoutePath(compiler, property.value);
+    useRuntimeHelper(
+      compiler,
+      compiler.routeMode === "handle" ? "__sol_route_handle" : "__sol_route",
+    );
     edits.push({
       start: statement.start!,
       end: statement.end!,

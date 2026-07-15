@@ -1,6 +1,3 @@
-import { parse } from "@babel/parser";
-import * as t from "@babel/types";
-
 const RUNTIME_HELPERS = [
   ["asyncCaptureActive", "__sol_async_capture_active"],
   ["asyncCaptureCall", "__sol_async_capture_call"],
@@ -47,22 +44,9 @@ const RUNTIME_HELPERS = [
   ["when", "__sol_when"],
 ] as const;
 
-export function runtimeImport(generatedCode: string): string {
-  const referenced = new Set<string>();
-  const ast = parse(generatedCode, { sourceType: "module", plugins: ["typescript"] });
-  const visit = (node: t.Node, parent?: t.Node, grandparent?: t.Node): void => {
-    if (parent && t.isIdentifier(node) && t.isReferenced(node, parent, grandparent)) {
-      referenced.add(node.name);
-    }
-    const fields = node as unknown as Readonly<Record<string, unknown>>;
-    for (const key of t.VISITOR_KEYS[node.type] ?? []) {
-      const value = fields[key];
-      if (Array.isArray(value)) {
-        for (const child of value) if (t.isNode(child)) visit(child, node, parent);
-      } else if (t.isNode(value)) visit(value, node, parent);
-    }
-  };
-  visit(ast);
+export type RuntimeHelper = (typeof RUNTIME_HELPERS)[number][1];
+
+export function runtimeImport(referenced: ReadonlySet<RuntimeHelper>): string {
   const used = RUNTIME_HELPERS.filter(([, local]) => referenced.has(local));
   if (used.length === 0) return "";
   const specifiers = used.map(([exported, local]) => `  ${exported} as ${local}`).join(",\n");

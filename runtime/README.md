@@ -80,8 +80,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting, reactive or one-shot text rendering, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, consistent text-control
-  and shared U+0000 normalization, validated acyclic class normalization, server-safe raw-text hydration
-  comparison, server child-block ownership,
+  stringification and shared U+0000 normalization across server rendering, hydration, binding, and
+  fresh DOM writes, validated acyclic class normalization, server-safe raw-text hydration comparison,
+  server child-block ownership,
   and failure-safe prepare/commit reconciliation for conditional and keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.

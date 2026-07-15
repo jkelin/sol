@@ -1,4 +1,5 @@
 import type * as t from "@babel/types";
+import type { RuntimeHelper } from "./runtime-import.ts";
 
 export type Expression = t.Expression | t.JSXElement | t.JSXFragment;
 export type Scope = ReadonlyMap<string, string>;
@@ -67,6 +68,7 @@ export interface CompilerContext {
   >;
   declarationHelperNamespaceImports: Set<t.Identifier>;
   requestHelpers: Map<string, "$query" | "$mutation" | "$form">;
+  runtimeHelpers: Set<RuntimeHelper>;
   propsName?: string;
   mappingMarkerPrefix: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
@@ -89,4 +91,12 @@ export interface CompilationState {
 
 export function nextAsyncSite(compiler: CompilerContext): string {
   return `await:${compiler.filename}:${compiler.nextAsyncId++}`;
+}
+
+export function useRuntimeHelper<Helper extends RuntimeHelper>(
+  compiler: CompilerContext,
+  helper: Helper,
+): Helper {
+  compiler.runtimeHelpers.add(helper);
+  return helper;
 }

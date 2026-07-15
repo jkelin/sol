@@ -15,6 +15,7 @@ import {
 } from "./codegen.ts";
 import {
   nextAsyncSite,
+  useRuntimeHelper,
   type CompiledFunction,
   type CompilerContext,
   type Scope,
@@ -400,7 +401,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(signalCall, "__sol_signal", scope)};`,
+            `const ${identifier.name} = ${reactiveCallCode(signalCall, useRuntimeHelper(compiler, "__sol_signal"), scope)};`,
           ),
         );
       } else if (kind === "computed" && computedCall) {
@@ -408,7 +409,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = ${reactiveCallCode(computedCall, "__sol_computed", scope, "__sol_frame")};`,
+            `const ${identifier.name} = ${reactiveCallCode(computedCall, useRuntimeHelper(compiler, "__sol_computed"), scope, "__sol_frame")};`,
           ),
         );
       } else if (kind === "computed") {
@@ -416,7 +417,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = __sol_computed${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}), __sol_frame);`,
+            `const ${identifier.name} = ${useRuntimeHelper(compiler, "__sol_computed")}${typeParameterCode(identifier)}(() => (${expressionCode(initializer, scope)}), __sol_frame);`,
           ),
         );
       } else {
@@ -424,7 +425,7 @@ export function compileSetup(
           mappedCode(
             compiler,
             declaration,
-            `const ${identifier.name} = __sol_signal${typeParameterCode(identifier)}(${expressionCode(initializer, scope)});`,
+            `const ${identifier.name} = ${useRuntimeHelper(compiler, "__sol_signal")}${typeParameterCode(identifier)}(${expressionCode(initializer, scope)});`,
           ),
         );
       }
@@ -509,6 +510,7 @@ export function compileFunction(
   compiler.propsName = parameter?.name;
   const body = compileBlockBody(compiler, returned, compiledSetup.bindings, compiledSetup.scope);
   compiler.propsName = previousPropsName;
+  useRuntimeHelper(compiler, "__sol_component");
   return {
     code: `${exported ? "export " : ""}const ${name} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_component(${declaration.async ? "async " : ""}(${parameterCode}, __sol_frame) => {
       ${compiledSetup.code}
@@ -533,12 +535,15 @@ function instrumentRequestSources(
         return;
       }
       if (helper === "$form") {
+        useRuntimeHelper(compiler, "__sol_form");
         call.arguments.unshift(t.identifier("__sol_frame"));
         call.callee = t.identifier("__sol_form");
         return;
       }
       const config = call.arguments[0];
       if (!config || !t.isExpression(config)) return;
+      useRuntimeHelper(compiler, "__sol_request_source");
+      useRuntimeHelper(compiler, helper === "$query" ? "__sol_query" : "__sol_mutation");
       call.arguments[0] = t.callExpression(t.identifier("__sol_request_source"), [
         config,
         t.objectExpression([
@@ -569,6 +574,7 @@ function ancestorWithinFunction<T extends t.Node>(
 }
 
 function instrumentContextCall(
+  compiler: CompilerContext,
   path: NodePath<t.CallExpression | t.OptionalCallExpression>,
   optionalMethod: boolean,
 ): void {
@@ -610,6 +616,7 @@ function instrumentContextCall(
     callArguments.push(t.booleanLiteral(optionalCandidate), t.booleanLiteral(optionalMethod));
   }
   if (outer) {
+    useRuntimeHelper(compiler, "__sol_context_use");
     const value = t.identifier("__sol_context_value");
     callArguments.push(
       t.arrowFunctionExpression([value], replaceOptionalChainBase(outer.node, path.node, value)),
@@ -617,12 +624,14 @@ function instrumentContextCall(
     outer.replaceWith(t.callExpression(t.identifier("__sol_context_use"), callArguments));
     outer.skip();
   } else {
+    useRuntimeHelper(compiler, "__sol_context_use");
     path.replaceWith(t.callExpression(t.identifier("__sol_context_use"), callArguments));
     path.skip();
   }
 }
 
 function instrumentContextMethod(
+  compiler: CompilerContext,
   path: NodePath<t.MemberExpression | t.OptionalMemberExpression>,
 ): void {
   if (!path.isReferenced() || !t.isExpression(path.node.object)) return;
@@ -653,6 +662,7 @@ function instrumentContextMethod(
     callArguments.push(t.booleanLiteral(true));
   }
   if (outer) {
+    useRuntimeHelper(compiler, "__sol_context_method");
     const value = t.identifier("__sol_context_method_value");
     callArguments.push(
       t.arrowFunctionExpression([value], replaceOptionalChainBase(outer.node, path.node, value)),
@@ -660,6 +670,7 @@ function instrumentContextMethod(
     outer.replaceWith(t.callExpression(t.identifier("__sol_context_method"), callArguments));
     outer.skip();
   } else {
+    useRuntimeHelper(compiler, "__sol_context_method");
     path.replaceWith(t.callExpression(t.identifier("__sol_context_method"), callArguments));
     path.skip();
   }
@@ -862,6 +873,7 @@ function instrumentAwaitExpressions(
           : undefined;
         if (!(helper && reachable.has(helper) && hasCapturedAwait(helper))) {
           if (!capturedInitializers.has(initializer)) {
+            useRuntimeHelper(compiler, "__sol_async_value");
             initializer.init = t.callExpression(t.identifier("__sol_async_value"), [
               t.identifier("__sol_frame"),
               t.stringLiteral(nextAsyncSite(compiler)),
@@ -875,6 +887,7 @@ function instrumentAwaitExpressions(
       const helper = directlyAwaitedHelper(argument);
       if (helper && reachable.has(helper) && hasCapturedAwait(helper)) return;
       if (capturedHelperAggregate(argument)) return;
+      useRuntimeHelper(compiler, "__sol_async_value");
       const captured = t.callExpression(t.identifier("__sol_async_value"), [
         t.identifier("__sol_frame"),
         t.stringLiteral(nextAsyncSite(compiler)),
@@ -890,6 +903,7 @@ function instrumentAwaitExpressions(
 
   for (const helper of reachable) {
     if (!hasCapturedAwait(helper)) continue;
+    useRuntimeHelper(compiler, "__sol_async_capture_active");
     if (t.isArrowFunctionExpression(helper) && !t.isBlockStatement(helper.body)) {
       helper.body = t.blockStatement([t.returnStatement(helper.body)]);
     }
@@ -935,6 +949,7 @@ function instrumentAwaitExpressions(
           ? t.identifier("__sol_capture_enabled")
           : t.booleanLiteral(capture);
       const call = path.node;
+      useRuntimeHelper(compiler, "__sol_async_capture_call");
       path.replaceWith(
         t.callExpression(t.identifier("__sol_async_capture_call"), [
           t.arrowFunctionExpression([], call),
@@ -947,16 +962,16 @@ function instrumentAwaitExpressions(
 
   traverse(file, {
     CallExpression(path: NodePath<t.CallExpression>) {
-      instrumentContextCall(path, false);
+      instrumentContextCall(compiler, path, false);
     },
     OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
-      instrumentContextCall(path, path.node.optional);
+      instrumentContextCall(compiler, path, path.node.optional);
     },
     MemberExpression(path: NodePath<t.MemberExpression>) {
-      instrumentContextMethod(path);
+      instrumentContextMethod(compiler, path);
     },
     OptionalMemberExpression(path: NodePath<t.OptionalMemberExpression>) {
-      instrumentContextMethod(path);
+      instrumentContextMethod(compiler, path);
     },
   });
 
@@ -1032,6 +1047,7 @@ function instrumentAwaitExpressions(
       t.stringLiteral(key),
       t.identifier("__sol_frame"),
     ];
+    useRuntimeHelper(compiler, "__sol_route_read");
     path.replaceWith(t.callExpression(t.identifier("__sol_route_read"), callArguments));
     path.skip();
   };
@@ -1039,6 +1055,7 @@ function instrumentAwaitExpressions(
     VariableDeclarator(path: NodePath<t.VariableDeclarator>) {
       if (!t.isObjectPattern(path.node.id) || !t.isExpression(path.node.init)) return;
       if (isProvablyOrdinaryRouteObject(path, path.node.init)) return;
+      useRuntimeHelper(compiler, "__sol_route_object");
       path.node.init = t.callExpression(t.identifier("__sol_route_object"), [
         path.node.init,
         t.identifier("__sol_frame"),
@@ -1047,6 +1064,7 @@ function instrumentAwaitExpressions(
     AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
       if (!t.isObjectPattern(path.node.left) || !t.isExpression(path.node.right)) return;
       if (isProvablyOrdinaryRouteObject(path, path.node.right)) return;
+      useRuntimeHelper(compiler, "__sol_route_object");
       path.node.right = t.callExpression(t.identifier("__sol_route_object"), [
         path.node.right,
         t.identifier("__sol_frame"),
@@ -1055,6 +1073,7 @@ function instrumentAwaitExpressions(
     SpreadElement(path: NodePath<t.SpreadElement>) {
       if (!path.parentPath?.isObjectExpression() || !t.isExpression(path.node.argument)) return;
       if (isProvablyOrdinaryRouteObject(path, path.node.argument)) return;
+      useRuntimeHelper(compiler, "__sol_route_object");
       path.node.argument = t.callExpression(t.identifier("__sol_route_object"), [
         path.node.argument,
         t.identifier("__sol_frame"),
@@ -1084,6 +1103,7 @@ function instrumentAwaitExpressions(
       const value = t.identifier("__sol_route_value");
       const continuation =
         outer.node === path.node ? value : replaceOptionalChainBase(outer.node, path.node, value);
+      useRuntimeHelper(compiler, "__sol_route_read");
       outer.replaceWith(
         t.callExpression(t.identifier("__sol_route_read"), [
           path.node.object,

@@ -16,6 +16,7 @@ import {
 } from "./codegen.ts";
 import {
   nextAsyncSite,
+  useRuntimeHelper,
   type CompilerContext,
   type Expression,
   type Scope,
@@ -344,6 +345,7 @@ export function compileBuiltinElement(
       (child) => !t.isJSXExpressionContainer(child) || !t.isJSXEmptyExpression(child.expression),
     );
     if (children.length === 0) return;
+    useRuntimeHelper(compiler, "__sol_head");
     context.operations.push(
       mappedCode(
         compiler,
@@ -359,6 +361,7 @@ export function compileBuiltinElement(
     validateBuiltinAttributes(compiler, node, allowed);
     const render = blockFactory(compiler, childrenRoot(node), bindings, scope);
     if (kind === "GlobalPortal") {
+      useRuntimeHelper(compiler, "__sol_global_portal");
       context.operations.push(
         mappedCode(
           compiler,
@@ -368,6 +371,7 @@ export function compileBuiltinElement(
       );
       return;
     }
+    useRuntimeHelper(compiler, "__sol_portal");
     const target = jsxAttributeExpression(
       compiler,
       namedAttribute(compiler, node, "target", true)!,
@@ -385,6 +389,7 @@ export function compileBuiltinElement(
     return;
   }
   if (kind === "Suspense") {
+    useRuntimeHelper(compiler, "__sol_suspense");
     validateBuiltinAttributes(compiler, node, new Set(["fallback", "error", "timeoutMs"]));
     const fallback = jsxFactoryFromAttribute(
       compiler,
@@ -402,6 +407,7 @@ export function compileBuiltinElement(
     return;
   }
   if (kind === "ErrorBoundary") {
+    useRuntimeHelper(compiler, "__sol_error_boundary");
     validateBuiltinAttributes(compiler, node, new Set(["fallback"]));
     const fallbackAttribute = namedAttribute(compiler, node, "fallback", true)!;
     const fallback = renderFunctionFactory(
@@ -450,6 +456,7 @@ export function compileBuiltinElement(
     scope,
     "__sol_value",
   );
+  useRuntimeHelper(compiler, "__sol_await");
   context.operations.push(
     mappedCode(
       compiler,
@@ -525,6 +532,7 @@ export function compileProviderElement(
     codeFrame(compiler, data, "Context Provider data must be an object expression");
   const contextName = expressionCode(t.identifier(name.object.name), scope);
   const index = region(context);
+  useRuntimeHelper(compiler, "__sol_context_provider");
   context.operations.push(
     mappedCode(
       compiler,
@@ -572,6 +580,7 @@ export function compileComponentElement(
     props.push(`${JSON.stringify(name)}: ${getter}`);
   }
   const index = region(context);
+  useRuntimeHelper(compiler, "__sol_child");
   context.operations.push(
     mappedCode(
       compiler,
@@ -691,6 +700,7 @@ export function compileIntrinsicElement(
       codeFrame(compiler, attribute, `${targetName} is reserved for hydration metadata`);
     }
     if (sourceName === "$form") {
+      useRuntimeHelper(compiler, "__sol_event");
       const controller = expressionCode(expressionAttribute(compiler, attribute), scope);
       deferredOperations.push(
         (element) =>
@@ -703,6 +713,7 @@ export function compileIntrinsicElement(
       continue;
     }
     if (sourceName === "$bind") {
+      useRuntimeHelper(compiler, "__sol_bind");
       const property = bindProperty!;
       if (property === "value") propertyValueElement = true;
       const binding = compileBinding(
@@ -722,6 +733,7 @@ export function compileIntrinsicElement(
       continue;
     }
     if (sourceName === "$transition") {
+      useRuntimeHelper(compiler, "__sol_transition");
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
       deferredOperations.push((element) =>
         mappedCode(
@@ -733,6 +745,7 @@ export function compileIntrinsicElement(
       continue;
     }
     if (sourceName === "ref") {
+      useRuntimeHelper(compiler, "__sol_ref");
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
       deferredOperations.push((element) =>
         mappedCode(
@@ -753,6 +766,7 @@ export function compileIntrinsicElement(
     }
 
     if (/^on[A-Z]/.test(sourceName)) {
+      useRuntimeHelper(compiler, "__sol_event");
       const normalizedEventName = sourceName.slice(2).toLowerCase();
       const eventName = normalizedEventName === "doubleclick" ? "dblclick" : normalizedEventName;
       const handler = expressionCode(expressionAttribute(compiler, attribute), scope);
@@ -787,6 +801,7 @@ export function compileIntrinsicElement(
         tag === "select" ||
         (TEXT_VALUE_ELEMENTS.has(tag) && typeof staticValue === "boolean"))
     ) {
+      useRuntimeHelper(compiler, "__sol_attribute");
       const value =
         staticValue !== undefined
           ? JSON.stringify(staticValue)
@@ -812,6 +827,7 @@ export function compileIntrinsicElement(
       attributes.push(`${name}="${escapeAttribute(String(attribute.value.expression.value))}"`);
     } else if (staticValue === false) continue;
     else {
+      useRuntimeHelper(compiler, "__sol_attribute");
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
       if (targetName === "value") propertyValueElement = true;
       deferredOperations.push((element) =>
@@ -825,6 +841,7 @@ export function compileIntrinsicElement(
   }
 
   if (rawValues.length > 0) {
+    useRuntimeHelper(compiler, "__sol_raw_text");
     propertyValueElement = true;
     deferredOperations.push(
       (element) =>
@@ -898,6 +915,7 @@ export function compileLinkElement(
       ? "true"
       : expressionCode(expressionAttribute(compiler, replaceAttribute), scope)
     : "false";
+  useRuntimeHelper(compiler, "__sol_link");
   compileIntrinsicElement(compiler, anchor, context, bindings, scope, [
     (element) =>
       `__sol_link(__sol_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => (${replace}), __sol_cleanups);`,
@@ -985,8 +1003,10 @@ export function compileRenderableFactory(
     return `(__sol_frame) => { ${compileBlockBody(compiler, expression, bindings, scope)} }`;
   }
   if (t.isNullLiteral(expression) || t.isBooleanLiteral(expression, { value: false })) {
+    useRuntimeHelper(compiler, "__sol_empty_block");
     return "(__sol_frame) => __sol_empty_block(__sol_frame)";
   }
+  useRuntimeHelper(compiler, "__sol_value_block");
   return `(__sol_frame) => __sol_value_block(() => (${expressionCode(expression, scope)}), __sol_frame)`;
 }
 
@@ -999,6 +1019,7 @@ export function compileExpressionChild(
 ): void {
   const map = mapDetails(compiler, expression);
   if (map) {
+    useRuntimeHelper(compiler, "__sol_list");
     const listId = compiler.nextListId;
     compiler.nextListId += 1;
     const itemReference = `__sol_item_${listId}`;
@@ -1023,6 +1044,7 @@ export function compileExpressionChild(
   }
 
   if (t.isConditionalExpression(expression)) {
+    useRuntimeHelper(compiler, "__sol_when");
     const index = region(context);
     context.operations.push(
       mappedCode(
@@ -1035,6 +1057,8 @@ export function compileExpressionChild(
   }
 
   if (t.isLogicalExpression(expression, { operator: "&&" })) {
+    useRuntimeHelper(compiler, "__sol_when");
+    useRuntimeHelper(compiler, "__sol_empty_block");
     const index = region(context);
     context.operations.push(
       mappedCode(
@@ -1048,6 +1072,7 @@ export function compileExpressionChild(
 
   const index = region(context);
   if (t.isIdentifier(expression) && scope.get(expression.name) === expression.name) {
+    useRuntimeHelper(compiler, "__sol_static_text");
     context.operations.push(
       mappedCode(
         compiler,
@@ -1057,6 +1082,7 @@ export function compileExpressionChild(
     );
     return;
   }
+  useRuntimeHelper(compiler, "__sol_text");
   context.operations.push(
     mappedCode(
       compiler,
@@ -1152,6 +1178,8 @@ export function compileBlockBody(
     compiler.templateIndexes.set(templateSignature, templateIndex);
   }
   if (context.operations.length === 0) {
+    useRuntimeHelper(compiler, "__sol_instantiate");
+    useRuntimeHelper(compiler, "__sol_block");
     return `
       const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);
       return __sol_block(__sol_view.fragment);
@@ -1160,6 +1188,10 @@ export function compileBlockBody(
   const hasLifecycle = context.operations.some((operation) =>
     operation.includes("__sol_lifecycle"),
   );
+  useRuntimeHelper(compiler, "__sol_instantiate");
+  useRuntimeHelper(compiler, "__sol_block");
+  useRuntimeHelper(compiler, "__sol_rethrow");
+  if (hasLifecycle) useRuntimeHelper(compiler, "__sol_block_lifecycle");
   return `
     const __sol_view = __sol_instantiate(__sol_template_${templateIndex}, __sol_frame);
     const __sol_cleanups: Array<() => void> = [];

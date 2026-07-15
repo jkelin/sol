@@ -57,7 +57,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   serialization, and the raw-text closing-tag transform shared with hydration validation.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
-- `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
+- `ssr-session.ts` coordinates async replay entries across chained completion generations, shared promise-like validation, template
   signatures, boundary state, timeouts, and first-failure wakeups for pending waiters.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes, snapshotting each object's descriptors once,
@@ -97,7 +97,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets,
   evaluating each target once per reactive run.
-- `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including rollback
+- `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including completion-mount failure routing and rollback
   of owned Await and ErrorBoundary replacement blocks whose mount fails, primary-error-preserving
   ErrorBoundary teardown, and SSR boundary rejection when a finish-time rerender fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.

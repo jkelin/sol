@@ -376,8 +376,10 @@ export class HydrationSession {
   }
 
   async wait(): Promise<void> {
-    if (this.pending > 0) {
+    while (this.pending > 0) {
+      // oxlint-disable-next-line no-await-in-loop -- replay callbacks can enqueue a new completion generation
       await Promise.race([this.completion.promise, this.failureSignal.promise]);
+      if (this.failed) throw this.failure;
     }
     if (this.failed) throw this.failure;
     if (this.templates.size > 0) {

@@ -1410,6 +1410,54 @@ test("async mount failures reach ErrorBoundary and settle Suspense", async () =>
   dispose();
 });
 
+test("Suspense handles a withheld content block whose first mount fails", async () => {
+  const module = await loadCompiled(`
+    import { Await, Suspense } from "@soljs/sol";
+    export const App = $component(function App() {
+      return <Suspense
+        fallback={<p id="withheld-pending">Pending</p>}
+        error={error => <p id="withheld-error">{String((error as Error).cause ?? error)}</p>}
+      >
+        <main ref={() => { throw new Error("withheld content mount failed"); }}>
+          <Await $promise={Promise.resolve("ready")}>{value => <p>{value}</p>}</Await>
+        </main>
+      </Suspense>;
+    });
+  `);
+  const target = document.createElement("main");
+  const dispose = mount(module.App as Component, target);
+  expect(target.querySelector("#withheld-pending")).not.toBeNull();
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(target.querySelector("#withheld-error")?.textContent).toContain(
+    "withheld content mount failed",
+  );
+  expect(target.querySelector("#withheld-pending")).toBeNull();
+  dispose();
+});
+
+test("folded primitive JSX children match SSR, hydration, and browser output", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      return <p id="folded-primitives">{true}{false}{null}{123n}{0x10n}</p>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expect(target.querySelector("#folded-primitives")?.textContent).toBe("12316");
+  const disposeHydrated = await hydrate(App, target);
+  expect(target.querySelector("#folded-primitives")?.textContent).toBe("12316");
+  disposeHydrated();
+
+  const disposeMounted = mount(App, target);
+  expect(target.querySelector("#folded-primitives")?.textContent).toBe("12316");
+  disposeMounted();
+});
+
 test("compiled refs and portals preserve ownership across targets and body", async () => {
   const animations = installAnimations();
   const module = await loadCompiled(`

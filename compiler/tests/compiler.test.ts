@@ -2026,6 +2026,17 @@ describe("compiler", () => {
     expect(hazardous.code).toContain("__sol_raw_text");
   });
 
+  test("folds constant primitive JSX children into ordinary templates", () => {
+    const result = compile(
+      `const App = $component(function App() { return <p>{true}{false}{null}{123n}{0x10n}</p>; });`,
+      "StaticPrimitives.tsx",
+    );
+
+    expect(result.code).toContain("<p>12316</p>");
+    expect(result.code).not.toContain("__sol_text");
+    expect(result.code).not.toContain("<!--sol:s:");
+  });
+
   test("validates the compiler-specialized Head interface", () => {
     const cases = [
       {

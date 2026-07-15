@@ -30,20 +30,18 @@ function mountOwnedResult(block: Block, mount: (block: Block) => void, label: st
   return block;
 }
 
-function boundaryFallbackError(error: unknown, current: Block | undefined): unknown {
+function errorWithTeardown(error: unknown, current: Block | undefined, message: string): unknown {
   if (!current) return error;
   try {
     current.dispose();
     return error;
   } catch (teardownError) {
-    return new AggregateError(
-      [error, teardownError],
-      "ErrorBoundary child and teardown both failed",
-      {
-        cause: error,
-      },
-    );
+    return new AggregateError([error, teardownError], message, { cause: error });
   }
+}
+
+function boundaryFallbackError(error: unknown, current: Block | undefined): unknown {
+  return errorWithTeardown(error, current, "ErrorBoundary child and teardown both failed");
 }
 
 export function suspense(
@@ -87,24 +85,37 @@ export function suspense(
           if (finished) return;
           finished = true;
           pending -= 1;
-          if (pending === 0 && !failed && state === "timeout" && content) show(content);
+          if (pending === 0 && !failed && state === "timeout" && content) {
+            try {
+              show(content);
+            } catch (error) {
+              controller.reject(error);
+            }
+          }
         };
       },
       reject(error) {
         if (failed) return;
         failed = true;
-        content?.dispose();
-        if (rejectHydrationMismatch(frame, error)) return;
+        const failedContent = content;
+        const reportedError = errorWithTeardown(
+          error,
+          failedContent,
+          "Suspense content and teardown both failed",
+        );
+        if (visible === failedContent) visible = undefined;
+        content = undefined;
+        if (rejectHydrationMismatch(frame, reportedError)) return;
         if (renderError) {
           const errorFrame = state === "error" ? claimFrame : resumeFrame;
           try {
-            show(renderError(error, errorFrame));
+            show(renderError(reportedError, errorFrame));
           } catch (renderFailure) {
             reportError(frame, renderFailure);
           }
-        } else if (frame.suspense) frame.suspense.reject(error);
-        else if (frame.handleError) frame.handleError(error);
-        else surfaceAsyncError(error);
+        } else if (frame.suspense) frame.suspense.reject(reportedError);
+        else if (frame.handleError) frame.handleError(reportedError);
+        else surfaceAsyncError(reportedError);
       },
     };
     try {
@@ -261,25 +272,38 @@ export function suspense(
         if (finished) return;
         finished = true;
         pending -= 1;
-        if (initialized && pending === 0 && !failed && content) show(content);
+        if (initialized && pending === 0 && !failed && content) {
+          try {
+            show(content);
+          } catch (error) {
+            controller.reject(error);
+          }
+        }
       };
     },
     reject(error) {
       if (failed) return;
       failed = true;
+      let reportedError = error;
       if (renderError) {
         if (content) {
-          content.dispose();
-          if (visible === content) visible = undefined;
+          const failedContent = content;
+          reportedError = errorWithTeardown(
+            error,
+            failedContent,
+            "Suspense content and teardown both failed",
+          );
+          if (visible === failedContent) visible = undefined;
+          content = undefined;
         }
         try {
-          show(renderError(error, frame));
+          show(renderError(reportedError, frame));
         } catch (renderFailure) {
           reportError(frame, renderFailure);
         }
-      } else if (frame.suspense) frame.suspense.reject(error);
-      else if (frame.handleError) frame.handleError(error);
-      else surfaceAsyncError(error);
+      } else if (frame.suspense) frame.suspense.reject(reportedError);
+      else if (frame.handleError) frame.handleError(reportedError);
+      else surfaceAsyncError(reportedError);
     },
   };
   const contentFrame: RenderFrame = { ...frame, suspense: controller };

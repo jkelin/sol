@@ -1335,6 +1335,34 @@ describe("compiled DOM runtime", () => {
     );
   });
 
+  test("waits for replay work chained after an earlier hydration generation completes", async () => {
+    const hydration = new HydrationSession({
+      version: 1,
+      templates: [],
+      async: [],
+      boundaries: [],
+    });
+    const first = deferredPromise();
+    const second = deferredPromise();
+    void hydration.track(first.promise);
+    void first.promise.then(() => hydration.track(second.promise));
+    let completed = false;
+    const waiting = hydration.wait().then(() => {
+      completed = true;
+    });
+
+    first.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(completed).toBe(false);
+
+    second.resolve();
+    await waiting;
+    expect(completed).toBe(true);
+  });
+
   test("normalizes NUL text without colliding with server element slots", async () => {
     const authored = "before\0sol:element:0\0after";
     const expected = "before\uFFFDsol:element:0\uFFFDafter";

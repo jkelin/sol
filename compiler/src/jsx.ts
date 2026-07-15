@@ -331,6 +331,28 @@ export function isDefinitelyPrimitive(expression: Expression): boolean {
   );
 }
 
+function staticExpressionText(expression: Expression): string | undefined {
+  if (t.isStringLiteral(expression) || t.isNumericLiteral(expression)) {
+    return String(expression.value);
+  }
+  if (t.isBooleanLiteral(expression) || t.isNullLiteral(expression)) return "";
+  if (t.isBigIntLiteral(expression)) {
+    return String(BigInt(expression.value.replaceAll("_", "")));
+  }
+  if (t.isTemplateLiteral(expression) && expression.expressions.length === 0) {
+    return expression.quasis[0]!.value.cooked ?? "";
+  }
+  if (
+    t.isUnaryExpression(expression) &&
+    (expression.operator === "+" || expression.operator === "-") &&
+    t.isNumericLiteral(expression.argument)
+  ) {
+    const number = expression.argument.value;
+    return String(expression.operator === "-" ? -number : number);
+  }
+  return undefined;
+}
+
 export function compileBuiltinElement(
   compiler: CompilerContext,
   kind: "Suspense" | "Await" | "ErrorBoundary" | "Portal" | "GlobalPortal" | "Head",
@@ -502,23 +524,9 @@ function rawTextValues(
         codeFrame(compiler, child, "Raw-text element children must be text or expressions");
       }
       values.push(expressionCode(child.expression, scope));
-      if (t.isStringLiteral(child.expression)) staticValue += child.expression.value;
-      else if (t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0) {
-        staticValue += child.expression.quasis[0]!.value.cooked ?? "";
-      } else if (t.isNumericLiteral(child.expression)) {
-        staticValue += String(child.expression.value);
-      } else if (t.isBooleanLiteral(child.expression) || t.isNullLiteral(child.expression)) {
-        // Boolean and null children display as empty strings.
-      } else if (t.isBigIntLiteral(child.expression)) {
-        staticValue += String(BigInt(child.expression.value.replaceAll("_", "")));
-      } else if (
-        t.isUnaryExpression(child.expression) &&
-        (child.expression.operator === "+" || child.expression.operator === "-") &&
-        t.isNumericLiteral(child.expression.argument)
-      ) {
-        const number = child.expression.argument.value;
-        staticValue += String(child.expression.operator === "-" ? -number : number);
-      } else isStatic = false;
+      const staticText = staticExpressionText(child.expression);
+      if (staticText === undefined) isStatic = false;
+      else staticValue += staticText;
       continue;
     }
     codeFrame(compiler, child, "Raw-text element children must be text or expressions");
@@ -1146,12 +1154,14 @@ export function compileNode(
     codeFrame(compiler, node, "JSX spread children are not supported in v1");
   if (t.isJSXExpressionContainer(node)) {
     if (t.isJSXEmptyExpression(node.expression)) return;
-    if (t.isStringLiteral(node.expression) || t.isNumericLiteral(node.expression)) {
-      context.html.push(escapeText(String(node.expression.value)));
+    if (!t.isExpression(node.expression)) {
+      codeFrame(compiler, node, "Unsupported JSX child expression");
+    }
+    const staticText = staticExpressionText(node.expression);
+    if (staticText !== undefined) {
+      if (staticText) context.html.push(escapeText(staticText));
       return;
     }
-    if (!t.isExpression(node.expression))
-      codeFrame(compiler, node, "Unsupported JSX child expression");
     compileExpressionChild(compiler, node.expression, context, bindings, scope);
     return;
   }

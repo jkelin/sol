@@ -1,4 +1,5 @@
 import MagicString from "magic-string";
+import type * as t from "@babel/types";
 import type { CompilationState } from "./context.ts";
 import { generatedSourceMap, unmappedCode } from "./diagnostics.ts";
 import { escapeTemplate } from "./html.ts";
@@ -9,20 +10,34 @@ export function emitCompilation(state: CompilationState): CompileResult {
   const { compiler, edits } = state;
   const transformedSource = new MagicString(compiler.source);
   for (const edit of edits) transformedSource.overwrite(edit.start, edit.end, edit.code);
+  const ownerSurvives = (owner: t.VariableDeclarator): boolean =>
+    !state.removedArtifactOwners.has(owner);
+  const survivingTemplateIndexes = new Set<number>();
   const templates = compiler.templates
-    .map((template, index) => {
+    .flatMap((template, index) => {
+      const owners = compiler.templateOwners.get(index);
+      if (owners && ![...owners].some(ownerSurvives)) return [];
+      survivingTemplateIndexes.add(index);
       const metadata = {
         elements: template.elementTags,
         regionCount: template.regionCount,
         propertyValueElements: template.propertyValueElements,
       };
       const signature = templateSignature(compiler, template.html, template.operations);
-      return `const __sol_template_${index} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
+      return [
+        `const __sol_template_${index} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`,
+      ];
     })
     .join("\n");
   const serverImport = serverRuntimeImport(compiler.serverRuntimeHelpers, compiler.target);
-  const runtimeHelpers = new Set(compiler.runtimeHelpers);
-  if (compiler.templates.length > 0) runtimeHelpers.add("__sol_template");
+  const runtimeHelpers = new Set(
+    [...compiler.runtimeHelpers].filter((helper) => {
+      if (compiler.unownedRuntimeHelpers.has(helper)) return true;
+      const owners = compiler.runtimeHelperOwners.get(helper);
+      return !owners || [...owners].some(ownerSurvives);
+    }),
+  );
+  if (survivingTemplateIndexes.size > 0) runtimeHelpers.add("__sol_template");
   const imports = [runtimeImport(runtimeHelpers), serverImport].filter(Boolean).join("\n");
   transformedSource.prepend(`${imports}\n${templates}\n`);
   const marked = transformedSource.toString();

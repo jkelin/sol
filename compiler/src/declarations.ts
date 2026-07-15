@@ -70,7 +70,14 @@ export function compileComponentDeclarations(state: CompilationState): void {
     if (call.arguments.length !== 1 || !t.isFunctionExpression(call.arguments[0])) {
       codeFrame(compiler, call, "$component() expects exactly one named function expression");
     }
-    const compiled = compileFunction(compiler, variable.id.name, call.arguments[0], exported);
+    state.componentArtifactStatements.set(variable, statement);
+    compiler.activeArtifactOwner = variable;
+    let compiled: ReturnType<typeof compileFunction>;
+    try {
+      compiled = compileFunction(compiler, variable.id.name, call.arguments[0], exported);
+    } finally {
+      compiler.activeArtifactOwner = undefined;
+    }
     edits.push({ start: statement.start!, end: statement.end!, code: compiled.code });
     componentCallRanges.add(`${call.start}:${call.end}`);
     if (compiled.returned.start != null && compiled.returned.end != null) {
@@ -515,6 +522,11 @@ function pruneClientServerDependencies(state: CompilationState): void {
             else removedStatements.add(statement);
             changed = true;
           }
+        }
+      }
+      for (const [owner, statement] of state.componentArtifactStatements) {
+        if (removedDeclarators.has(owner) || removedStatements.has(statement)) {
+          state.removedArtifactOwners.add(owner);
         }
       }
       for (const statement of ast.program.body) {

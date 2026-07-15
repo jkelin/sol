@@ -88,7 +88,10 @@ export function compile(
     declarationHelperNamespaceImports: new Set(),
     requestHelpers: new Map(),
     runtimeHelpers: new Set(),
+    runtimeHelperOwners: new Map(),
+    unownedRuntimeHelpers: new Set(),
     serverRuntimeHelpers: new Set(),
+    templateOwners: new Map(),
     mappingMarkerPrefix,
     mappingOrigins: [],
     nextListId: 0,
@@ -109,6 +112,8 @@ export function compile(
     routeCallRanges: new Set(),
     serverCallRanges: new Set(),
     clientServerSourceRanges: [],
+    componentArtifactStatements: new Map(),
+    removedArtifactOwners: new Set(),
   };
 
   analyzeModule(state);

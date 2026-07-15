@@ -1634,6 +1634,52 @@ test("normalizes NUL in folded templates, attributes, and primitive branches", a
   );
 });
 
+test("normalizes lone surrogates across UTF-8 transport and preserves valid pairs", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: {
+      high: string;
+      low: string;
+      pair: string;
+    }) {
+      return <section title={props.high}>
+        <p>{"folded\\uD800text"}{props.low}</p>
+        <textarea value={props.high}></textarea>
+        <span data-pair={props.pair}>{props.pair}</span>
+      </section>;
+    });
+  `);
+  const App = module.App as Component<{ high: string; low: string; pair: string }>;
+  const props = {
+    high: "dynamic\uD800high",
+    low: "dynamic\uDC00low",
+    pair: "valid\uD83D\uDE00pair",
+  };
+  const expectedHigh = "dynamic\uFFFDhigh";
+  const expectedText = "folded\uFFFDtextdynamic\uFFFDlow";
+  const html = await renderToStringAsync(App, props);
+  const transported = new TextDecoder().decode(new TextEncoder().encode(html));
+  expect(transported).toContain("valid😀pair");
+
+  const target = document.createElement("div");
+  target.innerHTML = transported;
+  const disposeHydrated = await hydrate(App, target, props);
+  expect(target.querySelector("section")?.getAttribute("title")).toBe(expectedHigh);
+  expect(target.querySelector("p")?.textContent).toBe(expectedText);
+  expect((target.querySelector("textarea") as HTMLTextAreaElement).value).toBe(expectedHigh);
+  expect(target.querySelector("span")?.getAttribute("data-pair")).toBe("valid😀pair");
+  expect(target.querySelector("span")?.textContent).toBe("valid😀pair");
+  disposeHydrated();
+
+  const mounted = document.createElement("div");
+  const disposeMounted = mount(App, mounted, props);
+  expect(mounted.querySelector("section")?.getAttribute("title")).toBe(expectedHigh);
+  expect(mounted.querySelector("p")?.textContent).toBe(expectedText);
+  expect((mounted.querySelector("textarea") as HTMLTextAreaElement).value).toBe(expectedHigh);
+  expect(mounted.querySelector("span")?.getAttribute("data-pair")).toBe("valid😀pair");
+  expect(mounted.querySelector("span")?.textContent).toBe("valid😀pair");
+  disposeMounted();
+});
+
 test("normalizes NUL in controlled textarea values without colliding with element slots", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App(props: { note: string }) {

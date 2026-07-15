@@ -50,7 +50,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   shared display-value normalization, asynchronous retirement settlement, and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
   including shared HTML-string normalization, dynamic attribute and form-control serialization,
-  collision-safe normalized text, and the raw-text closing-tag transform shared with hydration
+  collision-safe normalized text, U+0000 and lone-surrogate replacement that preserves valid
+  UTF-16 pairs across UTF-8 transport, and the raw-text closing-tag transform shared with hydration
   validation.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.

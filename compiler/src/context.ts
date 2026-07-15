@@ -69,7 +69,11 @@ export interface CompilerContext {
   declarationHelperNamespaceImports: Set<t.Identifier>;
   requestHelpers: Map<string, "$query" | "$mutation" | "$form">;
   runtimeHelpers: Set<RuntimeHelper>;
+  runtimeHelperOwners: Map<RuntimeHelper, Set<t.VariableDeclarator>>;
+  unownedRuntimeHelpers: Set<RuntimeHelper>;
   serverRuntimeHelpers: Set<ServerRuntimeHelper>;
+  templateOwners: Map<number, Set<t.VariableDeclarator>>;
+  activeArtifactOwner?: t.VariableDeclarator;
   propsName?: string;
   mappingMarkerPrefix: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
@@ -88,6 +92,8 @@ export interface CompilationState {
   readonly routeCallRanges: Set<string>;
   readonly serverCallRanges: Set<string>;
   readonly clientServerSourceRanges: Array<{ start: number; end: number }>;
+  readonly componentArtifactStatements: Map<t.VariableDeclarator, t.Statement>;
+  readonly removedArtifactOwners: Set<t.VariableDeclarator>;
 }
 
 export function nextAsyncSite(compiler: CompilerContext): string {
@@ -99,5 +105,15 @@ export function useRuntimeHelper<Helper extends RuntimeHelper>(
   helper: Helper,
 ): Helper {
   compiler.runtimeHelpers.add(helper);
+  const owner = compiler.activeArtifactOwner;
+  if (!owner) compiler.unownedRuntimeHelpers.add(helper);
+  else {
+    let owners = compiler.runtimeHelperOwners.get(helper);
+    if (!owners) {
+      owners = new Set();
+      compiler.runtimeHelperOwners.set(helper, owners);
+    }
+    owners.add(owner);
+  }
   return helper;
 }

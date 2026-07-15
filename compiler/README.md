@@ -50,7 +50,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures,
   including the constant-time template-signature index, value-sensitive element metadata, and
-  explicit ordinary and target-specific endpoint helper usage.
+  explicit ordinary and target-specific endpoint helper usage. Component-owned template and helper
+  records let client projection discard generated artifacts whose server-only owners were pruned.
 - `module-analysis.ts` validates every lexical binding, including nested scopes, and classifies framework helpers, declarations, builtins,
   Head, Link, refs, and components by lexical binding identity.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
@@ -62,7 +63,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   frontend/server effects receive a diagnostic instead of being deleted.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering, using
   one monotonic pass across source-ordered compiled JSX ranges.
-- `output.ts` applies edits, injects runtime imports and dual-lane signed templates,
+- `output.ts` applies edits, injects runtime imports and dual-lane signed templates, omits generated
+  templates and helpers with no retained owner,
   redacts stripped server ranges from client source content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames, owns source-marker insertion and canonical removal,
   and preserves source-map origins while accepting the client-safe source content emitted by
@@ -94,7 +96,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   instrumentation; constructor results retain the conservative frame-aware fallback because a
   constructor may return a route-backed object.
 - `html.ts` owns intrinsic-element metadata and browser-compatible escaping for static templates,
-  including U+0000 replacement before text or attribute emission.
+  including U+0000 and lone-surrogate replacement before text or attribute emission while
+  preserving valid UTF-16 pairs.
 - `runtime-import.ts` formats the explicitly recorded compiler-runtime helpers as one minimal
   import without reparsing generated output, including only the target-specific endpoint helpers
   used by each module.

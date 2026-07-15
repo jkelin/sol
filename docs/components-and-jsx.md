@@ -41,7 +41,7 @@ retain their native names and namespaces. Component prop names remain case-sensi
 
 Only use one class alias on an element. Dynamic classes accept strings, numbers, acyclic nested arrays, and plain object maps made only of data properties. Unsupported values, accessors, symbols, and cyclic arrays throw descriptive errors. The compiler normalizes accepted values and updates the DOM class list when its reactive inputs change.
 
-Text, primitive branches, raw-text elements, static and dynamic string attributes, and controlled or bound text-control values replace U+0000 with U+FFFD, matching browser HTML parsing across mounting, SSR, and hydration.
+Text, primitive branches, raw-text elements, static and dynamic string attributes, and controlled or bound text-control values replace U+0000 and lone UTF-16 surrogates with U+FFFD while preserving valid surrogate pairs. This keeps mounting, SSR output after UTF-8 transport, and hydration aligned with browser HTML parsing.
 
 ## Component composition
 

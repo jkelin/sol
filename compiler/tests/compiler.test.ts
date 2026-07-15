@@ -470,6 +470,55 @@ describe("compiler", () => {
     expect(result.code).toContain('__sol_rpc_query_client("secret")');
   });
 
+  test("removes compiled artifacts owned only by stripped browser dependencies", () => {
+    const result = compile(
+      `
+        import { $component, $rpcQuery } from "@soljs/sol";
+        const Secret = $component(function Secret() {
+          return <p>SERVER_ONLY_COMPONENT_TEMPLATE</p>;
+        });
+        export const load = $rpcQuery(
+          "load",
+          { schema: value => value },
+          async () => Secret,
+        );
+      `,
+      "secret-component.sol.tsx",
+      { target: "client" },
+    );
+    expect(result.code).toContain('__sol_rpc_query_client("load")');
+    expect(result.code).not.toContain("SERVER_ONLY_COMPONENT_TEMPLATE");
+    expect(result.code).not.toContain("component as __sol_component");
+    expect(result.code).not.toContain("instantiate as __sol_instantiate");
+    expect(result.code).not.toContain("block as __sol_block");
+    expect(result.map?.sourcesContent?.join("\n")).not.toContain("SERVER_ONLY_COMPONENT_TEMPLATE");
+  });
+
+  test("keeps templates shared with retained components while stripping their server-only owner", () => {
+    const result = compile(
+      `
+        import { $component, $rpcQuery } from "@soljs/sol";
+        export const Public = $component(function Public() {
+          return <p>SHARED_COMPONENT_TEMPLATE</p>;
+        });
+        const Secret = $component(function Secret() {
+          return <p>SHARED_COMPONENT_TEMPLATE</p>;
+        });
+        export const load = $rpcQuery(
+          "load",
+          { schema: value => value },
+          async () => Secret,
+        );
+      `,
+      "shared-component.sol.tsx",
+      { target: "client" },
+    );
+    expect(result.code).toContain("export const Public");
+    expect(result.code).not.toContain("const Secret");
+    expect(result.code.match(/SHARED_COMPONENT_TEMPLATE/g)).toHaveLength(1);
+    expect(result.code.match(/const __sol_template_\d+ =/g)).toHaveLength(1);
+  });
+
   test("keeps backend handlers, validators, dependencies, and secrets out of client modules", () => {
     const source = `
       import { $httpRoute, $rpcMutation, $rpcQuery } from "@soljs/sol";

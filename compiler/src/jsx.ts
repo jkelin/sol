@@ -1177,6 +1177,15 @@ export function compileBlockBody(
     templateIndex = compiler.templates.push(compiledTemplate) - 1;
     compiler.templateIndexes.set(templateSignature, templateIndex);
   }
+  const owner = compiler.activeArtifactOwner;
+  if (owner) {
+    let owners = compiler.templateOwners.get(templateIndex);
+    if (!owners) {
+      owners = new Set();
+      compiler.templateOwners.set(templateIndex, owners);
+    }
+    owners.add(owner);
+  }
   if (context.operations.length === 0) {
     useRuntimeHelper(compiler, "__sol_instantiate");
     useRuntimeHelper(compiler, "__sol_block");

@@ -27,6 +27,7 @@ import {
   isServerBlock,
   isServerFragment,
   isServerRegion,
+  normalizeHtmlString,
   serverBlock,
   serverValueBlock,
   type ServerElement,
@@ -418,7 +419,7 @@ export function emptyBlock(frame?: RenderFrame): Block {
 
 export function displayValue(value: unknown): string {
   const displayed = value == null || typeof value === "boolean" ? "" : String(value);
-  return displayed.replaceAll("\0", "\uFFFD");
+  return normalizeHtmlString(displayed);
 }
 
 function escapeText(value: string): string {

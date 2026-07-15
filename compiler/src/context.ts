@@ -1,5 +1,5 @@
 import type * as t from "@babel/types";
-import type { RuntimeHelper } from "./runtime-import.ts";
+import type { RuntimeHelper, ServerRuntimeHelper } from "./runtime-import.ts";
 
 export type Expression = t.Expression | t.JSXElement | t.JSXFragment;
 export type Scope = ReadonlyMap<string, string>;
@@ -69,6 +69,7 @@ export interface CompilerContext {
   declarationHelperNamespaceImports: Set<t.Identifier>;
   requestHelpers: Map<string, "$query" | "$mutation" | "$form">;
   runtimeHelpers: Set<RuntimeHelper>;
+  serverRuntimeHelpers: Set<ServerRuntimeHelper>;
   propsName?: string;
   mappingMarkerPrefix: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;

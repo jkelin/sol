@@ -326,6 +326,9 @@ export function compileServerDeclarations(state: CompilationState): void {
           : compiler.target === "server"
             ? "__sol_http_route_server"
             : "__sol_http_route_client";
+    compiler.serverRuntimeHelpers.add(
+      helper === "$rpcQuery" ? "rpcQuery" : helper === "$rpcMutation" ? "rpcMutation" : "httpRoute",
+    );
     const emittedArguments = call.arguments.map((argument) => argument as t.Node);
     if (helper === "$httpRoute") {
       const emittedConfig = t.cloneNode(config, true);

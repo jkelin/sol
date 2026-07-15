@@ -165,7 +165,7 @@ The `$form` property connects the controller to the form's submit, input, and fo
 
 Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()` when both methods exist, making async refinements work without a separate controller API.
 
-`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, acyclic nested arrays, and plain data-property object maps; unsupported values fail descriptively. Text, primitive branches, compiler-folded string attributes, and text-control values replace U+0000 with U+FFFD consistently across mounting, SSR, and hydration. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
+`class`, `className`, and `classNames` are equivalent on DOM elements. Dynamic values accept strings, numbers, acyclic nested arrays, and plain data-property object maps; unsupported values fail descriptively. Text, primitive branches, static and dynamic string attributes, and text-control values replace U+0000 with U+FFFD consistently across mounting, SSR, and hydration. For manual state outside compiled components, use `$signal()` and `$computed()` with their `.value` APIs.
 
 ## Queries and mutations
 

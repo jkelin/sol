@@ -1668,6 +1668,38 @@ test("normalizes NUL in controlled textarea values without colliding with elemen
   disposeMounted();
 });
 
+test("normalizes NUL in dynamic attributes across rendering modes", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { value: string }) {
+      return <p title={props.value} className={props.value} aria-label={props.value} data-note={props.value}>Ready</p>;
+    });
+  `);
+  const App = module.App as Component<{ value: string }>;
+  const props = { value: "before\0after" };
+  const expected = "before\uFFFDafter";
+  const assertAttributes = (target: ParentNode): void => {
+    const element = target.querySelector("p")!;
+    expect(element.getAttribute("title")).toBe(expected);
+    expect(element.getAttribute("class")).toBe(expected);
+    expect(element.getAttribute("aria-label")).toBe(expected);
+    expect(element.getAttribute("data-note")).toBe(expected);
+  };
+
+  const html = await renderToStringAsync(App, props);
+  expect(html).not.toContain("\0");
+  const target = document.createElement("div");
+  target.innerHTML = html;
+  assertAttributes(target);
+  const disposeHydrated = await hydrate(App, target, props);
+  assertAttributes(target);
+  disposeHydrated();
+
+  const mounted = document.createElement("div");
+  const disposeMounted = mount(App, mounted, props);
+  assertAttributes(mounted);
+  disposeMounted();
+});
+
 test("server rendering selects options whose values are dynamic", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

@@ -380,6 +380,41 @@ describe("compiler", () => {
     expect(client.code).not.toContain("async (id)");
   });
 
+  test("imports only the endpoint helpers used by each server declaration", () => {
+    const declarations = [
+      [
+        "$rpcQuery",
+        'export const endpoint = $rpcQuery("load", { schema: value => value }, async () => 1);',
+        "rpcQuery",
+      ],
+      [
+        "$rpcMutation",
+        'export const endpoint = $rpcMutation("save", { schema: value => value }, async () => 1);',
+        "rpcMutation",
+      ],
+      [
+        "$httpRoute",
+        'export const endpoint = $httpRoute({ method: "GET", path: "/health", schema: value => value }, async () => new Response("ok"));',
+        "httpRoute",
+      ],
+    ] as const;
+    for (const [declaration, source, expected] of declarations) {
+      for (const target of ["client", "server"] as const) {
+        const code = compile(
+          `import { ${declaration} } from "@soljs/sol"; ${source}`,
+          `${expected}.sol.ts`,
+          { target },
+        ).code;
+        for (const candidate of ["httpRoute", "rpcMutation", "rpcQuery"] as const) {
+          const exported = `${candidate}${target === "server" ? "Server" : "Client"}`;
+          const local = `__sol_${candidate.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}_${target}`;
+          if (candidate === expected) expect(code).toContain(`${exported} as ${local}`);
+          else expect(code).not.toContain(`${exported} as ${local}`);
+        }
+      }
+    }
+  });
+
   test("resolves server declaration helpers by Sol binding identity", () => {
     const alias = compile(
       `import { $rpcQuery as declareQuery } from "@soljs/sol";

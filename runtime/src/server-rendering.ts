@@ -121,8 +121,12 @@ function prepareElementSlots(html: string, elements: ServerElement[]): string {
   return result + html.slice(cursor);
 }
 
+export function normalizeHtmlString(value: string): string {
+  return value.replaceAll("\0", "\uFFFD");
+}
+
 function escapeAttribute(value: string): string {
-  return value
+  return normalizeHtmlString(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -130,7 +134,10 @@ function escapeAttribute(value: string): string {
 }
 
 function escapeText(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return normalizeHtmlString(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 export function serverSafeRawText(tag: string, value: string): string {

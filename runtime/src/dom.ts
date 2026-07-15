@@ -33,6 +33,7 @@ import {
   isServerElement,
   isServerRegion,
   mountServerBlock,
+  normalizeHtmlString,
   setServerAttribute,
   serverSafeRawText,
   serverRawValue,
@@ -280,7 +281,11 @@ function isWritableProperty(element: Element, property: string): boolean {
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
 
 function textControlString(value: unknown): string {
-  return String(value ?? "").replaceAll("\0", "\uFFFD");
+  return normalizeHtmlString(String(value ?? ""));
+}
+
+function attributeString(value: unknown): string {
+  return normalizeHtmlString(String(value));
 }
 
 function textControlValue(tag: string, name: string, value: unknown): unknown {
@@ -291,7 +296,7 @@ function setDomValue(element: Element, name: string, value: unknown): void {
   const property = name === "className" ? "className" : name === "htmlFor" ? "htmlFor" : name;
   if (name.startsWith("aria-") || name.startsWith("data-")) {
     if (value == null) element.removeAttribute(name);
-    else element.setAttribute(name, String(value));
+    else element.setAttribute(name, attributeString(value));
     return;
   }
   const reflectedBoolean = booleanProperty(name);
@@ -306,14 +311,18 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     }
     return;
   }
-  const normalized = textControlValue(element.tagName.toLowerCase(), name, value);
+  const normalized = textControlValue(
+    element.tagName.toLowerCase(),
+    name,
+    typeof value === "string" ? attributeString(value) : value,
+  );
   if (property in element && isWritableProperty(element, property)) {
     (element as unknown as Record<string, unknown>)[property] =
       normalized == null ? "" : normalized;
   } else if (value == null || value === false) {
     element.removeAttribute(name);
   } else {
-    element.setAttribute(name, normalized === true ? "" : String(normalized));
+    element.setAttribute(name, normalized === true ? "" : attributeString(normalized));
   }
 }
 
@@ -321,23 +330,23 @@ function setServerValue(element: ServerElement, name: string, value: unknown): v
   if (name === "value" && TEXT_VALUE_ELEMENTS.has(element.tag)) {
     setServerAttribute(element, name, textControlString(value));
   } else if (name.startsWith("aria-") || name.startsWith("data-")) {
-    setServerAttribute(element, name, value == null ? undefined : String(value));
+    setServerAttribute(element, name, value == null ? undefined : attributeString(value));
   } else if (isBooleanAttribute(name)) {
     setServerAttribute(element, name, value ? true : undefined);
   } else if (value == null || value === false) {
     setServerAttribute(element, name, undefined);
   } else {
-    setServerAttribute(element, name, value === true ? "" : String(value));
+    setServerAttribute(element, name, value === true ? "" : attributeString(value));
   }
 }
 
 function serializedAttribute(name: string, value: unknown): string | null {
   if (name.startsWith("aria-") || name.startsWith("data-")) {
-    return value == null ? null : String(value);
+    return value == null ? null : attributeString(value);
   }
   if (isBooleanAttribute(name)) return value ? "" : null;
   if (value == null || value === false) return null;
-  return value === true ? "" : String(value);
+  return value === true ? "" : attributeString(value);
 }
 
 export function attribute(

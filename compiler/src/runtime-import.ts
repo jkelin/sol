@@ -44,11 +44,33 @@ const RUNTIME_HELPERS = [
   ["when", "__sol_when"],
 ] as const;
 
+const SERVER_RUNTIME_HELPERS = [
+  ["httpRoute", "http_route"],
+  ["rpcMutation", "rpc_mutation"],
+  ["rpcQuery", "rpc_query"],
+] as const;
+
 export type RuntimeHelper = (typeof RUNTIME_HELPERS)[number][1];
+export type ServerRuntimeHelper = (typeof SERVER_RUNTIME_HELPERS)[number][0];
+
+function formattedImport(specifiers: readonly string[]): string {
+  if (specifiers.length === 0) return "";
+  return `import {\n${specifiers.map((specifier) => `  ${specifier}`).join(",\n")}\n} from "@soljs/sol/compiler-runtime";`;
+}
 
 export function runtimeImport(referenced: ReadonlySet<RuntimeHelper>): string {
   const used = RUNTIME_HELPERS.filter(([, local]) => referenced.has(local));
-  if (used.length === 0) return "";
-  const specifiers = used.map(([exported, local]) => `  ${exported} as ${local}`).join(",\n");
-  return `import {\n${specifiers}\n} from "@soljs/sol/compiler-runtime";`;
+  return formattedImport(used.map(([exported, local]) => `${exported} as ${local}`));
+}
+
+export function serverRuntimeImport(
+  referenced: ReadonlySet<ServerRuntimeHelper>,
+  target: "client" | "server",
+): string {
+  const suffix = target === "server" ? "Server" : "Client";
+  return formattedImport(
+    SERVER_RUNTIME_HELPERS.flatMap(([exported, local]) =>
+      referenced.has(exported) ? [`${exported}${suffix} as __sol_${local}_${target}`] : [],
+    ),
+  );
 }

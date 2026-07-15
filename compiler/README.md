@@ -50,7 +50,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures,
   including the constant-time template-signature index, value-sensitive element metadata, and
-  explicit compiler-runtime helper usage.
+  explicit ordinary and target-specific endpoint helper usage.
 - `module-analysis.ts` validates every lexical binding, including nested scopes, and classifies framework helpers, declarations, builtins,
   Head, Link, refs, and components by lexical binding identity.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
@@ -96,8 +96,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `html.ts` owns intrinsic-element metadata and browser-compatible escaping for static templates,
   including U+0000 replacement before text or attribute emission.
 - `runtime-import.ts` formats the explicitly recorded compiler-runtime helpers as one minimal
-  import without reparsing generated output; output adds
-  a target-specific endpoint import only for modules containing server declarations.
+  import without reparsing generated output, including only the target-specific endpoint helpers
+  used by each module.
 - `compile.ts` validates input, creates compilation state, and sequences analysis, declaration lowering, final validation, and emission.
 - `vite.ts` discovers `.sol.ts` and `.sol.tsx` modules, provides lazy route-file and server-endpoint
   manifests, infers literal static paths, emits both RPC declaration kinds as

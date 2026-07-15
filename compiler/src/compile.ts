@@ -88,6 +88,7 @@ export function compile(
     declarationHelperNamespaceImports: new Set(),
     requestHelpers: new Map(),
     runtimeHelpers: new Set(),
+    serverRuntimeHelpers: new Set(),
     mappingMarkerPrefix,
     mappingOrigins: [],
     nextListId: 0,

@@ -2,7 +2,7 @@ import MagicString from "magic-string";
 import type { CompilationState } from "./context.ts";
 import { generatedSourceMap, unmappedCode } from "./diagnostics.ts";
 import { escapeTemplate } from "./html.ts";
-import { runtimeImport } from "./runtime-import.ts";
+import { runtimeImport, serverRuntimeImport } from "./runtime-import.ts";
 import type { CompileResult } from "./types.ts";
 
 export function emitCompilation(state: CompilationState): CompileResult {
@@ -20,15 +20,10 @@ export function emitCompilation(state: CompilationState): CompileResult {
       return `const __sol_template_${index} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
     })
     .join("\n");
-  const serverRuntimeImport =
-    state.serverCallRanges.size === 0
-      ? ""
-      : compiler.target === "server"
-        ? `import { httpRouteServer as __sol_http_route_server, rpcMutationServer as __sol_rpc_mutation_server, rpcQueryServer as __sol_rpc_query_server } from "@soljs/sol/compiler-runtime";`
-        : `import { httpRouteClient as __sol_http_route_client, rpcMutationClient as __sol_rpc_mutation_client, rpcQueryClient as __sol_rpc_query_client } from "@soljs/sol/compiler-runtime";`;
+  const serverImport = serverRuntimeImport(compiler.serverRuntimeHelpers, compiler.target);
   const runtimeHelpers = new Set(compiler.runtimeHelpers);
   if (compiler.templates.length > 0) runtimeHelpers.add("__sol_template");
-  const imports = [runtimeImport(runtimeHelpers), serverRuntimeImport].filter(Boolean).join("\n");
+  const imports = [runtimeImport(runtimeHelpers), serverImport].filter(Boolean).join("\n");
   transformedSource.prepend(`${imports}\n${templates}\n`);
   const marked = transformedSource.toString();
   const markerPattern = new RegExp(

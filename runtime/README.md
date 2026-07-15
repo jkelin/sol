@@ -29,8 +29,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   configuration boundaries.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
-  identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
-  Proxy-invariant-safe locked-property reads, complete reactive-flush failure reporting,
+  identity-preserving array mutator batching and nested proxy caching even after targets become
+  non-extensible, shared object-or-callable promise-like detection, Proxy-invariant-safe
+  locked-property reads, complete reactive-flush failure reporting,
   transaction-local effect capture, and
   primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-snapshotted configs, plain-object root

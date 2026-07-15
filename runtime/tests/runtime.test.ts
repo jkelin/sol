@@ -986,6 +986,26 @@ describe("reactivity", () => {
     expect(values).toEqual([2, 6]);
   });
 
+  test("preserves nested proxy identity after a target becomes non-extensible", () => {
+    for (const preventExtensions of [
+      (proxy: { value: number }, _target: { value: number }) => Object.preventExtensions(proxy),
+      (_proxy: { value: number }, target: { value: number }) => Reflect.preventExtensions(target),
+    ]) {
+      const target = { value: 1 };
+      const state = $signal({ nested: target });
+      const first = state.value.nested;
+      const seen: number[] = [];
+      const stop = runtimeEffect(() => seen.push(state.value.nested.value));
+
+      preventExtensions(first, target);
+      const second = state.value.nested;
+      expect(second).toBe(first);
+      second.value = 2;
+      expect(seen).toEqual([1, 2]);
+      stop();
+    }
+  });
+
   test("deduplicates computed cascades during a batch", () => {
     const count = $signal(1);
     const doubled = $computed(() => count.value * 2);

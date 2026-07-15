@@ -335,6 +335,11 @@ function unwrap<T>(value: T): T {
   return (proxyTargets.get(value) ?? value) as T;
 }
 
+function existingProxy<T extends object>(target: T): T | undefined {
+  if (proxyTargets.has(target)) return target;
+  return proxyCache.get(target) as T | undefined;
+}
+
 function descriptorsEqual(
   left: PropertyDescriptor | undefined,
   right: PropertyDescriptor | undefined,
@@ -353,9 +358,8 @@ function descriptorsEqual(
 }
 
 export function reactive<T extends object>(target: T): T {
-  if (proxyTargets.has(target)) return target;
-  const cached = proxyCache.get(target);
-  if (cached) return cached as T;
+  const cached = existingProxy(target);
+  if (cached) return cached;
 
   const setOperations: Array<{ key: PropertyKey; handled: boolean }> = [];
   let arrayMutatorWrappers:
@@ -485,7 +489,10 @@ export function reactive<T extends object>(target: T): T {
 }
 
 function wrap<T>(value: T): T {
-  return isObject(value) && isReactiveTarget(value) ? (reactive(value) as T) : value;
+  if (!isObject(value)) return value;
+  const cached = existingProxy(value);
+  if (cached) return cached as T;
+  return isReactiveTarget(value) ? (reactive(value) as T) : value;
 }
 
 export function $signal<T>(initial: T): Signal<T> {

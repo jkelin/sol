@@ -37,6 +37,24 @@ const mutatingCollectionMethods = new Set([
   "set",
   "unshift",
 ]);
+const globalMutationMethods = new Map([
+  [
+    "Object",
+    new Set([
+      "assign",
+      "defineProperties",
+      "defineProperty",
+      "freeze",
+      "preventExtensions",
+      "seal",
+      "setPrototypeOf",
+    ]),
+  ],
+  [
+    "Reflect",
+    new Set(["defineProperty", "deleteProperty", "preventExtensions", "set", "setPrototypeOf"]),
+  ],
+]);
 
 type MemberLike = t.MemberExpression | t.OptionalMemberExpression;
 
@@ -57,12 +75,33 @@ function isMemberLike(node: t.Node | null | undefined): node is MemberLike {
   return t.isMemberExpression(node) || t.isOptionalMemberExpression(node);
 }
 
-function mutatingCollectionObject(
+interface MutatingCall {
+  target: t.Expression;
+  kind: "collection" | "global";
+}
+
+function mutatingCall(
+  path: NodePath,
   call: t.CallExpression | t.OptionalCallExpression,
-): t.Expression | undefined {
+  componentBindings?: ReadonlySet<string>,
+): MutatingCall | undefined {
   if (!isMemberLike(call.callee) || !t.isExpression(call.callee.object)) return undefined;
-  return mutatingCollectionMethods.has(memberMethodName(call.callee) ?? "")
-    ? call.callee.object
+  const method = memberMethodName(call.callee) ?? "";
+  if (t.isIdentifier(call.callee.object)) {
+    const methods = globalMutationMethods.get(call.callee.object.name);
+    const [target] = call.arguments;
+    if (
+      methods?.has(method) &&
+      !path.scope.getBinding(call.callee.object.name) &&
+      !componentBindings?.has(call.callee.object.name) &&
+      target &&
+      t.isExpression(target)
+    ) {
+      return { target, kind: "global" };
+    }
+  }
+  return mutatingCollectionMethods.has(method)
+    ? { target: call.callee.object, kind: "collection" }
     : undefined;
 }
 
@@ -151,12 +190,12 @@ export function validateComputedWrites(
       if (t.isExpression(path.node.argument)) check(path, path.node.argument);
     },
     CallExpression(path: NodePath<t.CallExpression>) {
-      const object = mutatingCollectionObject(path.node);
-      if (object) check(path, object);
+      const mutation = mutatingCall(path, path.node);
+      if (mutation) check(path, mutation.target);
     },
     OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
-      const object = mutatingCollectionObject(path.node);
-      if (object) check(path, object);
+      const mutation = mutatingCall(path, path.node);
+      if (mutation) check(path, mutation.target);
     },
   });
 }
@@ -183,6 +222,20 @@ export function validatePropWrites(
       node,
       `Component props are readonly; ${propsName} members cannot be assigned directly`,
     );
+  const checkMutatingCall = (
+    path: NodePath,
+    call: t.CallExpression | t.OptionalCallExpression,
+  ): void => {
+    const mutation = mutatingCall(path, call);
+    const target = mutation?.kind === "global" ? mutation.target : undefined;
+    if (
+      target &&
+      t.isIdentifier(unwrapTransparentExpression(target), { name: propsName }) &&
+      !path.scope.hasBinding(propsName)
+    ) {
+      reject(target);
+    }
+  };
 
   traverse(file, {
     AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
@@ -203,26 +256,10 @@ export function validatePropWrites(
         reject(path.node.argument);
     },
     CallExpression(path: NodePath<t.CallExpression>) {
-      const [target] = path.node.arguments;
-      if (
-        !target ||
-        !t.isExpression(target) ||
-        !t.isIdentifier(unwrapTransparentExpression(target), { name: propsName }) ||
-        path.scope.hasBinding(propsName)
-      )
-        return;
-      if (
-        t.isMemberExpression(path.node.callee) &&
-        !path.node.callee.computed &&
-        t.isIdentifier(path.node.callee.object) &&
-        t.isIdentifier(path.node.callee.property) &&
-        ["defineProperty", "setPrototypeOf", "preventExtensions"].includes(
-          path.node.callee.property.name,
-        ) &&
-        (path.node.callee.object.name === "Object" || path.node.callee.object.name === "Reflect") &&
-        !path.scope.getBinding(path.node.callee.object.name)
-      )
-        reject(target);
+      checkMutatingCall(path, path.node);
+    },
+    OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
+      checkMutatingCall(path, path.node);
     },
   });
 }
@@ -230,6 +267,7 @@ export function validatePropWrites(
 export function validateDerivedInitializer(
   compiler: CompilerContext,
   expression: t.Expression,
+  componentBindings: ReadonlySet<string>,
 ): void {
   const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
   traverse(file, {
@@ -245,19 +283,25 @@ export function validateDerivedInitializer(
       }
     },
     CallExpression(path: NodePath<t.CallExpression>) {
-      if (mutatingCollectionObject(path.node))
+      const mutation = mutatingCall(path, path.node, componentBindings);
+      if (mutation)
         codeFrame(
           compiler,
           path.node,
-          "Derived component initializers must not call mutating collection methods",
+          mutation.kind === "global"
+            ? "Derived component initializers must not call global mutation APIs"
+            : "Derived component initializers must not call mutating collection methods",
         );
     },
     OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
-      if (mutatingCollectionObject(path.node)) {
+      const mutation = mutatingCall(path, path.node, componentBindings);
+      if (mutation) {
         codeFrame(
           compiler,
           path.node,
-          "Derived component initializers must not call mutating collection methods",
+          mutation.kind === "global"
+            ? "Derived component initializers must not call global mutation APIs"
+            : "Derived component initializers must not call mutating collection methods",
         );
       }
     },
@@ -276,10 +320,20 @@ export function compileSetup(
   >();
   const stablePrimitiveNames = new Set<string>();
   const remainingDataNames = new Set<string>();
+  const componentBindingNames = new Set<string>();
   for (const statement of setup) {
-    if (!t.isVariableDeclaration(statement)) continue;
-    for (const declaration of statement.declarations) {
-      if (t.isIdentifier(declaration.id)) remainingDataNames.add(declaration.id.name);
+    if (t.isVariableDeclaration(statement)) {
+      for (const declaration of statement.declarations) {
+        for (const name of Object.keys(t.getBindingIdentifiers(declaration.id))) {
+          componentBindingNames.add(name);
+          if (t.isIdentifier(declaration.id)) remainingDataNames.add(name);
+        }
+      }
+    } else if (
+      (t.isFunctionDeclaration(statement) || t.isClassDeclaration(statement)) &&
+      statement.id
+    ) {
+      componentBindingNames.add(statement.id.name);
     }
   }
 
@@ -353,7 +407,7 @@ export function compileSetup(
         initializer &&
         !reactiveHelperCall(compiler, initializer, "$computed")
       ) {
-        validateDerivedInitializer(compiler, initializer);
+        validateDerivedInitializer(compiler, initializer, componentBindingNames);
       }
     }
   }

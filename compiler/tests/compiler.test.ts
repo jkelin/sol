@@ -2645,6 +2645,53 @@ describe("compiler", () => {
     ).toThrow("must not call mutating collection methods");
   });
 
+  test("rejects global mutation APIs on computed and derived values", () => {
+    for (const statement of [
+      "Object.assign(value, { x: 1 })",
+      'Object["defineProperties"](value, {})',
+      'Object[`defineProperty`](value, "x", { value: 1 })',
+      "Object.freeze(value)",
+      "Object.preventExtensions(value)",
+      "Object.seal(value)",
+      "Object.setPrototypeOf(value, null)",
+      'Reflect.defineProperty(value, "x", { value: 1 })',
+      'Reflect["deleteProperty"](value, "x")',
+      "Reflect.preventExtensions(value)",
+      'Reflect[`set`](value, "x", 1)',
+      "Reflect.setPrototypeOf(value, null)",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { const value = $computed(() => ({})); ${statement}; return <p>Value</p>; });`,
+          "ComputedGlobalMutation.tsx",
+        ),
+      ).toThrow("readonly");
+    }
+
+    for (const initializer of ["Object.assign(source, { x: 2 })", 'Reflect.set(source, "x", 2)']) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { let source = { x: 1 }; const result = ${initializer}; return <p>{String(result)}</p>; });`,
+          "DerivedGlobalMutation.tsx",
+        ),
+      ).toThrow("must not call global mutation APIs");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const Object = { assign: (target: object) => target };
+          const Reflect = { defineProperty: () => true };
+          let source = { x: 1 };
+          const first = Object.assign(source);
+          const second = Reflect.defineProperty(source, "x", { value: 2 });
+          return <p>{String(first)}{String(second)}</p>;
+        });`,
+        "ShadowedGlobalMutation.tsx",
+      ),
+    ).not.toThrow();
+  });
+
   test("protects compiler identifiers and component import classification", () => {
     expect(() =>
       compile(
@@ -2772,9 +2819,16 @@ describe("compiler", () => {
       "(props satisfies { value: number }).value = 2;",
       "delete props.value;",
       "delete (props as any).value;",
+      "Object.assign(props, { value: 2 });",
+      "Object.defineProperties(props, { value: { value: 2 } });",
       "Object.defineProperty(props, 'value', { value: 2 });",
+      "Object.defineProperty?.(props, 'value', { value: 2 });",
       "Object.defineProperty(props as any, 'value', { value: 2 });",
+      "Object.freeze(props);",
+      "Object.seal(props);",
       "Reflect.defineProperty(props, 'value', { value: 2 });",
+      "Reflect.deleteProperty(props, 'value');",
+      "Reflect.set(props, 'value', 2);",
       "Object.setPrototypeOf(props, null);",
       "Reflect.setPrototypeOf(props, null);",
       "Object.preventExtensions(props);",

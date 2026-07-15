@@ -319,8 +319,52 @@ function attributeString(value: unknown): string {
   return normalizeHtmlString(String(value));
 }
 
-function textControlValue(tag: string, name: string, value: unknown): unknown {
-  return name === "value" && TEXT_VALUE_ELEMENTS.has(tag) ? textControlString(value, tag) : value;
+type TextControlElement =
+  | HTMLInputElement
+  | HTMLTextAreaElement
+  | HTMLSelectElement
+  | HTMLOptionElement;
+
+function normalizedInputValue(input: HTMLInputElement, expected: string): string {
+  const probe = input.ownerDocument.createElement("input");
+  for (const inputAttribute of Array.from(input.attributes)) {
+    if (inputAttribute.name !== "value") {
+      probe.setAttribute(inputAttribute.name, inputAttribute.value);
+    }
+  }
+  probe.setAttribute("value", expected);
+  return probe.value;
+}
+
+function expectedHydratedTextControlValue(
+  element: TextControlElement,
+  value: unknown,
+): string | undefined {
+  const tag = element.tagName.toLowerCase();
+  const expected = textControlString(value, tag);
+  if (tag === "input") {
+    const input = element as HTMLInputElement;
+    return input.getAttribute("value") === expected
+      ? normalizedInputValue(input, expected)
+      : undefined;
+  }
+  if (tag === "textarea") {
+    return (element as HTMLTextAreaElement).defaultValue === expected ? expected : undefined;
+  }
+  if (tag === "option") {
+    return element.getAttribute("value") === expected ? expected : undefined;
+  }
+
+  const select = element as HTMLSelectElement;
+  const options = Array.from(select.options);
+  const match = options.findIndex((option) => option.value === expected);
+  if (options.some((option, index) => option.hasAttribute("selected") !== (index === match))) {
+    return undefined;
+  }
+  if (match >= 0) return expected;
+  const container = select.ownerDocument.createElement("div");
+  container.innerHTML = select.outerHTML;
+  return container.querySelector("select")?.value;
 }
 
 function setDomValue(element: Element, name: string, value: unknown): void {
@@ -351,18 +395,29 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     }
     return;
   }
-  const normalized = textControlValue(
-    element.tagName.toLowerCase(),
-    name,
-    typeof value === "string" ? attributeString(value) : value,
-  );
-  if (property in element && isWritableProperty(element, property)) {
-    (element as unknown as Record<string, unknown>)[property] =
-      normalized == null ? "" : normalized;
-  } else if (value == null || value === false) {
+  const tag = element.tagName.toLowerCase();
+  if (name === "value" && TEXT_VALUE_ELEMENTS.has(tag)) {
+    const normalized = textControlString(value, tag);
+    if (property in element && isWritableProperty(element, property)) {
+      (element as unknown as Record<string, unknown>)[property] = normalized;
+    } else {
+      element.setAttribute(name, normalized);
+    }
+    return;
+  }
+  if (value == null || value === false) {
     element.removeAttribute(name);
+    return;
+  }
+  if (value === true) {
+    element.setAttribute(name, "");
+    return;
+  }
+  const normalized = typeof value === "string" ? attributeString(value) : value;
+  if (property in element && isWritableProperty(element, property)) {
+    (element as unknown as Record<string, unknown>)[property] = normalized;
   } else {
-    element.setAttribute(name, normalized === true ? "" : attributeString(normalized));
+    element.setAttribute(name, attributeString(normalized));
   }
 }
 
@@ -419,18 +474,12 @@ export function attribute(
         const formValue =
           property === "value" && TEXT_VALUE_ELEMENTS.has(element.tagName.toLowerCase());
         const actual = formValue
-          ? (
-              element as
-                | HTMLInputElement
-                | HTMLTextAreaElement
-                | HTMLSelectElement
-                | HTMLOptionElement
-            ).value
+          ? (element as TextControlElement).value
           : element.getAttribute(property);
         const expected = formValue
-          ? textControlString(value, element.tagName.toLowerCase())
+          ? expectedHydratedTextControlValue(element as TextControlElement, value)
           : serializedAttribute(property, value);
-        if (actual !== expected) {
+        if (expected === undefined || actual !== expected) {
           throw new HydrationMismatchError(`dynamic attribute ${property} differs`);
         }
         return;
@@ -542,11 +591,13 @@ export function bindValue(
     const expected =
       property === "checked"
         ? Boolean(next)
-        : textControlString(next, element.tagName.toLowerCase());
+        : hydrating
+          ? expectedHydratedTextControlValue(element, next)
+          : textControlString(next, element.tagName.toLowerCase());
     const actual = property === "checked" ? (element as HTMLInputElement).checked : element.value;
     if (hydrating) {
       hydrating = false;
-      if (actual !== expected) {
+      if (expected === undefined || actual !== expected) {
         throw new HydrationMismatchError(`bound ${property} differs`);
       }
       return;

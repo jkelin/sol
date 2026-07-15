@@ -28,6 +28,10 @@ const Timed = $component(async function Timed() {
 });
 
 export const SsrApp = $component(function SsrApp() {
+  let dynamicInvalid = "invalid";
+  let boundInvalid = "invalid";
+  let dynamicMissing = "missing";
+  let boundMissing = "missing";
   return (
     <main>
       <Suspense fallback={<p>Loading primary</p>}>
@@ -36,6 +40,24 @@ export const SsrApp = $component(function SsrApp() {
       <Suspense fallback={<p id="ssr-timed-fallback">Timed fallback</p>} timeoutMs={0}>
         <Timed />
       </Suspense>
+      <section id="sanitized-controls">
+        <input id="dynamic-number" type="number" value={dynamicInvalid} />
+        <input id="dynamic-date" type="date" value={dynamicInvalid} />
+        <input id="dynamic-color" type="color" value={dynamicInvalid} />
+        <input id="dynamic-range" type="range" value={dynamicInvalid} />
+        <input id="bound-number" type="number" $bind={boundInvalid} />
+        <input id="bound-date" type="date" $bind={boundInvalid} />
+        <input id="bound-color" type="color" $bind={boundInvalid} />
+        <input id="bound-range" type="range" $bind={boundInvalid} />
+        <select id="dynamic-select" value={dynamicMissing}>
+          <option value="first">First</option>
+          <option value="second">Second</option>
+        </select>
+        <select id="bound-select" $bind={boundMissing}>
+          <option value="first">First</option>
+          <option value="second">Second</option>
+        </select>
+      </section>
     </main>
   );
 });

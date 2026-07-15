@@ -1006,6 +1006,37 @@ describe("reactivity", () => {
     }
   });
 
+  test("rejects locking raw children out of their existing reactive proxies", () => {
+    for (const lock of [
+      (parent: { child: { value: number } }, _nestedTarget: { value: number }) =>
+        Object.freeze(parent),
+      (parent: { child: { value: number } }, nestedTarget: { value: number }) =>
+        Object.defineProperty(parent, "child", {
+          configurable: false,
+          enumerable: true,
+          value: nestedTarget,
+          writable: false,
+        }),
+    ]) {
+      const nestedTarget = { value: 1 };
+      const state = $signal({ parent: { child: nestedTarget } });
+      const parent = state.value.parent;
+      const first = parent.child;
+      const seen: number[] = [];
+      const stop = runtimeEffect(() => seen.push(state.value.parent.child.value));
+
+      expect(() => lock(parent, nestedTarget)).toThrow();
+      expect(Object.isExtensible(parent)).toBe(true);
+      const second = state.value.parent.child;
+      expect(second).toBe(first);
+      const observationsAfterLock = seen.length;
+      second.value = 2;
+      expect(seen).toHaveLength(observationsAfterLock + 1);
+      expect(seen.at(-1)).toBe(2);
+      stop();
+    }
+  });
+
   test("deduplicates computed cascades during a batch", () => {
     const count = $signal(1);
     const doubled = $computed(() => count.value * 2);

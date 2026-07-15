@@ -1858,6 +1858,58 @@ test("normalizes NUL in dynamic attributes across rendering modes", async () => 
   disposeMounted();
 });
 
+test("keeps reflected dynamic attribute values consistent across rendering modes", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { initial: unknown }) {
+      let value = props.initial;
+      return <main>
+        <button id="set-false" onClick={() => value = false}>False</button>
+        <button id="set-null" onClick={() => value = null}>Null</button>
+        <button id="set-true" onClick={() => value = true}>True</button>
+        <div id="reflected-value" title={value}></div>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ initial: unknown }>;
+  const expected = new Map<unknown, string | null>([
+    ["yes", "yes"],
+    [false, null],
+    [null, null],
+    [true, ""],
+  ]);
+  const assertUpdates = (target: ParentNode): void => {
+    const element = target.querySelector("#reflected-value")!;
+    expect(element.getAttribute("title")).toBe("yes");
+    for (const [button, value] of [
+      ["#set-false", false],
+      ["#set-null", null],
+      ["#set-true", true],
+    ] as const) {
+      target.querySelector<HTMLButtonElement>(button)!.click();
+      expect(element.getAttribute("title")).toBe(expected.get(value)!);
+    }
+  };
+
+  await Promise.all(
+    [...expected].map(async ([value, attribute]) => {
+      const target = document.createElement("div");
+      target.innerHTML = await renderToStringAsync(App, { initial: value });
+      expect(target.querySelector("#reflected-value")!.getAttribute("title")).toBe(attribute);
+    }),
+  );
+
+  const mounted = document.createElement("div");
+  const disposeMounted = mount(App, mounted, { initial: "yes" });
+  assertUpdates(mounted);
+  disposeMounted();
+
+  const hydrated = document.createElement("div");
+  hydrated.innerHTML = await renderToStringAsync(App, { initial: "yes" });
+  const disposeHydrated = await hydrate(App, hydrated, { initial: "yes" });
+  assertUpdates(hydrated);
+  disposeHydrated();
+});
+
 test("server rendering selects options whose values are dynamic", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

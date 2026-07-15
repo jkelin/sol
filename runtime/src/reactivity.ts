@@ -454,6 +454,23 @@ export function reactive<T extends object>(target: T): T {
     defineProperty(object, key, descriptor) {
       const previous = Object.getOwnPropertyDescriptor(object, key);
       const oldLength = Array.isArray(object) ? object.length : 0;
+      const remainsDataProperty =
+        "value" in descriptor ||
+        "writable" in descriptor ||
+        (!("get" in descriptor) &&
+          !("set" in descriptor) &&
+          previous !== undefined &&
+          "value" in previous);
+      const configurable = descriptor.configurable ?? previous?.configurable ?? false;
+      const writable =
+        descriptor.writable ?? (previous && "writable" in previous ? previous.writable : false);
+      if (!configurable && !writable && remainsDataProperty) {
+        const value = "value" in descriptor ? descriptor.value : previous?.value;
+        if (isObject(value)) {
+          const childProxy = existingProxy(value);
+          if (childProxy !== undefined && childProxy !== value) return false;
+        }
+      }
       const defined = Reflect.defineProperty(object, key, descriptor);
       if (defined) {
         const current = Object.getOwnPropertyDescriptor(object, key);
@@ -469,6 +486,15 @@ export function reactive<T extends object>(target: T): T {
         }
       }
       return defined;
+    },
+    preventExtensions(object) {
+      for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(object))) {
+        if ("value" in descriptor && isObject(descriptor.value)) {
+          const childProxy = existingProxy(descriptor.value);
+          if (childProxy !== undefined && childProxy !== descriptor.value) return false;
+        }
+      }
+      return Reflect.preventExtensions(object);
     },
     deleteProperty(object, key) {
       const wasPresent = Object.prototype.hasOwnProperty.call(object, key);

@@ -42,6 +42,36 @@ test("claims async server HTML and resumes a timed-out boundary", async ({ page 
     () => (window as typeof window & { solClientLoaded?: boolean }).solClientLoaded,
   );
 
+  const readSanitizedValues = () =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        [
+          "dynamic-number",
+          "dynamic-date",
+          "dynamic-color",
+          "dynamic-range",
+          "bound-number",
+          "bound-date",
+          "bound-color",
+          "bound-range",
+          "dynamic-select",
+          "bound-select",
+        ].map((id) => [id, (document.querySelector(`#${id}`) as HTMLInputElement).value]),
+      ),
+    );
+  const expectedSanitizedValues = {
+    "dynamic-number": "",
+    "dynamic-date": "",
+    "dynamic-color": "#000000",
+    "dynamic-range": "50",
+    "bound-number": "",
+    "bound-date": "",
+    "bound-color": "#000000",
+    "bound-range": "50",
+    "dynamic-select": "first",
+    "bound-select": "first",
+  };
+  expect(await readSanitizedValues()).toEqual(expectedSanitizedValues);
   const serverButton = await page.locator("#ssr-primary").elementHandle();
   const timedFallback = await page.locator("#ssr-timed-fallback").elementHandle();
   await page.evaluate(async () => {
@@ -63,6 +93,7 @@ test("claims async server HTML and resumes a timed-out boundary", async ({ page 
       () => (window as typeof window & { solPrimaryCalls: number }).solPrimaryCalls,
     ),
   ).toBe(0);
+  expect(await readSanitizedValues()).toEqual(expectedSanitizedValues);
   await page.locator("#ssr-primary").click();
   await expect(page.locator("#ssr-primary")).toHaveText("server data:1");
 

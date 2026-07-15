@@ -30,8 +30,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching and nested proxy caching even after targets become
-  non-extensible, shared object-or-callable promise-like detection, Proxy-invariant-safe
-  locked-property reads, complete reactive-flush failure reporting,
+  non-extensible, rejection of descriptor locks that would expose an already-proxied raw child,
+  shared object-or-callable promise-like detection, Proxy-invariant-safe locked-property reads,
+  complete reactive-flush failure reporting,
   transaction-local effect capture, and
   primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-snapshotted configs, plain-object root
@@ -96,8 +97,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   nodes during hydration, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, boolean-valued enumerated
   attribute tokens, unchanged-order keyed-list updates without DOM moves, consistent text-control
-  stringification and shared U+0000 normalization for text and dynamic attributes across server
-  rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
+  stringification, browser-normalized constrained-control hydration, reflected-attribute
+  null/boolean parity, and shared U+0000 normalization for text and dynamic attributes across
+  server rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API
   newline normalization, and failure-safe prepare/commit reconciliation for conditional and
   keyed-list updates and Context Provider mounts.

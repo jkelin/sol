@@ -213,26 +213,6 @@ export function reactiveHelperCall(
     : undefined;
 }
 
-export function referencesReactive(
-  expression: t.Expression,
-  reactiveNames: ReadonlySet<string>,
-  propsName: string | undefined,
-): boolean {
-  let found = false;
-  const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
-  traverse(file, {
-    ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
-      if (!t.isIdentifier(path.node)) return;
-      if (path.scope.hasBinding(path.node.name)) return;
-      if (path.node.name === propsName || reactiveNames.has(path.node.name)) {
-        found = true;
-        path.stop();
-      }
-    },
-  });
-  return found;
-}
-
 export function referencedNames(expression: t.Expression): Set<string> {
   const names = new Set<string>();
   const file = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));

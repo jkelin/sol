@@ -52,17 +52,16 @@ export function arrayIndex(key: string, length: number): number | undefined {
   return index < length && index < 0xffffffff ? index : undefined;
 }
 
-function rejectAccessors(value: object): void {
-  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+function rejectAccessors(value: object, descriptors: PropertyDescriptorMap): void {
+  for (const [key, descriptor] of Object.entries(descriptors)) {
     if (descriptor.get || descriptor.set) {
       unsupported(value, `accessor property ${JSON.stringify(key)}`);
     }
   }
 }
 
-function ownDataEntries(value: object): [string, unknown][] {
-  rejectAccessors(value);
-  return Object.entries(Object.getOwnPropertyDescriptors(value)).map(([key, descriptor]) => {
+function ownDataEntries(value: object, descriptors: PropertyDescriptorMap): [string, unknown][] {
+  return Object.entries(descriptors).map(([key, descriptor]) => {
     if (!descriptor.enumerable || !descriptor.configurable || !descriptor.writable) {
       unsupported(value, `non-default property descriptor ${JSON.stringify(key)}`);
     }
@@ -72,7 +71,9 @@ function ownDataEntries(value: object): [string, unknown][] {
 
 function rejectCustomProperties(value: object, allowed: readonly string[] = []): void {
   const custom = Object.getOwnPropertyNames(value).find((key) => !allowed.includes(key));
-  if (custom) unsupported(value, `built-in with custom properties ${JSON.stringify(custom)}`);
+  if (custom !== undefined) {
+    unsupported(value, `built-in with custom properties ${JSON.stringify(custom)}`);
+  }
 }
 
 function builtInErrorKind(value: Error): EncodedErrorKind | undefined {
@@ -125,14 +126,15 @@ export function serializeGraph(value: unknown): string {
     const index = objects.length;
     references.set(candidate, index);
     objects.push(undefined as never);
-    rejectAccessors(candidate);
+    const descriptors = Object.getOwnPropertyDescriptors(candidate);
+    rejectAccessors(candidate, descriptors);
 
     if (Array.isArray(candidate)) {
       if (Object.getPrototypeOf(candidate) !== Array.prototype) {
         return unsupported(candidate, "custom-prototype data");
       }
       const values: [number, EncodedValue][] = [];
-      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(candidate))) {
+      for (const [key, descriptor] of Object.entries(descriptors)) {
         if (key === "length") {
           if (!descriptor.writable || descriptor.enumerable || descriptor.configurable) {
             unsupported(candidate, `non-default property descriptor ${JSON.stringify(key)}`);
@@ -223,7 +225,7 @@ export function serializeGraph(value: unknown): string {
       }
       objects[index] = {
         type: prototype === null ? "null-object" : "object",
-        values: ownDataEntries(candidate).map(([key, entry]) => [key, encode(entry)]),
+        values: ownDataEntries(candidate, descriptors).map(([key, entry]) => [key, encode(entry)]),
       };
     }
     return { $: "ref", v: index };
@@ -254,7 +256,9 @@ function validateKeys(
   path: string,
 ): void {
   const unexpected = Object.keys(record).find((key) => !allowed.includes(key));
-  if (unexpected) invalidPayload(`${path} contains unexpected property ${unexpected}`);
+  if (unexpected !== undefined) {
+    invalidPayload(`${path} contains unexpected property ${unexpected}`);
+  }
 }
 
 function validateEncodedValue(value: unknown, objectCount: number, path: string): void {

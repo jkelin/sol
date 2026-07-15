@@ -96,7 +96,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned
   form/query/mutation helpers, and component
   factories while preserving `createRef()` objects and immutable primitive constants as
-  non-reactive values, recognizing explicit reactive helpers and extracted context methods,
+  non-reactive values, analyzing each initializer's free references once for self, forward, and
+  reactive classification, recognizing explicit reactive helpers and extracted context methods,
   capturing awaits through transparent TypeScript expressions with a linear reverse-call-graph
   analysis, attaching authored locations to
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read

@@ -60,7 +60,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
   signatures, boundary state, timeouts, and first-failure wakeups for pending waiters.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
-  array entries without scanning unused indexes, rejecting hidden lossy built-in extensions and
+  array entries without scanning unused indexes, snapshotting each object's descriptors once,
+  rejecting hidden lossy built-in extensions, exact-shape violations including empty-name fields,
   untagged non-finite payload numbers, nonnumeric RegExp state, and duplicate object keys, while
   preserving descriptor guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
@@ -75,9 +76,10 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   preserving the primary failure when request teardown also fails.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
-  generation from snapshotted destinations, route handles, descriptor-snapshotted route configs and
-  compiled metadata, retryable lazy-route descriptors, promise-normalized synchronous loader
-  failures, and frame-explicit reads and cached object views used after async setup resumes.
+  generation from snapshotted destinations, exact parameter-name checking, route handles,
+  descriptor-snapshotted route configs and compiled metadata, retryable lazy-route descriptors,
+  promise-normalized synchronous loader failures, and frame-explicit reads and cached object views
+  used after async setup resumes.
 - `route-descriptors.ts` defines the lightweight static route shape and specificity ordering shared
   with build adapters without loading the rendering runtime.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
@@ -96,7 +98,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets,
   evaluating each target once per reactive run.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including rollback
-  of Await value and local-error blocks whose mount fails.
+  of Await value and local-error blocks whose mount fails and SSR boundary rejection when a
+  finish-time rerender fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial

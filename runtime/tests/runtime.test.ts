@@ -1701,6 +1701,7 @@ describe("compiled DOM runtime", () => {
           return "42";
         },
       }),
+      { id: "42", "": "unknown" },
     ];
     const invalidSchemaFailures = await Promise.all(
       invalidSchemaValues.map(async (schemaValues) => {

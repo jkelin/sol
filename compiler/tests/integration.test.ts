@@ -1015,6 +1015,29 @@ test("hydrates a fulfilled non-suspending initial query from its server loading 
   dispose();
 });
 
+test("rejects SSR when a fulfilled suspending query makes its boundary rerender fail", async () => {
+  const module = await loadCompiled(`
+    import { $component, Suspense } from "@soljs/sol";
+    const Data = $component(function Data() {
+      const query = globalThis.integrationQuery({
+        queryKey: ["failed-server-rerender", ${JSON.stringify(crypto.randomUUID())}],
+        query: () => Promise.resolve("ready"),
+        cacheTime: 0,
+      });
+      if (query.data === "ready") throw new Error("server query rerender failed");
+      return <p>Waiting</p>;
+    });
+    export const App = $component(function App() {
+      return <Suspense fallback={<p>Timed out</p>} timeoutMs={20}><Data /></Suspense>;
+    });
+  `);
+
+  await expectRejection(
+    renderToStringAsync(module.App as Component),
+    "server query rerender failed",
+  );
+});
+
 test("disposing a suspended query finishes its parent boundary before settlement", async () => {
   const module = await loadCompiled(`
     import { $component, Suspense } from "@soljs/sol";

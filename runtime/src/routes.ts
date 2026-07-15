@@ -288,7 +288,7 @@ function validateRouteValues(
   const missing = pathnameParameterNames.find((name) => !Object.hasOwn(descriptors, name));
   if (missing) throw new TypeError(`Route schema output is missing parameter ${missing}`);
   const unexpected = paramKeys.find((name) => !parameterNames.includes(name));
-  if (unexpected)
+  if (unexpected !== undefined)
     throw new TypeError(`Route schema output contains unknown parameter ${unexpected}`);
   const validated: Record<string, string | number | undefined> = {};
   for (const name of parameterNames) {

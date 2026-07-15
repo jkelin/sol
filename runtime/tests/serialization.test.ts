@@ -137,6 +137,27 @@ describe("SSR graph serialization", () => {
     expect(() => serializeGraph(new Uint8Array([1]))).toThrow("typed buffer");
   });
 
+  test("rejects unknown empty-name fields and built-in properties", () => {
+    expect(() => deserializeGraph(JSON.stringify({ root: null, objects: [], "": true }))).toThrow(
+      "unexpected property",
+    );
+    expect(() =>
+      deserializeGraph(JSON.stringify({ root: { $: "undefined", "": true }, objects: [] })),
+    ).toThrow("unexpected property");
+    expect(() =>
+      deserializeGraph(encodedGraph({ type: "object", values: [], "": true }, { $: "ref", v: 0 })),
+    ).toThrow("unexpected property");
+
+    const date = new Date();
+    Object.defineProperty(date, "", {
+      configurable: true,
+      enumerable: true,
+      value: "lost",
+      writable: true,
+    });
+    expect(() => serializeGraph(date)).toThrow("custom properties");
+  });
+
   test("rejects accessors, symbol keys, and custom array properties", () => {
     const accessor = Object.defineProperty({}, "value", { enumerable: true, get: () => 1 });
     const symbolKey = { [Symbol("key")]: true };

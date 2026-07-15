@@ -159,12 +159,16 @@ export function suspense(
           finished = true;
           pending -= 1;
           if (pending === 0 && !failed && !timedOut && content) {
-            if (rerenderOnResolve) {
-              content.dispose();
-              content = render({ ...contentFrame, ssrRerender: true });
+            try {
+              if (rerenderOnResolve) {
+                content.dispose();
+                content = render({ ...contentFrame, ssrRerender: true });
+              }
+              show(content);
+              boundary?.finish();
+            } catch (error) {
+              controller.reject(error);
             }
-            show(content);
-            boundary?.finish();
           }
         };
       },

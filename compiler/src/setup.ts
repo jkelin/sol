@@ -6,7 +6,6 @@ import {
   expressionCode,
   reactiveHelperCall,
   referencedNames,
-  referencesReactive,
   statementCode,
   unwrapTransparentExpression,
   validateErasedFunctionScope,
@@ -313,25 +312,21 @@ export function compileSetup(
         stablePrimitiveNames.add(declaration.id.name);
         continue;
       }
-      if (
-        initializer &&
-        t.isExpression(initializer) &&
-        referencedNames(initializer).has(declaration.id.name)
-      ) {
+      const expression = initializer && t.isExpression(initializer) ? initializer : undefined;
+      const references = expression ? referencedNames(expression) : undefined;
+      if (references?.has(declaration.id.name)) {
         codeFrame(
           compiler,
-          initializer,
+          expression!,
           `Reactive component declaration ${declaration.id.name} cannot reference itself`,
         );
       }
-      if (initializer && t.isExpression(initializer)) {
-        const forwardReference = [...referencedNames(initializer)].find((name) =>
-          remainingDataNames.has(name),
-        );
+      if (references) {
+        const forwardReference = [...references].find((name) => remainingDataNames.has(name));
         if (forwardReference) {
           codeFrame(
             compiler,
-            initializer,
+            expression!,
             `Reactive component declarations cannot reference later binding ${forwardReference}`,
           );
         }
@@ -343,8 +338,8 @@ export function compileSetup(
           : t.isAwaitExpression(initializer)
             ? "signal"
             : statement.kind === "const" &&
-                initializer &&
-                referencesReactive(initializer, new Set(bindings.keys()), propsName)
+                references &&
+                [...references].some((name) => name === propsName || bindings.has(name))
               ? "computed"
               : "signal";
       declarationKinds.set(declaration, kind);

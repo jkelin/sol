@@ -1,10 +1,12 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
+import type { Scope } from "@babel/traverse";
 import * as t from "@babel/types";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath } from "vite";
-import { traverse } from "./ast.ts";
+import MagicString from "magic-string";
+import { generate, traverse } from "./ast.ts";
 import { compile } from "./compile.ts";
 import { canonicalHttpRoutePath } from "./http-path.ts";
 import {
@@ -21,6 +23,7 @@ const devtoolsBuildEntry = "/@sol/devtools";
 const resolvedDevtoolsBuildEntry = "\0sol:devtools-entry";
 const componentFile = /\.tsx(?:\?.*)?$/;
 const solFile = /\.sol\.tsx?(?:\?.*)?$/i;
+const moduleFile = /\.[cm]?[jt]sx?(?:\?.*)?$/i;
 
 export interface SolPluginOptions {
   /** Inject the in-app diagnostics panel and global API. Defaults to true for Vite dev servers. */
@@ -56,7 +59,7 @@ async function routeManifest(files: readonly string[], root: string): Promise<st
     files.map(async (file) => declaredRoutes(await readFile(file, "utf8"), file)),
   );
   const loaders = files.map((file, index) => {
-    const specifier = `/@fs/${normalizePath(file)}?sol-route-page`;
+    const specifier = `/@fs/${normalizePath(file)}`;
     return `const __sol_load_route_module_${index} = () => import(${JSON.stringify(specifier)});`;
   });
   const routes = declarations.flatMap((items, fileIndex) =>
@@ -73,7 +76,7 @@ async function routeManifest(files: readonly string[], root: string): Promise<st
     items.map((declaration) => ({
       path: declaration.path,
       compiled: declaration.compiled,
-      assetKey: `${normalizePath(relative(root, files[fileIndex]!))}?sol-route-page`,
+      assetKey: normalizePath(relative(root, files[fileIndex]!)),
     })),
   );
   return `import { lazyRoute as __sol_lazy_route } from "sol/compiler-runtime";
@@ -85,7 +88,7 @@ export default [${routes.join(",\n")}];`;
 
 function endpointManifest(files: readonly string[]): string {
   const imports = files.map((file, index) => {
-    const specifier = `/@fs/${normalizePath(file)}`;
+    const specifier = `/@fs/${normalizePath(file)}?sol-endpoints`;
     return `import * as __sol_endpoint_module_${index} from ${JSON.stringify(specifier)};`;
   });
   const modules = files.map((_, index) => `__sol_endpoint_module_${index}`).join(", ");
@@ -93,6 +96,264 @@ function endpointManifest(files: readonly string[]): string {
 import { isServerEndpoint as __sol_is_endpoint } from "sol/compiler-runtime";
 const __sol_modules = [${modules}];
 export default __sol_modules.flatMap(module => Object.values(module).filter(__sol_is_endpoint));`;
+}
+
+function routeHandleProjection(source: string, filename: string): string {
+  const routes = declaredRoutes(source, filename);
+  return `import { routeHandle as __sol_route_handle } from "sol/compiler-runtime";
+${routes.map((route) => `export const ${route.exportName} = __sol_route_handle({ path: ${JSON.stringify(route.path)} }, ${JSON.stringify(route.compiled)});`).join("\n")}`;
+}
+
+function expressionIsPure(expression: t.Expression): boolean {
+  const ast = t.file(t.program([t.expressionStatement(t.cloneNode(expression, true))]));
+  let pure = false;
+  traverse(ast, {
+    ExpressionStatement(path) {
+      pure = path.get("expression").isPure();
+      path.stop();
+    },
+  });
+  return pure;
+}
+
+function effectfulDeclaration(statement: t.Statement): boolean {
+  const declaration = t.isExportNamedDeclaration(statement) ? statement.declaration : statement;
+  if (t.isVariableDeclaration(declaration)) {
+    return declaration.declarations.some(
+      (item) => item.init && t.isExpression(item.init) && !expressionIsPure(item.init),
+    );
+  }
+  if (!t.isClassDeclaration(declaration)) return false;
+  return declaration.body.body.some(
+    (item) =>
+      (t.isStaticBlock(item) && item.body.length > 0) ||
+      ((t.isClassProperty(item) || t.isClassPrivateProperty(item)) &&
+        item.static &&
+        item.value !== null &&
+        t.isExpression(item.value) &&
+        !expressionIsPure(item.value)) ||
+      ("computed" in item &&
+        item.computed &&
+        "key" in item &&
+        t.isExpression(item.key) &&
+        !expressionIsPure(item.key)),
+  );
+}
+
+function dependencyProjection(source: string, filename: string): string {
+  const ast = parse(source, {
+    sourceType: "module",
+    sourceFilename: filename,
+    plugins: ["typescript", "jsx"],
+  });
+  const helpers = declarationHelperBindings(ast);
+  const exportedNames = manifestExportedNames(ast);
+  const roots = new Set<string>();
+  const routeRoots = new Set<string>();
+  traverse(ast, {
+    VariableDeclarator(path) {
+      const helper = t.isCallExpression(path.node.init)
+        ? manifestCallHelper(helpers, path.node.init.callee)
+        : undefined;
+      if (
+        t.isIdentifier(path.node.id) &&
+        exportedNames.has(path.node.id.name) &&
+        (helper === "$rpcQuery" || helper === "$rpcMutation" || helper === "$httpRoute")
+      ) {
+        roots.add(path.node.id.name);
+      }
+      if (helper === "$route" && t.isCallExpression(path.node.init)) {
+        if (t.isIdentifier(path.node.id)) routeRoots.add(path.node.id.name);
+        for (const binding of Object.values(path.scope.bindings)) {
+          if (
+            binding.referencePaths.some(
+              (reference) =>
+                reference.node.start! >= path.node.init!.start! &&
+                reference.node.end! <= path.node.init!.end!,
+            )
+          ) {
+            routeRoots.add(binding.identifier.name);
+          }
+        }
+      }
+    },
+  });
+  let programScope: Scope | undefined;
+  traverse(ast, {
+    Program(path) {
+      programScope = path.scope;
+      path.stop();
+    },
+  });
+  if (!programScope) throw new Error("Expected endpoint projection program scope");
+  const scope = programScope;
+  const closure = (initial: ReadonlySet<string>): Set<string> => {
+    const names = new Set(initial);
+    const queue = [...initial];
+    while (queue.length) {
+      const binding = scope.bindings[queue.pop()!];
+      if (!binding) continue;
+      binding.path.traverse({
+        ReferencedIdentifier(path) {
+          const dependency = path.node.name;
+          if (
+            scope.bindings[dependency] !== path.scope.getBinding(dependency) ||
+            names.has(dependency)
+          )
+            return;
+          names.add(dependency);
+          queue.push(dependency);
+        },
+      });
+    }
+    return names;
+  };
+  const routeOwned = closure(routeRoots);
+  const needed = closure(roots);
+  const effects = new Set<t.Statement>();
+  const statementBindings = (statement: t.Statement): string[] =>
+    Object.values(scope.bindings)
+      .filter((binding) =>
+        binding.referencePaths.some(
+          (reference) =>
+            reference.node.start! >= statement.start! && reference.node.end! <= statement.end!,
+        ),
+      )
+      .map((binding) => binding.identifier.name);
+  const statementMutations = (statement: t.Statement): string[] =>
+    Object.values(scope.bindings)
+      .filter((binding) =>
+        binding.constantViolations.some(
+          (violation) =>
+            violation.node.start! >= statement.start! && violation.node.end! <= statement.end!,
+        ),
+      )
+      .map((binding) => binding.identifier.name);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const statement of ast.program.body) {
+      if (t.isImportDeclaration(statement) || effects.has(statement)) continue;
+      const references = statementBindings(statement);
+      const mutations = statementMutations(statement);
+      const declaredNames = Object.keys(t.getBindingIdentifiers(statement));
+      const routeOwnedDeclaration =
+        declaredNames.some((name) => routeOwned.has(name)) &&
+        !declaredNames.some((name) => needed.has(name));
+      if (routeOwnedDeclaration) continue;
+      const required =
+        mutations.some((name) => needed.has(name)) || references.some((name) => needed.has(name));
+      const authoredDeclarationEffect =
+        effectfulDeclaration(statement) && !declaredNames.some((name) => routeOwned.has(name));
+      if (!required && !authoredDeclarationEffect) continue;
+      effects.add(statement);
+      for (const name of [...references, ...mutations]) needed.add(name);
+      for (const name of declaredNames) needed.add(name);
+      const expanded = closure(needed);
+      for (const name of expanded) needed.add(name);
+      changed = true;
+    }
+  }
+  const body = ast.program.body.flatMap((statement): t.Statement[] => {
+    if (t.isImportDeclaration(statement)) {
+      if (
+        statement.specifiers.length === 0 &&
+        !/\.(?:css|less|sass|scss|styl|stylus)(?:$|\?)/i.test(statement.source.value)
+      ) {
+        return [t.cloneNode(statement, true)];
+      }
+      const specifiers = statement.specifiers.filter((specifier) =>
+        needed.has(specifier.local.name),
+      );
+      return specifiers.length
+        ? [
+            t.importDeclaration(
+              specifiers.map((item) => t.cloneNode(item)),
+              statement.source,
+            ),
+          ]
+        : [];
+    }
+    if (t.isExportNamedDeclaration(statement) && !statement.declaration && !statement.source) {
+      const specifiers = statement.specifiers.filter(
+        (specifier) =>
+          t.isExportSpecifier(specifier) &&
+          t.isIdentifier(specifier.local) &&
+          needed.has(specifier.local.name),
+      );
+      return specifiers.length
+        ? [
+            t.exportNamedDeclaration(
+              null,
+              specifiers.map((item) => t.cloneNode(item)),
+            ),
+          ]
+        : [];
+    }
+    if (effects.has(statement)) return [t.cloneNode(statement, true)];
+    const names = Object.keys(t.getBindingIdentifiers(statement));
+    return names.some((name) => needed.has(name) && !routeRoots.has(name))
+      ? [t.cloneNode(statement, true)]
+      : [];
+  });
+  return generate(t.program(body)).code;
+}
+
+function endpointProjection(source: string, filename: string): string {
+  return dependencyProjection(source, filename);
+}
+
+async function projectRouteImports(source: string, importer: string): Promise<string> {
+  const ast = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
+  const edits = new MagicString(source);
+  const candidates = ast.program.body.flatMap((statement) => {
+    if (!t.isImportDeclaration(statement) || !statement.source.value.startsWith(".")) return [];
+    const target = resolve(dirname(importer), statement.source.value);
+    return isRouteFile(target) ? [{ statement, target }] : [];
+  });
+  const projections = await Promise.all(
+    candidates.map(async ({ statement, target }) => {
+      try {
+        return { statement, target, targetSource: await readFile(target, "utf8") };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  for (const projection of projections) {
+    if (!projection) continue;
+    const { statement, target, targetSource } = projection;
+    const routeNames = new Set(
+      declaredRoutes(targetSource, target).map((route) => route.exportName),
+    );
+    const handles = statement.specifiers.filter(
+      (specifier) =>
+        t.isImportSpecifier(specifier) &&
+        t.isIdentifier(specifier.imported) &&
+        routeNames.has(specifier.imported.name),
+    );
+    if (!handles.length) continue;
+    const ordinary = statement.specifiers.filter((specifier) => !handles.includes(specifier));
+    const projected = t.importDeclaration(
+      handles.map((specifier) => t.cloneNode(specifier)),
+      t.stringLiteral(`${statement.source.value}?sol-route-handles`),
+    );
+    const imports = [projected];
+    if (ordinary.length) {
+      imports.push(
+        t.importDeclaration(
+          ordinary.map((specifier) => t.cloneNode(specifier)),
+          t.cloneNode(statement.source),
+        ),
+      );
+    }
+    edits.overwrite(
+      statement.start!,
+      statement.end!,
+      imports.map((item) => generate(item).code).join("\n"),
+    );
+  }
+  return edits.toString();
 }
 
 type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
@@ -386,14 +647,25 @@ export function sol(options: SolPluginOptions = {}): Plugin {
       server.watcher.on("unlink", changed);
     },
     transform: {
-      filter: { id: [componentFile, solFile] },
-      handler(source, id, transformOptions) {
-        if ((!componentFile.test(id) && !solFile.test(id)) || id.includes("/node_modules/")) {
+      filter: { id: [moduleFile] },
+      async handler(source, id, transformOptions) {
+        if (!moduleFile.test(id) || id.includes("/node_modules/")) {
           return null;
         }
-        return compile(source, id.split("?", 1)[0], {
+        const filename = id.split("?", 1)[0]!;
+        if (id.includes("?sol-route-handles")) {
+          return await projectRouteImports(routeHandleProjection(source, filename), filename);
+        }
+        const projection = id.includes("?sol-endpoints")
+          ? endpointProjection(source, filename)
+          : source;
+        const projected = await projectRouteImports(projection, filename);
+        if (!componentFile.test(id) && !solFile.test(id)) {
+          return projected === source ? null : projected;
+        }
+        return compile(projected, filename, {
           target: transformOptions?.ssr ? "server" : "client",
-          routeMode: id.includes("?sol-route-page") ? "page" : "handle",
+          routeMode: "page",
         });
       },
     },

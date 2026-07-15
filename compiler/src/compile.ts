@@ -17,6 +17,19 @@ export function compile(
 ): CompileResult {
   if (typeof source !== "string") throw new TypeError("compile() expects source code as a string");
   if (!filename) throw new TypeError("compile() expects a filename");
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new TypeError("compile() options must be an object");
+  }
+  if (options.target !== undefined && options.target !== "client" && options.target !== "server") {
+    throw new TypeError('compile() target must be "client" or "server"');
+  }
+  if (
+    options.routeMode !== undefined &&
+    options.routeMode !== "handle" &&
+    options.routeMode !== "page"
+  ) {
+    throw new TypeError('compile() routeMode must be "handle" or "page"');
+  }
   let mappingMarkerPrefix = "__sol_source_";
   while (source.includes(`/*${mappingMarkerPrefix}`))
     mappingMarkerPrefix = `_${mappingMarkerPrefix}`;

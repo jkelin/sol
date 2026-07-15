@@ -55,8 +55,12 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation, route handles, validated cached lazy-route descriptors, and frame-explicit reads and
   object views used after async setup resumes.
+- `route-descriptors.ts` defines the lightweight static route shape and specificity ordering shared
+  with build adapters without loading the rendering runtime.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
   application paths.
+- `specificity.ts` compares matcher specificity vectors before route and HTTP dispatchers apply
+  their distinct deterministic tie-breaks.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting and reactive or one-shot text rendering.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
@@ -134,6 +138,13 @@ Solkit also calls `configureRouterBase(import.meta.env.BASE_URL)` before hydrati
 entries deployed below `/` can do the same; router state remains expressed in logical application
 paths while browser history retains the configured base. Browser locations outside that base remain
 unmatched rather than being interpreted as logical application paths.
+
+`configureRouterNavigation(mode)` selects the browser navigation strategy. Its
+`RouterNavigationMode` argument is either `"history"` (the default), which updates browser history
+and loads the destination route chunk without a document request, or `"document"`, which leaves
+links and imperative navigation to full-page requests. Solkit configures `"document"` for static
+applications and `"history"` for server-driven applications. This setting is browser-global and
+must be configured before application navigation begins.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or

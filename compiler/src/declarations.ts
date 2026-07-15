@@ -73,6 +73,7 @@ export function compileComponentDeclarations(state: CompilationState): void {
 export function compileRouteDeclarations(state: CompilationState): void {
   const { ast, compiler, edits, routeCallRanges } = state;
   const exportedNames = exportedLocalNames(ast);
+  let hasRoutes = false;
   for (const statement of ast.program.body) {
     const exported = t.isExportNamedDeclaration(statement);
     const declaration = exported ? statement.declaration : statement;
@@ -83,6 +84,7 @@ export function compileRouteDeclarations(state: CompilationState): void {
         declarationCallHelper(compiler, variable.init) === "$route",
     );
     if (routeVariables.length === 0) continue;
+    hasRoutes = true;
     const variable = routeVariables[0]!;
     if (!isSolFilename(compiler.filename)) {
       codeFrame(compiler, variable, "$route() is only valid in *.sol.ts or *.sol.tsx files");
@@ -141,10 +143,20 @@ export function compileRouteDeclarations(state: CompilationState): void {
       end: statement.end!,
       code:
         compiler.routeMode === "handle"
-          ? `${exported ? "export " : ""}const ${variable.id.name} = __sol_route_handle(${generate(config).code}, ${JSON.stringify(parsedPath)});`
+          ? `${exported ? "export " : ""}const ${variable.id.name} = __sol_route_handle({ path: ${JSON.stringify(property.value.value)} }, ${JSON.stringify(parsedPath)});`
           : `${exported ? "export " : ""}const ${variable.id.name} = __sol_route(${generate(config).code}, ${candidate.name}, ${JSON.stringify(parsedPath)});`,
     });
     routeCallRanges.add(`${call.start}:${call.end}`);
+  }
+  if (compiler.routeMode === "handle" && hasRoutes) {
+    for (const statement of ast.program.body) {
+      if (
+        t.isImportDeclaration(statement) &&
+        /\.(?:css|less|sass|scss|styl|stylus)(?:$|\?)/i.test(statement.source.value)
+      ) {
+        edits.push({ start: statement.start!, end: statement.end!, code: "" });
+      }
+    }
   }
 }
 

@@ -10,6 +10,7 @@ import {
   block,
   component,
   instantiate,
+  lazyRoute,
   route,
   routeObject,
   routeRead,
@@ -21,6 +22,22 @@ interface ControlledAnimation {
   animation: Animation;
   cancelled: boolean;
   finish(): void;
+}
+
+interface Deferred<T> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 const window = new Window({ url: "http://localhost/" });
@@ -100,6 +117,10 @@ const First = page("First", true, true);
 const Second = page("Second", true);
 const Plain = page("Plain", false);
 const Async = page("Async", false);
+const Lazy = page("Lazy", false);
+const Slow = page("Slow", false);
+const Fast = page("Fast", false);
+const Pending = page("Pending", false);
 const unicodeRoute = route({ path: "/café" }, Plain, {
   pattern: "^/caf%C3%A9$",
   parameterNames: [],
@@ -129,6 +150,55 @@ const asyncRoute = route(
     queryParameters: [],
     specificity: [1, 2],
   },
+);
+const lazyMetadata = {
+  pattern: "^/lazy/([^/]+)$",
+  parameterNames: ["id"],
+  pathnameParameterNames: ["id"],
+  queryParameters: [],
+  specificity: [1, 0],
+} as const;
+let lazySchemaCalls = 0;
+let lazyLoadCalls = 0;
+const lazyImplementation = route(
+  {
+    path: "/lazy/:id",
+    schema(raw: Readonly<Record<string, string | undefined>>) {
+      lazySchemaCalls += 1;
+      return { id: Number(raw.id) };
+    },
+  },
+  Lazy,
+  lazyMetadata,
+);
+const lazyRequest = deferred<unknown>();
+const lazyDefinition = lazyRoute("/lazy/:id", lazyMetadata, () => {
+  lazyLoadCalls += 1;
+  return lazyRequest.promise;
+});
+
+function staticMetadata(path: string) {
+  return {
+    pattern: `^${path}$`,
+    parameterNames: [],
+    pathnameParameterNames: [],
+    queryParameters: [],
+    specificity: [1],
+  } as const;
+}
+
+const slowRequest = deferred<unknown>();
+const fastRequest = deferred<unknown>();
+const slowMetadata = staticMetadata("/slow-lazy");
+const fastMetadata = staticMetadata("/fast-lazy");
+const failedMetadata = staticMetadata("/failed-lazy");
+const ssrMetadata = staticMetadata("/ssr-lazy");
+const initialMetadata = staticMetadata("/initial-lazy");
+let ssrLoadCalls = 0;
+let initialLoadCalls = 0;
+const failedLoad = new Error("Route chunk failed");
+const failedDefinition = lazyRoute("/failed-lazy", failedMetadata, () =>
+  Promise.reject(failedLoad),
 );
 const routes = [
   route({ path: "/" }, First, {
@@ -162,21 +232,57 @@ const routes = [
     specificity: [1],
   }),
   asyncRoute,
+  lazyDefinition,
+  lazyRoute("/slow-lazy", slowMetadata, () => slowRequest.promise),
+  lazyRoute("/fast-lazy", fastMetadata, () => fastRequest.promise),
+  failedDefinition,
+  lazyRoute("/ssr-lazy", ssrMetadata, async () => {
+    ssrLoadCalls += 1;
+    return route({ path: "/ssr-lazy" }, Lazy, ssrMetadata);
+  }),
+  lazyRoute("/initial-lazy", initialMetadata, async () => {
+    initialLoadCalls += 1;
+    return route({ path: "/initial-lazy" }, Lazy, initialMetadata);
+  }),
 ];
 
+window.history.replaceState(null, "", "/initial-lazy");
 await mock.module("virtual:sol/routes", () => ({ default: routes }));
 const devtools = installDevtools()!;
-const { configureRouterBase, Route, router } = await import("../src/router.ts");
+const { configureRouterBase, configureRouterNavigation, Route, router, routerReady } =
+  await import("../src/router.ts");
+await routerReady;
+const initialRoutePath = router.route?.path;
+router.navigate("/");
 
 afterAll(() => window.close());
+
+async function flushNavigation(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+test("loads the initial browser route before routerReady resolves", () => {
+  expect(initialRoutePath).toBe("/initial-lazy");
+  expect(initialLoadCalls).toBe(1);
+});
 
 test("route transitions overlap, freeze outgoing state, and clean rapid navigation", () => {
   expect((devtools.router.routes as Array<{ path: string }>).map((entry) => entry.path)).toEqual([
     "/async/:id",
+    "/lazy/:id",
     "/a!",
     "/café",
+    "/failed-lazy",
+    "/fast-lazy",
+    "/initial-lazy",
     "/plain",
     "/second",
+    "/slow-lazy",
+    "/ssr-lazy",
     "/:__proto__",
     "/",
   ]);
@@ -211,6 +317,69 @@ test("route transitions overlap, freeze outgoing state, and clean rapid navigati
   dispose();
 });
 
+test("shows pending UI, loads before validation, and caches repeated route loads", async () => {
+  const target = document.createElement("main");
+  const dispose = mount(Route, target, { pending: Pending });
+
+  router.navigate("/lazy/7");
+  router.navigate("/lazy/7");
+  expect(target.querySelector('[data-page="pending"]')).not.toBeNull();
+  expect(lazyLoadCalls).toBe(1);
+  expect(lazySchemaCalls).toBe(0);
+
+  lazyRequest.resolve(lazyImplementation);
+  await flushNavigation();
+  expect(target.querySelector('[data-page="lazy"]')).not.toBeNull();
+  expect(router.params.id).toBe(7);
+  expect(lazySchemaCalls).toBe(2);
+
+  router.navigate("/");
+  await flushNavigation();
+  router.navigate("/lazy/8");
+  await flushNavigation();
+  expect(router.params.id).toBe(8);
+  expect(lazyLoadCalls).toBe(1);
+  expect(lazySchemaCalls).toBe(3);
+
+  router.navigate("/");
+  await flushNavigation();
+  dispose();
+});
+
+test("ignores stale lazy route resolutions", async () => {
+  router.navigate("/slow-lazy");
+  router.navigate("/fast-lazy");
+
+  fastRequest.resolve(route({ path: "/fast-lazy" }, Fast, fastMetadata));
+  await flushNavigation();
+  expect(router.route?.path).toBe("/fast-lazy");
+
+  slowRequest.resolve(route({ path: "/slow-lazy" }, Slow, slowMetadata));
+  await flushNavigation();
+  expect(router.route?.path).toBe("/fast-lazy");
+
+  router.navigate("/");
+  await flushNavigation();
+});
+
+test("reports lazy route load failures and recovers on later navigation", async () => {
+  router.navigate("/failed-lazy");
+  try {
+    await failedDefinition.load();
+  } catch (error) {
+    expect(error).toBe(failedLoad);
+  }
+  await flushNavigation();
+
+  expect(devtools.router.status).toBe("error");
+  expect(devtools.router.error).toEqual({ name: "Error", message: "Route chunk failed" });
+
+  router.navigate("/");
+  await flushNavigation();
+  expect(devtools.router.status).toBe("ready");
+  expect(router.route?.path).toBe("/");
+});
+
 test("renders the matched route from an isolated server request URL", async () => {
   const html = await renderToStringAsync(Route, undefined, {
     url: "https://example.test/plain?source=server",
@@ -218,6 +387,27 @@ test("renders the matched route from an isolated server request URL", async () =
 
   expect(html).toContain('data-page="plain"');
   expect(html).not.toContain('data-page="first"');
+});
+
+test("prepares and caches lazy routes before server rendering", async () => {
+  const first = await renderToStringAsync(Route, undefined, {
+    url: "https://example.test/ssr-lazy",
+  });
+  const second = await renderToStringAsync(Route, undefined, {
+    url: "https://example.test/ssr-lazy?again=true",
+  });
+
+  expect(first).toContain('data-page="lazy"');
+  expect(second).toContain('data-page="lazy"');
+  expect(ssrLoadCalls).toBe(1);
+});
+
+test("rejects server rendering when a lazy route import fails", () => {
+  expect(
+    renderToStringAsync(Route, undefined, {
+      url: "https://example.test/failed-lazy",
+    }),
+  ).rejects.toBe(failedLoad);
 });
 
 test("preserves request route state after async component setup resumes", async () => {
@@ -312,6 +502,37 @@ test("validates navigation options", () => {
   expect(() => router.navigate("/", { [Symbol("extra")]: true } as never)).toThrow(
     "unknown property",
   );
+});
+
+test("uses document location APIs for imperative document navigation", () => {
+  const assign = mock(() => {});
+  const replace = mock(() => {});
+  const pushState = mock(() => {});
+  const originalAssign = window.location.assign.bind(window.location);
+  const originalReplace = window.location.replace.bind(window.location);
+  const originalPushState = window.history.pushState.bind(window.history);
+  Object.defineProperty(window.location, "assign", { configurable: true, value: assign });
+  Object.defineProperty(window.location, "replace", { configurable: true, value: replace });
+  Object.defineProperty(window.history, "pushState", { configurable: true, value: pushState });
+  configureRouterNavigation("document");
+  try {
+    router.navigate("/plain?mode=document");
+    router.navigate("/second", { replace: true });
+    expect(assign).toHaveBeenCalledWith("/plain?mode=document");
+    expect(replace).toHaveBeenCalledWith("/second");
+    expect(pushState).not.toHaveBeenCalled();
+  } finally {
+    configureRouterNavigation("history");
+    Object.defineProperty(window.location, "assign", { configurable: true, value: originalAssign });
+    Object.defineProperty(window.location, "replace", {
+      configurable: true,
+      value: originalReplace,
+    });
+    Object.defineProperty(window.history, "pushState", {
+      configurable: true,
+      value: originalPushState,
+    });
+  }
 });
 
 test("matches and navigates beneath a configured deployment base", async () => {

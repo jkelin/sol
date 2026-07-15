@@ -40,6 +40,7 @@ export {
   type RenderFrame,
 } from "./rendering.ts";
 export {
+  compareRouteSpecificity,
   isRouteDefinition,
   lazyRoute,
   resolveRoute,
@@ -53,6 +54,8 @@ export {
   type RouteConfig,
   type RouteDefinition,
   type LazyRouteDefinition,
+  type RouteSpecificityDescriptor,
+  type StaticRouteDescriptor,
   type RouteValues,
 } from "./routes.ts";
 export { transition } from "./transitions.ts";

@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ResolvedConfig } from "vite";
+import { build, type Plugin, type ResolvedConfig } from "vite";
 import { bunAdapter } from "../src/adapters/bun.ts";
 import { staticAdapter } from "../src/adapters/static.ts";
 import type { SolkitAdapterContext } from "../src/types.ts";
@@ -94,6 +96,52 @@ test("emits adapter output through Vite's output pipeline", async () => {
     expect(emitted[0]?.fileName).toBe("docs/index.html");
     expect(emitted[0]?.source).toBe("docs");
   } finally {
+    if (previousTarget === undefined) delete process.env.SOLKIT_BUILD_TARGET;
+    else process.env.SOLKIT_BUILD_TARGET = previousTarget;
+  }
+});
+
+test("makes emitted adapter HTML visible to later Vite output hooks", async () => {
+  const previousTarget = process.env.SOLKIT_BUILD_TARGET;
+  const root = await mkdtemp(join(tmpdir(), "solkit-vite-output-"));
+  let observedSource: string | Uint8Array | undefined;
+  process.env.SOLKIT_BUILD_TARGET = "adapter";
+  try {
+    const adapter = Object.assign(
+      {
+        name: "integration-output",
+        async write(context: SolkitAdapterContext) {
+          expect(context.writeFile).toBeFunction();
+          await context.writeFile?.(
+            join(context.clientDirectory, "docs", "index.html"),
+            "<!doctype html><title>Docs</title>",
+          );
+        },
+      },
+      { static: true as const },
+    );
+    const observer: Plugin = {
+      name: "observe-solkit-output",
+      enforce: "post",
+      generateBundle: {
+        order: "post",
+        handler(_options, bundle) {
+          const page = bundle["docs/index.html"];
+          expect(page?.type).toBe("asset");
+          if (page?.type === "asset") observedSource = page.source;
+        },
+      },
+    };
+
+    await build({
+      root,
+      logLevel: "silent",
+      plugins: [solkit({ entry: "/src/app.tsx", adapter }), observer],
+    });
+
+    expect(observedSource).toBe("<!doctype html><title>Docs</title>");
+  } finally {
+    await rm(root, { recursive: true });
     if (previousTarget === undefined) delete process.env.SOLKIT_BUILD_TARGET;
     else process.env.SOLKIT_BUILD_TARGET = previousTarget;
   }

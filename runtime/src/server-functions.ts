@@ -1,6 +1,7 @@
 import { isObject, isPromiseLike } from "./reactivity.ts";
 import { deployedPath, logicalPathname } from "./route-base.ts";
 import { arrayIndex } from "./serialization.ts";
+import { compareSpecificityVectors } from "./specificity.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 
 const ENDPOINT = Symbol.for("sol.server.endpoint");
@@ -563,13 +564,10 @@ function rpcResponse(value: unknown, status = 200): Response {
 }
 
 function matcherCompare(left: HttpEndpoint, right: HttpEndpoint): number {
-  const length = Math.max(left.compiled.specificity.length, right.compiled.specificity.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference =
-      (right.compiled.specificity[index] ?? -1) - (left.compiled.specificity[index] ?? -1);
-    if (difference) return difference;
-  }
-  return right.compiled.specificity.length - left.compiled.specificity.length;
+  return (
+    compareSpecificityVectors(left.compiled.specificity, right.compiled.specificity) ||
+    right.compiled.specificity.length - left.compiled.specificity.length
+  );
 }
 
 export async function dispatchServerEndpoint(

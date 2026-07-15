@@ -65,7 +65,8 @@ Use `staticAdapter()` to render canonical application paths at build time. Solki
 includes every route without a pathname parameter. Export `staticPaths` only to add concrete
 parameterized paths; explicit literal paths remain accepted and are deduplicated with inferred
 paths. Static paths are logical root-relative pathnames without queries, hashes, dot segments,
-backslashes, or a trailing slash.
+backslashes, or a trailing slash. A literal route with a query template contributes its canonical
+pathname once; for example, `/search?term=:term` generates `dist/search/index.html`.
 
 ```tsx
 // src/entry.tsx
@@ -86,6 +87,9 @@ only its matched route-file chunk and static navigation performs a document load
 bundle and client manifest are removed after prerendering. Rendering fails rather than overwriting
 an existing nested `index.html`. Link to nested documents with directory URLs such as `/docs/`; the
 logical route and `staticPaths` values omit the trailing slash.
+
+Route-specific stylesheet and module-preload URLs preserve Vite's configured deployment `base`,
+including imported shared chunks.
 
 Solkit emits adapted files through Vite's output-generation pipeline. Prerendered HTML therefore
 appears in Vite's build report and is visible to subsequent `generateBundle` and `writeBundle`

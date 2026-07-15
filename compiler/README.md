@@ -13,7 +13,20 @@ export default defineConfig({ plugins: [sol()] });
 builds. Pass `{ devtools: false }` to disable the development panel, or `{ devtools: true }` to
 include it explicitly for another Vite command. The option boundary rejects non-boolean values.
 
-Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It returns transformed code and a source map.
+Tooling can call `compile(source, filename, options)` from `@sol/compiler` directly. It returns
+transformed code and a source map. `options.target` selects `"client"` or `"server"` endpoint
+lowering. `options.routeMode` selects a metadata-only `"handle"` projection or the full `"page"`
+implementation (the default). Handle projections retain the route path and matcher while omitting
+the schema and route-owned stylesheet imports; bundlers can consequently remove component,
+schema, and page-only dependency graphs. The Vite adapter rewrites named route-handle imports to a
+dedicated metadata projection, even when an import also names ordinary exports. The ordinary side
+of a mixed import retains the route module's full JavaScript, stylesheet, and side-effect semantics.
+Handle-only projections contain metadata only. Bare imports and the ordinary side of mixed imports
+continue to execute the original module once, preserving authored initialization without pulling
+route schemas, components, stylesheets, or their transitive module effects through handle imports.
+Generated lazy loaders use the full page projection, while endpoint discovery uses an endpoint-only
+binding-and-initialization-effect closure that excludes route implementations and their transitive
+dependencies; route handles referenced by endpoint code are projected again as metadata.
 
 ## Source files
 

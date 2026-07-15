@@ -1,22 +1,14 @@
 import { access, mkdir, readFile, rm, rmdir, writeFile as writeFileToDisk } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { compareRouteSpecificity, type StaticRouteDescriptor } from "sol/route-descriptors";
 import type { RequestHandler, SolkitAdapter, SolkitAdapterContext, StaticPaths } from "../types.ts";
 
 interface StaticApplication {
   readonly handle?: RequestHandler;
   readonly staticPaths?: StaticPaths;
   readonly staticRoutePaths?: StaticPaths;
-  readonly staticRoutes?: readonly StaticRoute[];
-}
-
-interface StaticRoute {
-  readonly path: string;
-  readonly compiled: {
-    readonly pattern: string;
-    readonly specificity: readonly number[];
-  };
-  readonly assetKey: string;
+  readonly staticRoutes?: readonly StaticRouteDescriptor[];
 }
 
 interface ClientManifestChunk {
@@ -100,7 +92,7 @@ function validateStaticPaths(value: unknown, name: string): asserts value is Sta
   }
 }
 
-function validateStaticRoutes(value: unknown): asserts value is readonly StaticRoute[] {
+function validateStaticRoutes(value: unknown): asserts value is readonly StaticRouteDescriptor[] {
   if (!Array.isArray(value))
     throw new TypeError("Static application staticRoutes must be an array");
   for (const route of value) {
@@ -108,21 +100,21 @@ function validateStaticRoutes(value: unknown): asserts value is readonly StaticR
       !route ||
       typeof route !== "object" ||
       Array.isArray(route) ||
-      typeof (route as Partial<StaticRoute>).path !== "string" ||
-      !(route as Partial<StaticRoute>).path?.startsWith("/") ||
-      typeof (route as Partial<StaticRoute>).assetKey !== "string" ||
-      !(route as Partial<StaticRoute>).assetKey ||
-      !(route as Partial<StaticRoute>).compiled ||
-      typeof (route as Partial<StaticRoute>).compiled?.pattern !== "string" ||
-      !Array.isArray((route as Partial<StaticRoute>).compiled?.specificity) ||
-      (route as Partial<StaticRoute>).compiled?.specificity.some(
+      typeof (route as Partial<StaticRouteDescriptor>).path !== "string" ||
+      !(route as Partial<StaticRouteDescriptor>).path?.startsWith("/") ||
+      typeof (route as Partial<StaticRouteDescriptor>).assetKey !== "string" ||
+      !(route as Partial<StaticRouteDescriptor>).assetKey ||
+      !(route as Partial<StaticRouteDescriptor>).compiled ||
+      typeof (route as Partial<StaticRouteDescriptor>).compiled?.pattern !== "string" ||
+      !Array.isArray((route as Partial<StaticRouteDescriptor>).compiled?.specificity) ||
+      (route as Partial<StaticRouteDescriptor>).compiled?.specificity.some(
         (part) => typeof part !== "number" || !Number.isFinite(part),
       )
     ) {
       throw new TypeError("Static application contains invalid static route metadata");
     }
     try {
-      RegExp((route as StaticRoute).compiled.pattern);
+      RegExp((route as StaticRouteDescriptor).compiled.pattern);
     } catch {
       throw new TypeError("Static application contains an invalid route pattern");
     }
@@ -156,24 +148,14 @@ function validStringArray(value: unknown): value is readonly string[] | undefine
   );
 }
 
-function compareStaticRoutes(left: StaticRoute, right: StaticRoute): number {
-  const length = Math.max(left.compiled.specificity.length, right.compiled.specificity.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference =
-      (right.compiled.specificity[index] ?? -1) - (left.compiled.specificity[index] ?? -1);
-    if (difference) return difference;
-  }
-  return left.path.localeCompare(right.path);
-}
-
 function routeAssetLinks(
   template: string,
   path: string,
-  routes: readonly StaticRoute[],
+  routes: readonly StaticRouteDescriptor[],
   manifest: ClientManifest,
 ): string {
   const route = routes
-    .toSorted(compareStaticRoutes)
+    .toSorted(compareRouteSpecificity)
     .find((candidate) => new RegExp(candidate.compiled.pattern).test(path));
   if (!route) return "";
   const manifestEntry = Object.entries(manifest).find(

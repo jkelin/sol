@@ -20,6 +20,7 @@ import {
 } from "./rendering.ts";
 import {
   canonicalizePathname,
+  compareRouteSpecificity,
   defineRouteValue,
   isRouteDefinition,
   registerRouter,
@@ -132,19 +133,6 @@ function setRouterState(next: RouterState): void {
   });
 }
 
-function compareRoutes(
-  left: LazyRouteDefinition | RouteDefinition,
-  right: LazyRouteDefinition | RouteDefinition,
-): number {
-  const length = Math.max(left.compiled.specificity.length, right.compiled.specificity.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference =
-      (right.compiled.specificity[index] ?? -1) - (left.compiled.specificity[index] ?? -1);
-    if (difference) return difference;
-  }
-  return left.config.path.localeCompare(right.config.path);
-}
-
 function prepareRoutes(
   definitions: readonly (LazyRouteDefinition | RouteDefinition)[],
 ): readonly PreparedRoute[] {
@@ -155,10 +143,17 @@ function prepareRoutes(
     }
     patterns.add(definition.compiled.pattern);
   }
-  return definitions.toSorted(compareRoutes).map((definition) => ({
-    definition,
-    matcher: new RegExp(definition.compiled.pattern),
-  }));
+  return definitions
+    .toSorted((left, right) =>
+      compareRouteSpecificity(
+        { path: left.config.path, compiled: left.compiled },
+        { path: right.config.path, compiled: right.compiled },
+      ),
+    )
+    .map((definition) => ({
+      definition,
+      matcher: new RegExp(definition.compiled.pattern),
+    }));
 }
 
 const preparedRoutes = prepareRoutes(routes);

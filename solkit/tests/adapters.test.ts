@@ -170,20 +170,28 @@ test("static adapter renders root and nested HTML beside client assets", async (
   await writeFile(join(clientDirectory, "assets", "app.js"), "export const built = true;");
   await writeFile(join(clientDirectory, "assets", "landing.js"), "export const landing = true;");
   await writeFile(join(clientDirectory, "assets", "docs.js"), "export const docs = true;");
+  await writeFile(join(clientDirectory, "assets", "docs.css"), ".docs { color: blue; }");
+  await writeFile(join(clientDirectory, "assets", "shared.js"), "export const shared = true;");
   await writeFile(
     join(clientDirectory, ".solkit", "manifest.json"),
     JSON.stringify({
-      "landing.sol.tsx?sol-route-page": { file: "assets/landing.js" },
-      "docs.sol.tsx?sol-route-page": { file: "assets/docs.js" },
+      "landing.sol.tsx": { file: "assets/landing.js" },
+      "docs.sol.tsx": {
+        file: "assets/docs.js",
+        css: ["assets/docs.css"],
+        imports: ["shared"],
+      },
+      shared: { file: "assets/shared.js" },
     }),
   );
   await writeFile(
     join(serverDirectory, "app.mjs"),
-    `export const staticRoutePaths = ["/"];
+    `export const staticRoutePaths = ["/", "/search"];
 export const staticPaths = ["/", "/docs/guide"];
 export const staticRoutes = [
-  { path: "/", compiled: { pattern: "^/$", specificity: [] }, assetKey: "landing.sol.tsx?sol-route-page" },
-  { path: "/docs/:slug", compiled: { pattern: "^/docs/([^/]+)$", specificity: [1, 0] }, assetKey: "docs.sol.tsx?sol-route-page" },
+  { path: "/", compiled: { pattern: "^/$", specificity: [] }, assetKey: "landing.sol.tsx" },
+  { path: "/search?term=:term", compiled: { pattern: "^/search$", specificity: [1] }, assetKey: "docs.sol.tsx" },
+  { path: "/docs/:slug", compiled: { pattern: "^/docs/([^/]+)$", specificity: [1, 0] }, assetKey: "docs.sol.tsx" },
 ];
 let rendering = false;
 export async function handle(request, context) {
@@ -203,16 +211,65 @@ export async function handle(request, context) {
   await staticAdapter().write({ serverDirectory, clientDirectory });
 
   const rootPage = await readFile(join(clientDirectory, "index.html"), "utf8");
+  const searchPage = await readFile(join(clientDirectory, "search", "index.html"), "utf8");
   const docsPage = await readFile(join(clientDirectory, "docs", "guide", "index.html"), "utf8");
   expect(rootPage).toContain("<main>/</main>");
   expect(rootPage).toContain('href="/assets/landing.js"');
   expect(rootPage).not.toContain('href="/assets/docs.js"');
+  expect(searchPage).toContain("<main>/search</main>");
+  expect(searchPage).toContain('href="/assets/docs.js"');
   expect(docsPage).toContain("<title>/docs/guide</title>");
   expect(docsPage).toContain('href="/assets/docs.js"');
+  expect(docsPage).toContain('href="/assets/docs.css"');
+  expect(docsPage).toContain('href="/assets/shared.js"');
   expect(await readFile(join(clientDirectory, "assets", "app.js"), "utf8")).toContain(
     "built = true",
   );
   expect(await Bun.file(join(serverDirectory, "app.mjs")).exists()).toBe(false);
+});
+
+test("static adapter prefixes matched route assets with the deployment base", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "solkit-static-base-"));
+  directories.push(directory);
+  const serverDirectory = join(directory, "server");
+  const clientDirectory = join(directory, "client");
+  await mkdir(serverDirectory, { recursive: true });
+  await mkdir(join(clientDirectory, ".solkit"), { recursive: true });
+  await writeFile(
+    join(clientDirectory, "index.html"),
+    '<!doctype html><head><!--solkit-head--></head><body><!--solkit-body--><script type="module" src="/project/assets/app.js"></script></body>',
+  );
+  await writeFile(
+    join(clientDirectory, ".solkit", "manifest.json"),
+    JSON.stringify({
+      "docs.sol.tsx": {
+        file: "assets/docs.js",
+        css: ["assets/docs.css"],
+        imports: ["shared"],
+      },
+      shared: { file: "assets/shared.js" },
+    }),
+  );
+  await writeFile(
+    join(serverDirectory, "app.mjs"),
+    `export const staticRoutePaths = ["/docs"];
+export const staticRoutes = [
+  { path: "/docs", compiled: { pattern: "^/docs$", specificity: [1] }, assetKey: "docs.sol.tsx" },
+];
+export async function handle(_request, context) {
+  return new Response(context.template.replace("<!--solkit-body-->", "<main>Docs</main>"), {
+    headers: { "content-type": "text/html" },
+  });
+}`,
+  );
+
+  await staticAdapter().write({ serverDirectory, clientDirectory });
+
+  const page = await readFile(join(clientDirectory, "docs", "index.html"), "utf8");
+  expect(page).toContain('href="/project/assets/docs.css"');
+  expect(page).toContain('href="/project/assets/docs.js"');
+  expect(page).toContain('href="/project/assets/shared.js"');
+  expect(page).not.toContain('href="/assets/docs.js"');
 });
 
 test("static adapter validates its public inputs and generated paths", async () => {

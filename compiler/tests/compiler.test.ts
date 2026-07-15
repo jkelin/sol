@@ -65,6 +65,7 @@ describe("compiler", () => {
       { routeMode: "handle" },
     );
     expect(handle.code).toContain("export const page = __sol_route_handle");
+    expect(handle.code).toContain('__sol_route_handle({ path: "/page" }');
     expect(handle.code).not.toContain("__sol_route({");
 
     for (const extension of ["ts", "tsx"]) {
@@ -75,6 +76,35 @@ describe("compiler", () => {
       );
       expect(routeModule.code).toContain("export const page = __sol_route");
     }
+  });
+
+  test("projects route handles without schemas or route-owned styles", () => {
+    const source = `
+      import "./page.css";
+      import { schema } from "./schema";
+      import { Page } from "./Page";
+      export const page = $route({ path: "/page/:id", schema }, Page);
+    `;
+    const handle = compile(source, "page.sol.tsx", { routeMode: "handle" });
+    const page = compile(source, "page.sol.tsx", { routeMode: "page" });
+
+    expect(handle.code).toContain('__sol_route_handle({ path: "/page/:id" }');
+    expect(handle.code).not.toContain("./page.css");
+    expect(handle.code).not.toMatch(/__sol_route_handle\([^;]*schema/);
+    expect(page.code).toContain('import "./page.css"');
+    expect(page.code).toContain("schema\n}, Page");
+  });
+
+  test("validates public compile projection options", () => {
+    expect(() => compile("", "page.sol.ts", null as never)).toThrow(
+      "compile() options must be an object",
+    );
+    expect(() => compile("", "page.sol.ts", { target: "worker" as never })).toThrow(
+      'compile() target must be "client" or "server"',
+    );
+    expect(() => compile("", "page.sol.ts", { routeMode: "eager" as never })).toThrow(
+      'compile() routeMode must be "handle" or "page"',
+    );
   });
 
   test("canonicalizes static route segments for URL pathname matching", () => {
@@ -2136,8 +2166,319 @@ test("the route manifest creates one lazy loader per route file and infers liter
     expect(source.match(/import\("\/@fs\//g)).toHaveLength(1);
     expect(source.match(/__sol_lazy_route\(/g)).toHaveLength(2);
     expect(source).toContain('export const staticRoutePaths = ["/docs"]');
-    expect(source).toContain('"assetKey":"pages.sol.tsx?sol-route-page"');
+    expect(source).toContain('"assetKey":"pages.sol.tsx"');
     expect(source).not.toContain("import * as __sol_route_module");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("route and endpoint entries exclude lazy page dependencies", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "route-projection-"));
+  try {
+    await Promise.all([
+      writeFile(
+        join(root, "entry.ts"),
+        `import routes from "virtual:sol/routes";
+         import endpoints from "virtual:sol/server-endpoints";
+         console.log(routes, endpoints);`,
+      ),
+      writeFile(
+        join(root, "page.sol.tsx"),
+        `import { $httpRoute, $route } from "sol";
+         import "./page.css";
+         import { Page } from "./Page";
+         import { routeSchema } from "./schema";
+         export const page = $route({ path: "/page/:id", schema: routeSchema }, Page);
+         export const endpoint = $httpRoute(
+           { method: "GET", path: "/api/page", schema: value => value },
+           async () => new Response("endpoint"),
+         );`,
+      ),
+      writeFile(
+        join(root, "Page.tsx"),
+        `import { $component } from "sol";
+         import "./nested.css";
+         import "./page-effect";
+         export const Page = $component(function Page() {
+           return <main>{"PAGE_IMPLEMENTATION_SECRET"}</main>;
+         });`,
+      ),
+      writeFile(join(root, "page-effect.ts"), `console.log("PAGE_TRANSITIVE_EFFECT_SECRET");`),
+      writeFile(
+        join(root, "nested.css"),
+        `.nested { --projection-marker: "PAGE_TRANSITIVE_STYLE_SECRET"; }`,
+      ),
+      writeFile(
+        join(root, "schema.ts"),
+        `export const routeSchema = {
+           parse(value: unknown) { console.log("ROUTE_SCHEMA_SECRET"); return value; }
+         };`,
+      ),
+      writeFile(join(root, "page.css"), `.page { --projection-marker: "ROUTE_STYLE_SECRET"; }`),
+    ]);
+
+    const result = await build({
+      root,
+      logLevel: "silent",
+      plugins: [sol()],
+      build: {
+        write: false,
+        rollupOptions: { input: join(root, "entry.ts") },
+      },
+    });
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((item) => {
+      if (!("output" in item)) throw new Error("Expected a completed Vite build");
+      return item.output;
+    });
+    const entry = outputs.find((output) => output.type === "chunk" && output.isEntry);
+    if (!entry || entry.type !== "chunk") throw new Error("Expected an entry chunk");
+    const lazyOutput = outputs
+      .filter((output) => output !== entry)
+      .map((output) => (output.type === "chunk" ? output.code : String(output.source)))
+      .join("\n");
+
+    expect(entry.code).not.toContain("PAGE_IMPLEMENTATION_SECRET");
+    expect(entry.code).not.toContain("ROUTE_SCHEMA_SECRET");
+    expect(entry.code).not.toContain("ROUTE_STYLE_SECRET");
+    expect(entry.code).not.toContain("PAGE_TRANSITIVE_EFFECT_SECRET");
+    expect(entry.code).not.toContain("PAGE_TRANSITIVE_STYLE_SECRET");
+    expect(lazyOutput).toContain("PAGE_IMPLEMENTATION_SECRET");
+    expect(lazyOutput).toContain("ROUTE_SCHEMA_SECRET");
+    expect(lazyOutput).toContain("ROUTE_STYLE_SECRET");
+    expect(lazyOutput).toContain("PAGE_TRANSITIVE_EFFECT_SECRET");
+    expect(lazyOutput).toContain("PAGE_TRANSITIVE_STYLE_SECRET");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("mixed route imports preserve ordinary module exports and side effects", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "mixed-route-import-"));
+  try {
+    await Promise.all([
+      writeFile(
+        join(root, "entry.ts"),
+        `import { page, publicValue } from "./page.sol.tsx";
+         import "./bare.sol.tsx";
+         import routes from "virtual:sol/routes";
+         console.log(page, publicValue, routes);`,
+      ),
+      writeFile(
+        join(root, "page.sol.tsx"),
+        `import { $route } from "sol";
+         import "./module.css";
+         import { Page } from "./Page";
+         console.log("ORDINARY_MODULE_EFFECT_SECRET");
+         export const publicValue = "ORDINARY_EXPORT_SECRET";
+         export const page = $route({ path: "/page" }, Page);`,
+      ),
+      writeFile(join(root, "Page.tsx"), `export function Page() { return null; }`),
+      writeFile(
+        join(root, "bare.sol.tsx"),
+        `import { $route } from "sol";
+         import { Page } from "./Page";
+         console.log("BARE_ROUTE_MODULE_EFFECT_SECRET");
+         export const bare = $route({ path: "/bare" }, Page);`,
+      ),
+      writeFile(
+        join(root, "module.css"),
+        `.module { --projection-marker: "ORDINARY_MODULE_STYLE_SECRET"; }`,
+      ),
+    ]);
+    const result = await build({
+      root,
+      logLevel: "silent",
+      plugins: [sol()],
+      build: { write: false, rollupOptions: { input: join(root, "entry.ts") } },
+    });
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((item) => {
+      if (!("output" in item)) throw new Error("Expected a completed Vite build");
+      return item.output;
+    });
+    const output = outputs
+      .filter(
+        (item) =>
+          (item.type === "chunk" && item.isEntry) ||
+          (item.type === "asset" && item.fileName.endsWith(".css")),
+      )
+      .map((item) => (item.type === "chunk" ? item.code : String(item.source)))
+      .join("\n");
+
+    expect(output).toContain("ORDINARY_EXPORT_SECRET");
+    expect(output).toContain("ORDINARY_MODULE_EFFECT_SECRET");
+    expect(output).toContain("ORDINARY_MODULE_STYLE_SECRET");
+    expect(output.match(/ORDINARY_MODULE_EFFECT_SECRET/g)).toHaveLength(1);
+    expect(output.match(/BARE_ROUTE_MODULE_EFFECT_SECRET/g)).toHaveLength(1);
+    const routeModuleIds = outputs
+      .filter((item) => item.type === "chunk")
+      .flatMap((item) => Object.keys(item.modules))
+      .filter((id) => id.endsWith("/page.sol.tsx"));
+    expect([...new Set(routeModuleIds)]).toHaveLength(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("handle-only imports preserve authored initialization without page effects", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "route-handle-effects-"));
+  try {
+    await Promise.all([
+      writeFile(
+        join(root, "entry.ts"),
+        `import { page } from "./page.sol.tsx"; console.log(page);`,
+      ),
+      writeFile(
+        join(root, "page.sol.tsx"),
+        `import { $route } from "sol";
+         import "./page.css";
+         import "./authored-setup";
+         import { Page } from "./Page";
+         const state = { ready: false };
+         function registerPlugin() { console.log("UNUSED_PLUGIN_REGISTRATION_SECRET"); return {}; }
+         const plugin = registerPlugin();
+         function initialize(value: { ready: boolean }) {
+           console.log("AUTHORED_HANDLE_EFFECT_SECRET"); value.ready = true;
+         }
+         initialize(state);
+         export const page = $route({ path: "/page" }, Page);`,
+      ),
+      writeFile(
+        join(root, "Page.tsx"),
+        `import "./transitive.css";
+         import "./transitive-effect";
+         export function Page() { return null; }`,
+      ),
+      writeFile(join(root, "page.css"), `.page { color: red; }`),
+      writeFile(join(root, "authored-setup.ts"), `console.log("BARE_SIDE_EFFECT_IMPORT_SECRET");`),
+      writeFile(
+        join(root, "transitive.css"),
+        `.page { --marker: "HANDLE_TRANSITIVE_STYLE_SECRET"; }`,
+      ),
+      writeFile(
+        join(root, "transitive-effect.ts"),
+        `console.log("HANDLE_TRANSITIVE_EFFECT_SECRET");`,
+      ),
+    ]);
+    const result = await build({
+      root,
+      logLevel: "silent",
+      plugins: [sol()],
+      build: { write: false, rollupOptions: { input: join(root, "entry.ts") } },
+    });
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((item) => {
+      if (!("output" in item)) throw new Error("Expected a completed Vite build");
+      return item.output;
+    });
+    const output = outputs
+      .filter(
+        (item) =>
+          (item.type === "chunk" && item.isEntry) ||
+          (item.type === "asset" && item.fileName.endsWith(".css")),
+      )
+      .map((item) => (item.type === "chunk" ? item.code : String(item.source)))
+      .join("\n");
+    const entry = outputs.find((item) => item.type === "chunk" && item.isEntry);
+    if (!entry || entry.type !== "chunk") throw new Error("Expected an entry chunk");
+    const entryModules = Object.keys(entry.modules);
+
+    expect(output.includes("AUTHORED_HANDLE_EFFECT_SECRET")).toBe(false);
+    expect(output.includes("BARE_SIDE_EFFECT_IMPORT_SECRET")).toBe(false);
+    expect(output.includes("UNUSED_PLUGIN_REGISTRATION_SECRET")).toBe(false);
+    expect(entryModules.some((id) => id.endsWith("/Page.tsx"))).toBe(false);
+    expect(entryModules.some((id) => id.endsWith("/transitive-effect.ts"))).toBe(false);
+    expect(output.includes("HANDLE_TRANSITIVE_STYLE_SECRET")).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("endpoint projections retain dependency initialization and project route handles", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "endpoint-projection-effects-"));
+  try {
+    await Promise.all([
+      writeFile(
+        join(root, "entry.ts"),
+        `import endpoints from "virtual:sol/server-endpoints"; console.log(endpoints);`,
+      ),
+      writeFile(
+        join(root, "endpoint.sol.tsx"),
+        `import { $component, $httpRoute, $route } from "sol";
+         import { detail } from "./detail.sol.tsx";
+         let schema;
+         function makeSchema() {
+           console.log("ENDPOINT_ASSIGNMENT_SECRET");
+           return (value: unknown) => value;
+         }
+         function configure(value: unknown) {
+           console.log("ENDPOINT_INITIALIZATION_EFFECT_SECRET", value);
+         }
+         function nestedEffect(name: string) { console.log(name); return name; }
+         const conditionalEffect = true ? nestedEffect("ENDPOINT_CONDITIONAL_EFFECT") : "";
+         const logicalEffect = false || nestedEffect("ENDPOINT_LOGICAL_EFFECT");
+         const sequenceEffect = (0, nestedEffect("ENDPOINT_SEQUENCE_EFFECT"));
+         const computedEffect = ({})[nestedEffect("ENDPOINT_COMPUTED_EFFECT")];
+         class PluginRegistration {
+           static { nestedEffect("ENDPOINT_CLASS_STATIC_EFFECT"); }
+         }
+         const EndpointConsumer = $component(function EndpointConsumer() {
+           endpoint;
+           return <main>{"ROUTE_COMPONENT_USING_ENDPOINT_SECRET"}</main>;
+         });
+         export const consumer = $route({ path: "/consumer" }, EndpointConsumer);
+         if (globalThis) { schema = makeSchema(); }
+         configure(schema);
+         console.log("UNRELATED_ENDPOINT_MODULE_EFFECT_SECRET");
+         export const endpoint = $httpRoute(
+           { method: "GET", path: "/api/detail", schema },
+           async () => new Response(detail.path),
+         );`,
+      ),
+      writeFile(
+        join(root, "detail.sol.tsx"),
+        `import { $route } from "sol";
+         import { Detail } from "./Detail";
+         export const detail = $route({ path: "/detail" }, Detail);`,
+      ),
+      writeFile(
+        join(root, "Detail.tsx"),
+        `import "./detail.css";
+         import "./detail-effect";
+         export function Detail() { return null; }`,
+      ),
+      writeFile(join(root, "detail.css"), `.detail { --marker: "ENDPOINT_ROUTE_STYLE_SECRET"; }`),
+      writeFile(join(root, "detail-effect.ts"), `console.log("ENDPOINT_ROUTE_EFFECT_SECRET");`),
+    ]);
+    const result = await build({
+      root,
+      logLevel: "silent",
+      plugins: [sol()],
+      build: { write: false, ssr: true, rollupOptions: { input: join(root, "entry.ts") } },
+    });
+    const output = (Array.isArray(result) ? result : [result])
+      .flatMap((item) => {
+        if (!("output" in item)) throw new Error("Expected a completed Vite build");
+        return item.output;
+      })
+      .filter(
+        (item) =>
+          (item.type === "chunk" && item.isEntry) ||
+          (item.type === "asset" && item.fileName.endsWith(".css")),
+      )
+      .map((item) => (item.type === "chunk" ? item.code : String(item.source)))
+      .join("\n");
+
+    expect(output.includes("ENDPOINT_ASSIGNMENT_SECRET")).toBe(true);
+    expect(output.includes("ENDPOINT_INITIALIZATION_EFFECT_SECRET")).toBe(true);
+    expect(output.includes("ENDPOINT_CONDITIONAL_EFFECT")).toBe(true);
+    expect(output.includes("ENDPOINT_LOGICAL_EFFECT")).toBe(true);
+    expect(output.includes("ENDPOINT_SEQUENCE_EFFECT")).toBe(true);
+    expect(output.includes("ENDPOINT_COMPUTED_EFFECT")).toBe(true);
+    expect(output.includes("ENDPOINT_CLASS_STATIC_EFFECT")).toBe(true);
+    expect(output.includes("ROUTE_COMPONENT_USING_ENDPOINT_SECRET")).toBe(false);
+    expect(output.includes("UNRELATED_ENDPOINT_MODULE_EFFECT_SECRET")).toBe(false);
+    expect(output.includes("ENDPOINT_ROUTE_EFFECT_SECRET")).toBe(false);
+    expect(output.includes("ENDPOINT_ROUTE_STYLE_SECRET")).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

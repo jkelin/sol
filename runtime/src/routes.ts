@@ -5,6 +5,11 @@ import { isObject, isPromiseLike } from "./reactivity.ts";
 import { ROUTE } from "./symbols.ts";
 import { validationFailure } from "./forms.ts";
 import { getFactory, routeRuntime, type RenderFrame } from "./rendering.ts";
+export {
+  compareRouteSpecificity,
+  type RouteSpecificityDescriptor,
+  type StaticRouteDescriptor,
+} from "./route-descriptors.ts";
 
 export interface NavigateOptions {
   readonly replace?: boolean;

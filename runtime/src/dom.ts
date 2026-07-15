@@ -926,8 +926,16 @@ export function contextProvider(
   contexts.set(key, readData);
   const childFrame: RenderFrame = { ...frame, contexts };
   const rendered = render(frameForRegion(childFrame, region));
-  if (isServerRegion(region)) mountServerBlock(rendered, region);
-  else rendered.mount(region.end.parentNode!, region.end);
+  try {
+    if (isServerRegion(region)) mountServerBlock(rendered, region);
+    else rendered.mount(region.end.parentNode!, region.end);
+  } catch (error) {
+    rethrowWithDisposals(
+      error,
+      [() => rendered.dispose()],
+      "Context Provider mount and rollback both failed",
+    );
+  }
   cleanups.push(() => rendered.dispose());
 }
 

@@ -108,18 +108,23 @@ export async function renderToStringAsync<Props extends object>(
     if (head && !onHead) {
       throw new Error("renderToStringAsync() rendered Head content without an onHead callback");
     }
-    for (const entry of session.async) {
-      if (entry.status === "pending") continue;
-      try {
-        serializeGraph(entry.value);
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new TypeError(`Cannot serialize async site ${entry.site}: ${detail}`, {
-          cause: error,
-        });
+    let payload: string;
+    try {
+      payload = serializeGraph(session.payload());
+    } catch (payloadError) {
+      for (const entry of session.async) {
+        if (entry.status === "pending") continue;
+        try {
+          serializeGraph(entry.value);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          throw new TypeError(`Cannot serialize async site ${entry.site}: ${detail}`, {
+            cause: error,
+          });
+        }
       }
+      throw payloadError;
     }
-    const payload = serializeGraph(session.payload());
     result = `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
     (onHead as ((html: string) => void) | undefined)?.(head);
   } catch (error) {

@@ -1,5 +1,5 @@
 import { devtoolsLoaderCreated, devtoolsLoaderUpdated } from "./devtools-hook.ts";
-import { isPromiseLike, runDisposals, runtimeEffect } from "./reactivity.ts";
+import { isPromiseLike, rethrowWithDisposals, runDisposals, runtimeEffect } from "./reactivity.ts";
 import { asyncValue, HydrationMismatchError } from "./ssr-session.ts";
 import { isServerRegion, mountServerBlock } from "./server-rendering.ts";
 import { regionHydrationClaim } from "./hydration-rendering.ts";
@@ -19,6 +19,15 @@ function rejectHydrationMismatch(frame: RenderFrame, error: unknown): boolean {
   if (!(error instanceof HydrationMismatchError)) return false;
   frame.hydration?.fail(error);
   return true;
+}
+
+function mountAwaitResult(block: Block, mount: (block: Block) => void, label: string): Block {
+  try {
+    mount(block);
+  } catch (error) {
+    rethrowWithDisposals(error, [() => block.dispose()], `${label} mount and rollback both failed`);
+  }
+  return block;
 }
 
 export function suspense(
@@ -296,13 +305,19 @@ export function awaitBlock<T>(
       (value) => {
         if (disposed) return finish?.();
         try {
-          current = render(value, frame);
-          mountServerBlock(current, region, true);
+          current = mountAwaitResult(
+            render(value, frame),
+            (next) => mountServerBlock(next, region, true),
+            "Await",
+          );
         } catch (error) {
           if (renderError) {
             try {
-              current = renderError(error, frame);
-              mountServerBlock(current, region, true);
+              current = mountAwaitResult(
+                renderError(error, frame),
+                (next) => mountServerBlock(next, region, true),
+                "Await error",
+              );
             } catch (renderFailure) {
               reportError(frame, renderFailure);
             }
@@ -314,8 +329,11 @@ export function awaitBlock<T>(
         if (!disposed) {
           if (renderError) {
             try {
-              current = renderError(error, frame);
-              mountServerBlock(current, region, true);
+              current = mountAwaitResult(
+                renderError(error, frame),
+                (next) => mountServerBlock(next, region, true),
+                "Await error",
+              );
             } catch (renderFailure) {
               reportError(frame, renderFailure);
             }
@@ -341,8 +359,11 @@ export function awaitBlock<T>(
     if (!renderError) return reportError(frame, error);
     try {
       const claim = regionHydrationClaim(region);
-      current = renderError(error, claim ? { ...frame, claim } : frame);
-      current.mount(region.end.parentNode!, region.end);
+      current = mountAwaitResult(
+        renderError(error, claim ? { ...frame, claim } : frame),
+        (next) => next.mount(region.end.parentNode!, region.end),
+        "Await error",
+      );
     } catch (renderFailure) {
       reportError(frame, renderFailure);
     }
@@ -367,8 +388,11 @@ export function awaitBlock<T>(
         if (activeLoader === loaderId) activeLoader = 0;
         try {
           const claim = regionHydrationClaim(region);
-          current = render(value, claim ? { ...frame, claim } : frame);
-          current.mount(region.end.parentNode!, region.end);
+          current = mountAwaitResult(
+            render(value, claim ? { ...frame, claim } : frame),
+            (next) => next.mount(region.end.parentNode!, region.end),
+            "Await",
+          );
         } catch (error) {
           showError(error);
         }

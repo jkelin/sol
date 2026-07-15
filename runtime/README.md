@@ -70,8 +70,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   dispatch options, strict UTF-8 JSON decoding, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
   before asynchronous rendering, publishing managed head markup only after payload serialization,
-  preserving directly recorded template order without reparsing final markup, and preserving the
-  primary failure when request teardown also fails.
+  preserving directly recorded template order without reparsing final markup, serializing successful
+  hydration payloads in one graph traversal while retaining async-site diagnostics on failure, and
+  preserving the primary failure when request teardown also fails.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation from snapshotted destinations, route handles, descriptor-snapshotted route configs and
@@ -90,10 +91,11 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API
   newline normalization, and failure-safe prepare/commit reconciliation for conditional and
-  keyed-list updates.
+  keyed-list updates and Context Provider mounts.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
-- `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.
+- `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including rollback
+  of Await value and local-error blocks whose mount fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial

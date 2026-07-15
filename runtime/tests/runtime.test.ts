@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import * as v from "valibot";
 import { z } from "zod";
+import { awaitBlock } from "../src/async.ts";
 import { $component, $context, contextUse, Head, type Context } from "../src/components.ts";
-import { normalizeClass } from "../src/dom.ts";
+import { contextProvider, normalizeClass } from "../src/dom.ts";
 import { $form, formInFrame, type FormConfig, type FormController } from "../src/forms.ts";
 import {
   $computed,
@@ -2345,6 +2346,68 @@ describe("compiled DOM runtime", () => {
     source.value = 1;
 
     expect(observations).toEqual([0]);
+  });
+
+  test("disposes a failed Await value block before mounting its local error block", async () => {
+    const view = instantiate(template("<!--sol:s:0--><!--sol:e:0-->"));
+    const cleanups: Array<() => void> = [];
+    let disposals = 0;
+    awaitBlock(
+      view.regions[0]!,
+      () => Promise.resolve("ready"),
+      () => ({
+        nodes: [],
+        mount() {
+          throw new Error("await value mount failed");
+        },
+        move() {},
+        enter() {},
+        leave: () => undefined,
+        retire: () => undefined,
+        dispose() {
+          disposals += 1;
+        },
+      }),
+      () => block(document.createDocumentFragment()),
+      cleanups,
+      rootFrame(),
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(disposals).toBe(1);
+    cleanups.toReversed().forEach((cleanup) => cleanup());
+  });
+
+  test("disposes Context Provider children whose mount fails", () => {
+    const view = instantiate(template("<!--sol:s:0--><!--sol:e:0-->"));
+    const context = $context<{ label: string }>();
+    let disposals = 0;
+
+    expect(() =>
+      contextProvider(
+        view.regions[0]!,
+        context as Context<object>,
+        () => ({ label: "ready" }),
+        () => ({
+          nodes: [],
+          mount() {
+            throw new Error("provider child mount failed");
+          },
+          move() {},
+          enter() {},
+          leave: () => undefined,
+          retire: () => undefined,
+          dispose() {
+            disposals += 1;
+          },
+        }),
+        [],
+        rootFrame(),
+      ),
+    ).toThrow("provider child mount failed");
+    expect(disposals).toBe(1);
   });
 
   test("validates mount boundaries", () => {

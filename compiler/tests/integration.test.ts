@@ -2029,7 +2029,7 @@ test("binds mixed-case checkbox types through their checked property", async () 
     export const App = $component(function App(props: { initial: boolean }) {
       let checked = props.initial;
       return <main>
-        <input id="mixed-checkbox" type="CHECKBOX" $bind={checked} />
+        <input id="mixed-checkbox" Type="CHECKBOX" $bind={checked} />
         <output>{checked ? "checked" : "clear"}</output>
       </main>;
     });

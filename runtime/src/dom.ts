@@ -233,7 +233,7 @@ function setDomValue(element: Element, name: string, value: unknown): void {
 }
 
 const BOOLEAN_ATTRIBUTES = new Set([
-  "allowFullScreen",
+  "allowfullscreen",
   "async",
   "autofocus",
   "autoplay",
@@ -242,23 +242,27 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "default",
   "defer",
   "disabled",
-  "formNoValidate",
+  "formnovalidate",
   "hidden",
   "inert",
-  "isMap",
-  "itemScope",
+  "ismap",
+  "itemscope",
   "loop",
   "multiple",
   "muted",
-  "noModule",
-  "noValidate",
+  "nomodule",
+  "novalidate",
   "open",
-  "playsInline",
-  "readOnly",
+  "playsinline",
+  "readonly",
   "required",
   "reversed",
   "selected",
 ]);
+
+function isBooleanAttribute(name: string): boolean {
+  return BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+}
 
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
 
@@ -267,7 +271,7 @@ function setServerValue(element: ServerElement, name: string, value: unknown): v
     setServerAttribute(element, name, String(value ?? ""));
   } else if (name.startsWith("aria-") || name.startsWith("data-")) {
     setServerAttribute(element, name, value == null ? undefined : String(value));
-  } else if (BOOLEAN_ATTRIBUTES.has(name)) {
+  } else if (isBooleanAttribute(name)) {
     setServerAttribute(element, name, value ? true : undefined);
   } else if (value == null || value === false) {
     setServerAttribute(element, name, undefined);
@@ -280,7 +284,7 @@ function serializedAttribute(name: string, value: unknown): string | null {
   if (name.startsWith("aria-") || name.startsWith("data-")) {
     return value == null ? null : String(value);
   }
-  if (BOOLEAN_ATTRIBUTES.has(name)) return value ? "" : null;
+  if (isBooleanAttribute(name)) return value ? "" : null;
   if (value == null || value === false) return null;
   return value === true ? "" : String(value);
 }

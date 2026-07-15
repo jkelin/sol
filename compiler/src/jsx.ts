@@ -26,7 +26,7 @@ import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
 const BOOLEAN_ATTRIBUTES = new Set([
-  "allowFullScreen",
+  "allowfullscreen",
   "async",
   "autofocus",
   "autoplay",
@@ -35,23 +35,27 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "default",
   "defer",
   "disabled",
-  "formNoValidate",
+  "formnovalidate",
   "hidden",
   "inert",
-  "isMap",
-  "itemScope",
+  "ismap",
+  "itemscope",
   "loop",
   "multiple",
   "muted",
-  "noModule",
-  "noValidate",
+  "nomodule",
+  "novalidate",
   "open",
-  "playsInline",
-  "readOnly",
+  "playsinline",
+  "readonly",
   "required",
   "reversed",
   "selected",
 ]);
+
+function asciiLower(value: string): string {
+  return value.replaceAll(/[A-Z]/g, (character) => character.toLowerCase());
+}
 
 function intrinsicAttributeTarget(sourceName: string): string {
   if (sourceName === "class" || sourceName === "className" || sourceName === "classNames") {
@@ -62,7 +66,19 @@ function intrinsicAttributeTarget(sourceName: string): string {
     const eventName = sourceName.slice(2).toLowerCase();
     return `event:${eventName === "doubleclick" ? "dblclick" : eventName}`;
   }
-  return sourceName;
+  return asciiLower(sourceName);
+}
+
+function findIntrinsicAttribute(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+  target: string,
+): t.JSXAttribute | undefined {
+  return node.openingElement.attributes.find(
+    (attribute): attribute is t.JSXAttribute =>
+      t.isJSXAttribute(attribute) &&
+      intrinsicAttributeTarget(getAttributeName(compiler, attribute.name)) === target,
+  );
 }
 
 function validateUniqueAttributes(
@@ -547,14 +563,10 @@ export function compileIntrinsicElement(
   const attributes: string[] = [];
   const deferredOperations: ((element: number) => string)[] = [];
   let propertyValueElement = false;
-  const inputTypeAttribute = node.openingElement.attributes.find(
-    (attribute) =>
-      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "type" }),
-  );
-  const inputType =
-    inputTypeAttribute && t.isJSXAttribute(inputTypeAttribute)
-      ? staticAttributeValue(compiler, inputTypeAttribute)
-      : undefined;
+  const inputTypeAttribute = findIntrinsicAttribute(compiler, node, "type");
+  const inputType = inputTypeAttribute
+    ? staticAttributeValue(compiler, inputTypeAttribute)
+    : undefined;
   const normalizedInputType = typeof inputType === "string" ? inputType.toLowerCase() : inputType;
   const bindAttributes = node.openingElement.attributes.filter(
     (attribute): attribute is t.JSXAttribute =>
@@ -580,10 +592,7 @@ export function compileIntrinsicElement(
       tag === "input" && (normalizedInputType === "checkbox" || normalizedInputType === "radio")
         ? "checked"
         : "value";
-    const competingAttribute = node.openingElement.attributes.find(
-      (attribute) =>
-        t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: bindProperty }),
-    );
+    const competingAttribute = findIntrinsicAttribute(compiler, node, bindProperty);
     if (competingAttribute) {
       codeFrame(compiler, competingAttribute, `$bind already controls ${bindProperty}`);
     }
@@ -603,10 +612,7 @@ export function compileIntrinsicElement(
   }
   validateUniqueAttributes(compiler, node, true);
   const rawValues = RAW_TEXT_ELEMENTS.has(tag) ? rawTextValues(compiler, node, tag, scope) : [];
-  const textareaValue = node.openingElement.attributes.find(
-    (attribute) =>
-      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "value" }),
-  );
+  const textareaValue = findIntrinsicAttribute(compiler, node, "value");
   if (tag === "textarea" && rawValues.length > 0 && (textareaValue || bindProperty === "value")) {
     codeFrame(
       compiler,
@@ -623,19 +629,13 @@ export function compileIntrinsicElement(
     const conflictingHandler = node.openingElement.attributes.find(
       (attribute) =>
         t.isJSXAttribute(attribute) &&
-        t.isJSXIdentifier(attribute.name) &&
-        ["onSubmit", "onInput"].includes(attribute.name.name),
+        ["event:submit", "event:input"].includes(
+          intrinsicAttributeTarget(getAttributeName(compiler, attribute.name)),
+        ),
     );
-    if (
-      conflictingHandler &&
-      t.isJSXAttribute(conflictingHandler) &&
-      t.isJSXIdentifier(conflictingHandler.name)
-    ) {
-      codeFrame(
-        compiler,
-        conflictingHandler,
-        `$form already handles ${conflictingHandler.name.name}`,
-      );
+    if (conflictingHandler && t.isJSXAttribute(conflictingHandler)) {
+      const handlerName = getAttributeName(compiler, conflictingHandler.name);
+      codeFrame(compiler, conflictingHandler, `$form already handles ${handlerName}`);
     }
   }
 
@@ -643,9 +643,10 @@ export function compileIntrinsicElement(
     if (t.isJSXSpreadAttribute(attribute))
       codeFrame(compiler, attribute, "JSX spread attributes are not supported in v1");
     const sourceName = getAttributeName(compiler, attribute.name);
+    const targetName = intrinsicAttributeTarget(sourceName);
     if (sourceName === "key") continue;
-    if (sourceName === "data-sol-e") {
-      codeFrame(compiler, attribute, "data-sol-e is reserved for hydration metadata");
+    if (targetName === "data-sol-e" || targetName === "data-sol-hydration") {
+      codeFrame(compiler, attribute, `${targetName} is reserved for hydration metadata`);
     }
     if (sourceName === "$form") {
       const controller = expressionCode(expressionAttribute(compiler, attribute), scope);
@@ -723,11 +724,17 @@ export function compileIntrinsicElement(
       continue;
     }
 
-    const isClass =
-      sourceName === "class" || sourceName === "className" || sourceName === "classNames";
-    const name = isClass ? "class" : sourceName === "htmlFor" ? "for" : sourceName;
+    const isClass = targetName === "class";
+    const name = isClass
+      ? "class"
+      : targetName === "for" ||
+          targetName === "value" ||
+          targetName.startsWith("aria-") ||
+          targetName.startsWith("data-")
+        ? targetName
+        : sourceName;
     const staticValue = staticAttributeValue(compiler, attribute);
-    const stringBoolean = name.startsWith("aria-") || name.startsWith("data-");
+    const stringBoolean = targetName.startsWith("aria-") || targetName.startsWith("data-");
     if (
       name === "value" &&
       (tag === "textarea" ||
@@ -754,13 +761,13 @@ export function compileIntrinsicElement(
     else if (
       t.isJSXExpressionContainer(attribute.value) &&
       t.isNumericLiteral(attribute.value.expression) &&
-      !BOOLEAN_ATTRIBUTES.has(name)
+      !BOOLEAN_ATTRIBUTES.has(targetName)
     ) {
       attributes.push(`${name}="${escapeAttribute(String(attribute.value.expression.value))}"`);
     } else if (staticValue === false) continue;
     else {
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
-      if (name === "value") propertyValueElement = true;
+      if (targetName === "value") propertyValueElement = true;
       deferredOperations.push((element) =>
         mappedCode(
           compiler,

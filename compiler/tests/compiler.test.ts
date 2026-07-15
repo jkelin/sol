@@ -1464,13 +1464,20 @@ describe("compiler", () => {
     );
   });
 
-  test("reserves private hydration element markers", () => {
-    expect(() =>
-      compile(
-        `const App = $component(function App() { return <main data-sol-e="authored">Bad</main>; });`,
-        "PrivateMarker.tsx",
-      ),
-    ).toThrow("data-sol-e is reserved for hydration metadata");
+  test("reserves private hydration markers regardless of attribute casing", () => {
+    for (const attribute of [
+      'data-sol-e="authored"',
+      'DATA-SOL-E="authored"',
+      "data-sol-hydration",
+      "DATA-SOL-HYDRATION",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { return <main ${attribute}>Bad</main>; });`,
+          "PrivateMarker.tsx",
+        ),
+      ).toThrow("is reserved for hydration metadata");
+    }
   });
 
   test("captures component awaits without instrumenting fire-and-forget helper work", () => {
@@ -1817,6 +1824,8 @@ describe("compiler", () => {
 
     for (const [attributes, conflict] of [
       ['id="first" id="second"', "JSX attribute id conflicts with id"],
+      ['id="first" ID="second"', "JSX attribute ID conflicts with id"],
+      ['type="button" Type="submit"', "JSX attribute Type conflicts with type"],
       [
         "onClick={() => undefined} onClick={() => undefined}",
         "JSX attribute onClick conflicts with onClick",

@@ -24,6 +24,10 @@ const SolarButton = $component<{ readonly label: string }>(function SolarButton(
 
 Event attributes use React-style capitalization such as `onClick`, while handlers receive browser events. Intrinsic elements accept `class`, `className`, or `classNames`.
 
+HTML attribute identity is ASCII-case-insensitive. The compiler rejects differently cased
+duplicates and reserves `data-sol-e` and `data-sol-hydration` in every casing for hydration
+metadata. Component prop names remain case-sensitive.
+
 ## Conditional classes
 
 `classNames` accepts strings, nested arrays, and object maps:

@@ -83,6 +83,10 @@ textarea controlled by `value` or `$bind` cannot also have children. Signal arra
 values are deep proxies, so nested assignments and mutating array methods are reactive. Dates,
 collections, and class instances retain their original identity.
 
+Intrinsic HTML attribute identity is ASCII-case-insensitive, so differently cased duplicates are
+rejected and form-control semantics match the browser. `data-sol-e` and `data-sol-hydration` are
+reserved for compiler and SSR metadata in every casing. Component prop names remain case-sensitive.
+
 ## Refs and portals
 
 Intrinsic elements accept callback refs and mutable object refs. `createRef<T>()` returns a typed, non-reactive `{ current: T | null }` object; refs attach after DOM insertion and clear during disposal.

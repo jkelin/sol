@@ -1161,6 +1161,43 @@ describe("compiled DOM runtime", () => {
     expect(() => route({ path: "/bad" }, (() => undefined) as never, definition.compiled)).toThrow(
       "uncompiled component",
     );
+
+    const inheritedConfig = Object.create({ path: "/inherited" }) as { path: "/inherited" };
+    expect(() => route(inheritedConfig, Empty, definition.compiled)).toThrow(
+      "config must contain a path",
+    );
+    const accessorConfig = Object.defineProperty({}, "path", {
+      enumerable: true,
+      get() {
+        throw new Error("route config accessor ran");
+      },
+    }) as { path: "/accessor" };
+    expect(() => route(accessorConfig, Empty, definition.compiled)).toThrow(
+      "config must contain a path",
+    );
+    const hiddenConfig = Object.defineProperty({}, "path", { value: "/hidden" }) as {
+      path: "/hidden";
+    };
+    expect(() => route(hiddenConfig, Empty, definition.compiled)).toThrow(
+      "config must contain a path",
+    );
+
+    const inheritedCompiled = Object.create(definition.compiled) as typeof definition.compiled;
+    expect(() => route({ path: "/inherited" }, Empty, inheritedCompiled)).toThrow(
+      "metadata is invalid",
+    );
+    const accessorParameterNames = Object.defineProperty([], "0", {
+      enumerable: true,
+      get() {
+        throw new Error("route metadata accessor ran");
+      },
+    });
+    expect(() =>
+      route({ path: "/accessor" }, Empty, {
+        ...definition.compiled,
+        parameterNames: accessorParameterNames as string[],
+      }),
+    ).toThrow("metadata is invalid");
   });
 
   test("validates and caches lazy route implementations", async () => {

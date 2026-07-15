@@ -166,6 +166,74 @@ describe("server declarations", () => {
     }
   });
 
+  test("ignores inherited RPC error details", async () => {
+    const originalFetch = globalThis.fetch;
+    const objectPrototype = Object.prototype as {
+      cause?: unknown;
+      issues?: unknown;
+      message?: unknown;
+      name?: unknown;
+      stack?: unknown;
+    };
+    globalThis.fetch = (async () =>
+      Response.json({ ok: false, error: {} }, { status: 500 })) as unknown as typeof fetch;
+    Object.assign(objectPrototype, {
+      cause: "inherited cause",
+      issues: "inherited issues",
+      message: "inherited message",
+      name: "InheritedError",
+      stack: "inherited stack",
+    });
+    try {
+      const query = rpcQueryClient<readonly [], unknown>("polluted");
+      const failure = await query().catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).name).toBe("Error");
+      expect((failure as Error).message).toBe("RPC polluted failed (500)");
+      expect(Object.hasOwn(failure as object, "cause")).toBe(false);
+      expect(Object.hasOwn(failure as object, "issues")).toBe(false);
+    } finally {
+      delete objectPrototype.cause;
+      delete objectPrototype.issues;
+      delete objectPrototype.message;
+      delete objectPrototype.name;
+      delete objectPrototype.stack;
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("omits inherited issues from development RPC errors", async () => {
+    const errorPrototype = Error.prototype as { issues?: unknown };
+    Object.defineProperty(errorPrototype, "issues", {
+      configurable: true,
+      value: [{ message: "inherited issue" }],
+    });
+    const endpoint = rpcQueryServer(
+      "inherited-issues",
+      { schema: (args: readonly []) => args as [] },
+      async () => {
+        throw new Error("own message");
+      },
+    ) as unknown as ServerEndpoint;
+    try {
+      const response = await dispatchServerEndpoint(
+        [endpoint],
+        rpcRequest("inherited-issues", []),
+        { development: true },
+      );
+      expect(await response!.json()).toEqual({
+        ok: false,
+        error: {
+          name: "Error",
+          message: "own message",
+          stack: expect.any(String),
+        },
+      });
+    } finally {
+      delete errorPrototype.issues;
+    }
+  });
+
   test("dispatches RPC and HTTP endpoints beneath the configured route base", async () => {
     const query = rpcQueryServer(
       "based",

@@ -2996,6 +2996,37 @@ test("the endpoint manifest respects helper bindings and canonical HTTP paths", 
   }
 });
 
+test("retries route-file inspection after a source failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-inspection-retry-"));
+  try {
+    const file = join(root, "retry.sol.ts");
+    await writeFile(file, `export const retry = $httpRoute(`);
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const resolved = (plugin.resolveId as (id: string) => string)("virtual:sol/server-endpoints");
+    const failure = await (plugin.load as (id: string) => Promise<unknown>)(resolved).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+
+    await writeFile(
+      file,
+      `import { $httpRoute } from "sol";
+       export const retry = $httpRoute(
+         { method: "GET", path: "/retry", schema: value => value },
+         async () => new Response(),
+       );`,
+    );
+    const manifest = await (plugin.load as (id: string) => Promise<string>)(resolved);
+    expect(manifest).toContain("retry");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("emits authored source metadata for query and mutation diagnostics", () => {
   const result = compile(
     `

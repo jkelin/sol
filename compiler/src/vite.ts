@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import type { Scope } from "@babel/traverse";
@@ -279,14 +279,15 @@ function dependencyProjection(source: string, filename: string): string {
   const bindingDependencies = new Map<string, Set<string>>();
   for (const [name, binding] of Object.entries(scope.bindings)) {
     const dependencies = new Set<string>();
-    binding.path.traverse({
-      ReferencedIdentifier(path) {
-        const dependency = path.node.name;
-        if (scope.bindings[dependency] === path.scope.getBinding(dependency)) {
-          dependencies.add(dependency);
-        }
-      },
-    });
+    if (!routeRoots.has(name))
+      binding.path.traverse({
+        ReferencedIdentifier(path) {
+          const dependency = path.node.name;
+          if (scope.bindings[dependency] === path.scope.getBinding(dependency)) {
+            dependencies.add(dependency);
+          }
+        },
+      });
     bindingDependencies.set(name, dependencies);
   }
   const addClosure = (names: Set<string>, additions: Iterable<string>): void => {
@@ -801,12 +802,18 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   let config: ResolvedConfig;
   let devtoolsEnabled = false;
   let discoveredFiles: Promise<string[]> | undefined;
-  const discoveryConsumers = new Set<string>();
-  const routeFiles = (): Promise<string[]> =>
-    (discoveredFiles ??= discoverRoutes(config.root).catch((error: unknown) => {
+  let discoveryRootMtime = -1;
+  const routeFiles = async (): Promise<string[]> => {
+    const rootMtime = (await stat(config.root)).mtimeMs;
+    if (rootMtime !== discoveryRootMtime) {
+      discoveredFiles = undefined;
+      discoveryRootMtime = rootMtime;
+    }
+    return (discoveredFiles ??= discoverRoutes(config.root).catch((error: unknown) => {
       discoveredFiles = undefined;
       throw error;
     }));
+  };
   const fileInspections = new Map<string, Promise<InspectedRouteFile>>();
   const inspectRouteFile = (file: string): Promise<InspectedRouteFile> => {
     let inspection = fileInspections.get(file);
@@ -819,6 +826,9 @@ export function sol(options: SolPluginOptions = {}): Plugin {
           endpoints: declaredEndpoints(source, file, analysis),
         };
       });
+      void inspection.catch(() => {
+        if (fileInspections.get(file) === inspection) fileInspections.delete(file);
+      });
       fileInspections.set(file, inspection);
     }
     return inspection;
@@ -826,7 +836,7 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   const invalidateManifest = (server: ViteDevServer, file: string): void => {
     if (!isRouteFile(file)) return;
     discoveredFiles = undefined;
-    discoveryConsumers.clear();
+    discoveryRootMtime = -1;
     fileInspections.delete(file);
     if (relative(config.root, file).startsWith("..")) return;
     for (const id of [resolvedVirtualRoutes, resolvedVirtualEndpoints]) {
@@ -841,6 +851,9 @@ export function sol(options: SolPluginOptions = {}): Plugin {
     enforce: "pre",
     configResolved(resolved) {
       config = resolved;
+      discoveredFiles = undefined;
+      discoveryRootMtime = -1;
+      fileInspections.clear();
       devtoolsEnabled = options.devtools ?? resolved.command === "serve";
     },
     transformIndexHtml: {
@@ -868,12 +881,7 @@ export function sol(options: SolPluginOptions = {}): Plugin {
     async load(id) {
       if (id === resolvedDevtoolsBuildEntry) return 'import "sol/devtools";';
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
-      if (discoveryConsumers.has(id)) {
-        discoveredFiles = undefined;
-        discoveryConsumers.clear();
-      }
       const files = await routeFiles();
-      discoveryConsumers.add(id);
       const inspections = await Promise.all(files.map(inspectRouteFile));
       validateRouteCollisions(inspections);
       return id === resolvedVirtualRoutes

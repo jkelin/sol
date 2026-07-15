@@ -98,8 +98,10 @@ dependencies; route handles referenced by endpoint code are projected again as m
   binding dependencies and top-level statement facts once, then incrementally closes only newly
   needed bindings over the declarations and initialization effects required by server endpoints.
   It preserves declaration-level type syntax, replaces referenced same-file routes with metadata
-  handles, and excludes their page implementations. The two manifests share one cached project
-  discovery pass until a route-file watcher event or a repeated manifest load invalidates it.
+  handles without expanding their page dependency graph, and excludes their page implementations.
+  The two manifests share one cached project discovery pass until the project root changes or a
+  route-file watcher event invalidates it. Failed file inspections are evicted so corrected files
+  can be retried.
 
 ## How it works
 

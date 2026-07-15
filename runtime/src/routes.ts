@@ -441,42 +441,76 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   return serialized ? `${path}?${serialized}` : path;
 }
 
-function validatedCompiledRoute(compiled: CompiledRoutePattern): CompiledRoutePattern {
+function metadataValue(object: object, key: PropertyKey): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(object, key);
+  if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+    throw new TypeError("Compiled route metadata is invalid");
+  }
+  return descriptor.value;
+}
+
+function metadataArray(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw new TypeError("Compiled route metadata is invalid");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const entries = Object.entries(descriptors).filter(([key]) => key !== "length");
   if (
-    !compiled ||
-    typeof compiled.pattern !== "string" ||
-    !Array.isArray(compiled.parameterNames) ||
-    !Array.isArray(compiled.pathnameParameterNames) ||
-    !Array.isArray(compiled.queryParameters) ||
-    !Array.isArray(compiled.specificity)
+    entries.length !== value.length ||
+    entries.some(([key, descriptor]) => {
+      const index = Number(key);
+      return (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= value.length ||
+        String(index) !== key ||
+        !("value" in descriptor) ||
+        !descriptor.enumerable
+      );
+    }) ||
+    Object.getOwnPropertySymbols(value).length > 0
   ) {
     throw new TypeError("Compiled route metadata is invalid");
   }
+  return entries
+    .toSorted(([left], [right]) => Number(left) - Number(right))
+    .map(([, descriptor]) => (descriptor as PropertyDescriptor & { value: unknown }).value);
+}
+
+function validatedCompiledRoute(compiled: CompiledRoutePattern): CompiledRoutePattern {
+  if (!isObject(compiled) || Array.isArray(compiled)) {
+    throw new TypeError("Compiled route metadata is invalid");
+  }
+  const pattern = metadataValue(compiled, "pattern");
+  const parameterNames = metadataArray(metadataValue(compiled, "parameterNames"));
+  const pathnameParameterNames = metadataArray(metadataValue(compiled, "pathnameParameterNames"));
+  const queryParameters = metadataArray(metadataValue(compiled, "queryParameters"));
+  const specificity = metadataArray(metadataValue(compiled, "specificity"));
+  if (typeof pattern !== "string" || parameterNames.some((name) => typeof name !== "string")) {
+    throw new TypeError("Compiled route metadata is invalid");
+  }
+  const validatedQueryParameters = queryParameters.map((parameter) => {
+    if (!isObject(parameter)) throw new TypeError("Compiled route metadata is invalid");
+    const key = metadataValue(parameter, "key");
+    const name = metadataValue(parameter, "name");
+    if (typeof key !== "string" || typeof name !== "string" || !parameterNames.includes(name)) {
+      throw new TypeError("Compiled route metadata is invalid");
+    }
+    return Object.freeze({ key, name });
+  });
   if (
-    compiled.parameterNames.some((name) => typeof name !== "string") ||
-    compiled.pathnameParameterNames.some(
-      (name) => typeof name !== "string" || !compiled.parameterNames.includes(name),
+    pathnameParameterNames.some(
+      (name) => typeof name !== "string" || !parameterNames.includes(name),
     ) ||
-    compiled.queryParameters.some(
-      (parameter) =>
-        !isObject(parameter) ||
-        typeof (parameter as { key?: unknown }).key !== "string" ||
-        typeof (parameter as { name?: unknown }).name !== "string" ||
-        !compiled.parameterNames.includes((parameter as { name: string }).name),
-    ) ||
-    compiled.specificity.some((part) => typeof part !== "number")
+    specificity.some((part) => typeof part !== "number")
   ) {
     throw new TypeError("Compiled route metadata is invalid");
   }
   return Object.freeze({
-    pattern: compiled.pattern,
-    parameterNames: Object.freeze([...compiled.parameterNames]),
-    pathnameParameterNames: Object.freeze([...compiled.pathnameParameterNames]),
-    queryParameters: Object.freeze(
-      compiled.queryParameters.map((parameter) => Object.freeze({ ...parameter })),
-    ),
-    specificity: Object.freeze([...compiled.specificity]),
-  });
+    pattern,
+    parameterNames: Object.freeze([...parameterNames]),
+    pathnameParameterNames: Object.freeze([...pathnameParameterNames]),
+    queryParameters: Object.freeze(validatedQueryParameters),
+    specificity: Object.freeze([...specificity]),
+  }) as CompiledRoutePattern;
 }
 
 function createRouteDefinition<
@@ -487,15 +521,34 @@ function createRouteDefinition<
   candidate: Component | undefined,
   compiled: CompiledRoutePattern,
 ): RouteDefinition<Path, Values> {
-  if (!config || typeof config !== "object" || typeof config.path !== "string") {
+  if (!isObject(config) || Array.isArray(config)) {
     throw new TypeError("Compiled route config must contain a path");
   }
-  const unexpectedConfig = Object.keys(config).find((name) => name !== "path" && name !== "schema");
-  if (unexpectedConfig) {
-    throw new TypeError(`Compiled route config contains unknown property ${unexpectedConfig}`);
+  const descriptors = Object.getOwnPropertyDescriptors(config);
+  const pathDescriptor = Object.hasOwn(descriptors, "path") ? descriptors.path : undefined;
+  if (
+    !pathDescriptor ||
+    !("value" in pathDescriptor) ||
+    !pathDescriptor.enumerable ||
+    typeof pathDescriptor.value !== "string"
+  ) {
+    throw new TypeError("Compiled route config must contain a path");
   }
-  if (config.schema !== undefined) {
-    const schema = config.schema;
+  const path = pathDescriptor.value;
+  const unexpectedConfig = Reflect.ownKeys(descriptors).find(
+    (name) => name !== "path" && name !== "schema",
+  );
+  if (unexpectedConfig) {
+    throw new TypeError(
+      `Compiled route config contains unknown property ${String(unexpectedConfig)}`,
+    );
+  }
+  const schemaDescriptor = Object.hasOwn(descriptors, "schema") ? descriptors.schema : undefined;
+  if (schemaDescriptor && (!("value" in schemaDescriptor) || !schemaDescriptor.enumerable)) {
+    throw new TypeError("Compiled route schema must be a data property");
+  }
+  const schema = schemaDescriptor?.value;
+  if (schema !== undefined) {
     if (!hasParser(schema)) {
       throw new TypeError(
         "Compiled route schema must be callable, expose parse() or parseAsync(), or implement Standard Schema",
@@ -505,10 +558,13 @@ function createRouteDefinition<
   if (candidate) getFactory(candidate);
   const validatedCompiled = validatedCompiledRoute(compiled);
   let definition: CompiledRouteDefinition<Path, Values>;
-  const staticPrefix = canonicalizePathname(config.path.split("?", 1)[0]!.split("/:", 1)[0] || "/");
+  const staticPrefix = canonicalizePathname(path.split("?", 1)[0]!.split("/:", 1)[0] || "/");
   definition = Object.freeze({
     [ROUTE]: true,
-    config: Object.freeze({ ...config }),
+    config: Object.freeze({ path, ...(schema === undefined ? {} : { schema }) }) as RouteConfig<
+      Path,
+      Values
+    >,
     component: candidate ?? unloadedRouteComponent,
     compiled: validatedCompiled,
     get params() {

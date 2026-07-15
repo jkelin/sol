@@ -56,9 +56,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   before asynchronous rendering.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
-  generation, route handles, complete lazy metadata validation, cached lazy-route descriptors,
-  promise-normalized synchronous loader failures, and frame-explicit reads and cached object views
-  used after async setup resumes.
+  generation, route handles, descriptor-snapshotted route configs and compiled metadata, cached
+  lazy-route descriptors, promise-normalized synchronous loader failures, and frame-explicit reads
+  and cached object views used after async setup resumes.
 - `route-descriptors.ts` defines the lightweight static route shape and specificity ordering shared
   with build adapters without loading the rendering runtime.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
@@ -97,7 +97,8 @@ the panel and global by default. WebMCP registration is feature-detected and req
 Compiler-managed `$rpcQuery()` and `$rpcMutation()` declarations attach stable names to request
 diagnostics. On the server they validate the full argument tuple before directly invoking the async
 handler. Browser declarations POST JSON argument tuples to `/api/rpc/:name`, decode JSON response
-envelopes, and reject with reconstructed server errors. RPC arguments and results must be
+envelopes through own data properties, and reject with reconstructed server errors without trusting
+inherited details. RPC arguments and results must be
 JSON-serializable. `$httpRoute()` validates decoded path parameters, repeated query values, headers,
 and automatic JSON/text or explicit byte bodies before passing the still-readable original `Request`
 to a handler. Endpoint bodies are capped at 1 MiB by default; Solkit's `maxBodyBytes` option changes

@@ -91,7 +91,9 @@ function validateRpcName(name: unknown): asserts name is string {
 
 function validationError(error: unknown): error is { readonly issues: readonly unknown[] } {
   try {
-    return isObject(error) && Array.isArray((error as { issues?: unknown }).issues);
+    if (!isObject(error)) return false;
+    const issues = Object.getOwnPropertyDescriptor(error, "issues");
+    return Boolean(issues && "value" in issues && Array.isArray(issues.value));
   } catch {
     return false;
   }
@@ -270,27 +272,40 @@ function clientRpc<Input extends RpcArgs, Data>(
     } catch {
       throw new Error(`RPC ${name} returned an invalid response (${response.status})`);
     }
-    if (!isObject(envelope) || typeof (envelope as { ok?: unknown }).ok !== "boolean") {
+    const envelopeOk = isObject(envelope)
+      ? Object.getOwnPropertyDescriptor(envelope, "ok")
+      : undefined;
+    if (!envelopeOk || !("value" in envelopeOk) || typeof envelopeOk.value !== "boolean") {
       throw new Error(`RPC ${name} returned an invalid response (${response.status})`);
     }
-    if ((envelope as { ok: boolean }).ok) {
+    if (envelopeOk.value) {
       if (!response.ok) throw new Error(`RPC ${name} failed (${response.status})`);
-      if (!Object.prototype.hasOwnProperty.call(envelope, "value")) {
+      const valueDescriptor = Object.getOwnPropertyDescriptor(envelope, "value");
+      if (!valueDescriptor || !("value" in valueDescriptor)) {
         throw new Error(`RPC ${name} returned an invalid response (${response.status})`);
       }
-      return (envelope as { value: Data }).value;
+      return valueDescriptor.value as Data;
     }
-    const detail = (envelope as { error?: unknown }).error;
+    const errorDescriptor = Object.getOwnPropertyDescriptor(envelope, "error");
+    const detail =
+      errorDescriptor && "value" in errorDescriptor ? errorDescriptor.value : undefined;
     const record = (isObject(detail) ? detail : {}) as Record<string, unknown>;
+    const field = (fieldName: string): unknown => {
+      const descriptor = Object.getOwnPropertyDescriptor(record, fieldName);
+      return descriptor && "value" in descriptor ? descriptor.value : undefined;
+    };
+    const message = field("message");
     const error = new Error(
-      typeof record.message === "string"
-        ? record.message
-        : `RPC ${name} failed (${response.status})`,
+      typeof message === "string" ? message : `RPC ${name} failed (${response.status})`,
     );
-    if (typeof record.name === "string") error.name = record.name;
-    if (typeof record.stack === "string") error.stack = record.stack;
-    if ("cause" in record) Object.defineProperty(error, "cause", { value: record.cause });
-    if ("issues" in record) Object.defineProperty(error, "issues", { value: record.issues });
+    const errorName = field("name");
+    const stack = field("stack");
+    if (typeof errorName === "string") error.name = errorName;
+    if (typeof stack === "string") error.stack = stack;
+    for (const fieldName of ["cause", "issues"] as const) {
+      const value = field(fieldName);
+      if (value !== undefined) Object.defineProperty(error, fieldName, { value });
+    }
     throw error;
   };
   rpcMetadata.set(callable, { kind, name });
@@ -576,6 +591,7 @@ function errorDetail(error: unknown, development: boolean): Record<string, unkno
   if (!development) return { name: "Error", message: "Internal Server Error" };
   try {
     if (error instanceof Error) {
+      const issues = Object.getOwnPropertyDescriptor(error, "issues");
       return {
         name: error.name,
         message: error.message,
@@ -583,7 +599,7 @@ function errorDetail(error: unknown, development: boolean): Record<string, unkno
         ...(Object.prototype.hasOwnProperty.call(error, "cause")
           ? { cause: jsonErrorValue(error.cause) }
           : {}),
-        ...(isObject(error) && "issues" in error ? { issues: jsonErrorValue(error.issues) } : {}),
+        ...(issues && "value" in issues ? { issues: jsonErrorValue(issues.value) } : {}),
       };
     }
     return { name: "Error", message: String(error) };

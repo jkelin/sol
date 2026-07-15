@@ -137,6 +137,7 @@ export async function hydrate<Props extends object>(
       rendered?.dispose();
     };
   } catch (error) {
+    session.fail(error);
     const failedRender = rendered;
     return rethrowWithDisposals(
       error,

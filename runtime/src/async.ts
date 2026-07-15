@@ -410,7 +410,7 @@ export function awaitBlock<T>(
     }
   };
   const stop = runtimeEffect(() => {
-    const promise = frame.hydration ? asyncValue(frame, site, getPromise, true) : getPromise();
+    const promise = asyncValue(frame, site, getPromise, true);
     if (!isPromiseLike(promise)) throw new TypeError("Await $promise must be promise-like");
     const currentGeneration = ++generation;
     devtoolsLoaderUpdated(activeLoader, { isLoading: false, isCancelled: true });

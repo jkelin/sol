@@ -1120,6 +1120,37 @@ test("context optional reads and local Await errors work without Suspense", asyn
   dispose();
 });
 
+test("Await handles synchronous promise evaluation failures locally", async () => {
+  const module = await loadCompiled(`
+    import { Await } from "@soljs/sol";
+
+    export const App = $component(function App() {
+      let attempt = 0;
+      function load() {
+        if (attempt === 0) throw new Error("synchronous Await failure");
+        return Promise.resolve("ready");
+      }
+      return <main>
+        <button onClick={() => attempt += 1}>Retry</button>
+        <Await $promise={load()} error={error => <p id="sync-await-error">{String(error)}</p>}>
+          {value => <p id="sync-await-value">{value}</p>}
+        </Await>
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  await Promise.resolve();
+  expect(target.querySelector("#sync-await-error")?.textContent).toContain(
+    "synchronous Await failure",
+  );
+  target.querySelector("button")!.click();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(target.querySelector("#sync-await-value")?.textContent).toBe("ready");
+  dispose();
+});
+
 test("preserves context reads after async setup resumes", async () => {
   const module = await loadCompiled(`
     import { $component, $context, Suspense } from "@soljs/sol";

@@ -94,7 +94,6 @@ export function compile(
     templateOwners: new Map(),
     mappingMarkerPrefix,
     mappingOrigins: [],
-    nextListId: 0,
     nextAsyncId: 0,
     target: compileOptions.target ?? "server",
     routeMode: compileOptions.routeMode ?? "page",

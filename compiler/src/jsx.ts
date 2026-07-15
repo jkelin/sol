@@ -1096,10 +1096,16 @@ export function compileExpressionChild(
   const map = mapDetails(compiler, expression);
   if (map) {
     useRuntimeHelper(compiler, "__sol_list");
-    const listId = compiler.nextListId;
-    compiler.nextListId += 1;
-    const itemReference = `__sol_item_${listId}`;
-    const indexReference = `__sol_index_${listId}`;
+    const scopeValues = new Set(scope.values());
+    let listDepth = 0;
+    while (
+      scopeValues.has(`__sol_item_${listDepth}.value`) ||
+      scopeValues.has(`__sol_index_${listDepth}.value`)
+    ) {
+      listDepth += 1;
+    }
+    const itemReference = `__sol_item_${listDepth}`;
+    const indexReference = `__sol_index_${listDepth}`;
     const rowScope = new Map(scope);
     rowScope.set(map.itemName, `${itemReference}.value`);
     if (map.indexName) rowScope.set(map.indexName, `${indexReference}.value`);

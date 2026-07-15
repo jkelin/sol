@@ -80,7 +80,9 @@ dependencies; route handles referenced by endpoint code are projected again as m
   self-references owned by erased function boundaries.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
   conditionals, and child expressions into source-marker-independent, signature-indexed interned
-  templates and reactive or one-shot runtime operations, including single-owner form bindings,
+  templates and reactive or one-shot runtime operations. Keyed-list parameters use deterministic
+  nesting-local names so equivalent sibling components share template definitions while nested
+  callbacks remain distinct. Lowering also includes single-owner form bindings,
   ASCII-case-insensitive unique DOM attribute targets and private-marker reservation, unique
   case-sensitive component properties, truthy-presence boolean expressions, property-backed
   text-control values with controlled file inputs rejected, canonical boolean-valued enumerated

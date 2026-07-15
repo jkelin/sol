@@ -41,8 +41,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   frame-explicit ownership for async component setup.
 - `queries.ts` implements descriptor-snapshotted cached query and mutation controllers, request
   deduplication, setup-lifetime enforcement, polling, eviction, Suspense participation,
-  request-isolated server caches, hydration replay, and compiler-authored diagnostic source
-  attachment.
+  request-isolated server caches, transactional hydration replay that rolls back cache state when
+  claiming fails, and compiler-authored diagnostic source attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and
   Link handles, including integrity-safe context proxies, opaque branded-value method receivers,
   and frame-explicit direct or extracted context reads used by async compiled setup.
@@ -61,8 +61,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, including
   explicit empty-text claims that preserve rollback-safe server DOM, then returns claimed blocks to
   the normal transition and retirement lifecycle after commit.
-- `ssr-session.ts` coordinates async replay entries across chained completion generations, shared promise-like validation, template
-  signatures, boundary state, timeouts, and first-failure wakeups for pending waiters.
+- `ssr-session.ts` coordinates async replay entries across chained completion generations, shared
+  promise-like validation, template signatures, boundary state, timeouts, first-failure wakeups for
+  pending waiters, and hydration commit/failure callbacks.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes, snapshotting each object's descriptors once,
   rejecting hidden lossy built-in extensions, exact-shape violations including empty-name fields,
@@ -79,7 +80,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   preserving directly recorded template order without reparsing final markup, serializing successful
   hydration payloads in one graph traversal while retaining async-site diagnostics on failure, and
   preserving the primary failure when request teardown also fails.
-- `hydrate.ts` validates hydration payloads, claims a compiled tree across DOM realms, and returns its disposer.
+- `hydrate.ts` validates hydration payloads, transactionally claims a compiled tree across DOM
+  realms, reports claim failure to replay participants, and returns its disposer.
 - `dom-realm.ts` centralizes owner-realm DOM node, element, and select classification.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation from snapshotted destinations, exact parameter-name checking, route handles,
@@ -106,7 +108,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive cross-realm element or
   body targets, evaluating each target once per reactive run.
-- `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including completion-mount failure routing and rollback
+- `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior, including local Await
+  routing for synchronous promise-expression failures, completion-mount failure routing and rollback
   of owned Await and ErrorBoundary replacement blocks whose mount fails, primary-error-preserving
   ErrorBoundary teardown, and SSR boundary rejection when a finish-time rerender fails.
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.

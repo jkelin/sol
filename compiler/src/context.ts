@@ -77,7 +77,6 @@ export interface CompilerContext {
   propsName?: string;
   mappingMarkerPrefix: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;
-  nextListId: number;
   nextAsyncId: number;
   target: "client" | "server";
   routeMode: "handle" | "page";

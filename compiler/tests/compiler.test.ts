@@ -295,6 +295,20 @@ describe("compiler", () => {
     expect(result.code.match(/__sol_instantiate\(__sol_template_0/g)).toHaveLength(2);
   });
 
+  test("interns identical keyed-list templates", () => {
+    const result = compile(
+      `export const First = $component(function First(props: { rows: string[] }) {
+         return <ul>{props.rows.map((item, index) => <li key={item}>{item}:{index}</li>)}</ul>;
+       });
+       export const Second = $component(function Second(props: { rows: string[] }) {
+         return <ul>{props.rows.map((item, index) => <li key={item}>{item}:{index}</li>)}</ul>;
+       });`,
+      "list-templates.tsx",
+    );
+
+    expect(result.code.match(/const __sol_template_\d+ =/g)).toHaveLength(2);
+  });
+
   test("uses collision-resistant template signatures", () => {
     const signatures = ["24596503", "389587026"].map((value) => {
       const result = compile(

@@ -413,6 +413,15 @@ function requestQuery<Data, Args extends unknown[]>(
       };
       if (replay?.status === "fulfilled" && !suspend && frame.hydration) {
         frame.hydration.afterCommit(apply);
+        frame.hydration.afterFailure(() => {
+          if (entry.inFlight !== promise) return;
+          batch(() => {
+            state.isFetching = false;
+            state.isRefetching = false;
+          });
+          entry.inFlight = undefined;
+          devtoolsQueryUpdated(devtoolsId, { ...state, args });
+        });
       } else apply();
     },
     (error) => {

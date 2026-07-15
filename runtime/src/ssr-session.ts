@@ -273,6 +273,7 @@ export class HydrationSession {
   private completion = deferred();
   private readonly failureSignal = deferred();
   private readonly commitCallbacks: Array<() => void> = [];
+  private readonly failureCallbacks: Array<() => void> = [];
   private failed = false;
   private failure: unknown;
 
@@ -375,6 +376,8 @@ export class HydrationSession {
     if (this.failed) return;
     this.failed = true;
     this.failure = error;
+    for (const callback of this.failureCallbacks.splice(0)) callback();
+    this.commitCallbacks.length = 0;
     this.failureSignal.resolve();
   }
 
@@ -400,12 +403,18 @@ export class HydrationSession {
 
   commit(): void {
     this.committed = true;
+    this.failureCallbacks.length = 0;
     for (const callback of this.commitCallbacks.splice(0)) callback();
   }
 
   afterCommit(callback: () => void): void {
     if (this.committed) callback();
     else this.commitCallbacks.push(callback);
+  }
+
+  afterFailure(callback: () => void): void {
+    if (this.failed) callback();
+    else if (!this.committed) this.failureCallbacks.push(callback);
   }
 
   private finishReplay(): void {

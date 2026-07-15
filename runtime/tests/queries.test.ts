@@ -10,7 +10,7 @@ import {
 } from "../src/queries.ts";
 import { disposeOwner } from "../src/reactivity.ts";
 import { block, component, renderComponent, rootFrame, type Block } from "../src/rendering.ts";
-import { SsrSession } from "../src/ssr-session.ts";
+import { HydrationSession, SsrSession } from "../src/ssr-session.ts";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -58,6 +58,48 @@ function inComponent<T>(setup: () => T): { readonly value: T; dispose(): void } 
 }
 
 describe("queries", () => {
+  test("rolls back fulfilled non-suspending replay after hydration failure", async () => {
+    const key = `failed-hydration-${crypto.randomUUID()}`;
+    const hydration = new HydrationSession({
+      version: 1,
+      templates: [],
+      async: [{ site: `sol:query:${JSON.stringify(key)}`, status: "fulfilled", value: "server" }],
+      boundaries: [],
+    });
+    const failedOwner: Array<() => void> = [];
+    queryInFrame(
+      {
+        queryKey: key,
+        query: async () => "unused",
+        cacheTime: Infinity,
+        suspense: { initial: false },
+      },
+      { ...rootFrame(), mode: "hydrate", hydration, owner: failedOwner },
+    );
+    await Promise.resolve();
+    hydration.fail(new Error("later mismatch"));
+    disposeOwner(failedOwner);
+
+    let calls = 0;
+    const freshOwner: Array<() => void> = [];
+    const fresh = queryInFrame(
+      {
+        queryKey: key,
+        query: async () => {
+          calls += 1;
+          return "fresh";
+        },
+        enabled: false,
+        cacheTime: 0,
+      },
+      { ...rootFrame(), owner: freshOwner },
+    );
+    expect(await fresh.refetch()).toBe("fresh");
+    expect(calls).toBe(1);
+    expect(fresh.data).toBe("fresh");
+    disposeOwner(freshOwner);
+  });
+
   test("isolates URL-less server query caches by render session", async () => {
     const firstSession = new SsrSession();
     const firstOwner: Array<() => void> = [];

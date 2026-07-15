@@ -1498,6 +1498,99 @@ describe("reactivity", () => {
     expect(changes).toEqual([0, 2]);
   });
 
+  test("tracks own-property and descriptor observations", () => {
+    const state = reactive<Record<string, number>>({});
+    const own: boolean[] = [];
+    const descriptors: string[] = [];
+    let unrelatedRuns = 0;
+    runtimeEffect(() =>
+      own.push(
+        Object.hasOwn(state, "answer") &&
+          Object.prototype.hasOwnProperty.call(state, "answer") &&
+          Object.prototype.propertyIsEnumerable.call(state, "answer"),
+      ),
+    );
+    runtimeEffect(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(state, "answer");
+      descriptors.push(
+        descriptor ? `${String(descriptor.value)}:${String(descriptor.enumerable)}` : "missing",
+      );
+    });
+    runtimeEffect(() => {
+      Object.hasOwn(state, "unrelated");
+      unrelatedRuns += 1;
+    });
+
+    state.answer = 42;
+    Object.defineProperty(state, "answer", { enumerable: false });
+    delete state.answer;
+
+    expect(own).toEqual([false, true, false, false]);
+    expect(descriptors).toEqual(["missing", "42:true", "42:false", "missing"]);
+    expect(unrelatedRuns).toBe(1);
+  });
+
+  test("tracks prototype reads and inherited structure", () => {
+    const first = { label: "first" };
+    const second = { label: "second", extra: true };
+    const third = { label: "third" };
+    const state = reactive(
+      Object.assign(Object.create(first) as { own: number; label: string }, { own: 1 }),
+    );
+    const labels: string[] = [];
+    const presence: boolean[] = [];
+    const inheritedKeys: string[] = [];
+    const prototypes: object[] = [];
+    let ownRuns = 0;
+    runtimeEffect(() => labels.push(state.label));
+    runtimeEffect(() => presence.push("extra" in state));
+    runtimeEffect(() => {
+      const keys: string[] = [];
+      for (const key in state) keys.push(key);
+      inheritedKeys.push(keys.join(","));
+    });
+    runtimeEffect(() => prototypes.push(Object.getPrototypeOf(state) as object));
+    runtimeEffect(() => {
+      void state.own;
+      ownRuns += 1;
+    });
+
+    Object.setPrototypeOf(state, second);
+    Object.setPrototypeOf(state, second);
+    expect(Reflect.setPrototypeOf(state, third)).toBe(true);
+    Object.preventExtensions(state);
+    expect(Reflect.setPrototypeOf(state, first)).toBe(false);
+
+    expect(labels).toEqual(["first", "second", "third"]);
+    expect(presence).toEqual([false, true, false]);
+    expect(inheritedKeys).toEqual(["own,label", "own,label,extra", "own,label"]);
+    expect(prototypes).toEqual([first, second, third]);
+    expect(ownRuns).toBe(1);
+  });
+
+  test("tracks extensibility reflection", () => {
+    const state = reactive({ value: 1 });
+    const extensible: boolean[] = [];
+    const sealed: boolean[] = [];
+    const frozen: boolean[] = [];
+    runtimeEffect(() => extensible.push(Object.isExtensible(state)));
+    runtimeEffect(() => sealed.push(Object.isSealed(state)));
+    runtimeEffect(() => frozen.push(Object.isFrozen(state)));
+
+    expect(Reflect.preventExtensions(state)).toBe(true);
+    expect(Reflect.preventExtensions(state)).toBe(true);
+    expect(extensible).toEqual([true, false]);
+    expect(sealed).toEqual([false, false]);
+    expect(frozen).toEqual([false, false]);
+
+    const guarded = reactive({ child: { value: 1 } });
+    void guarded.child.value;
+    const guardedExtensible: boolean[] = [];
+    runtimeEffect(() => guardedExtensible.push(Object.isExtensible(guarded)));
+    expect(Reflect.preventExtensions(guarded)).toBe(false);
+    expect(guardedExtensible).toEqual([true]);
+  });
+
   test("flushes combined property, iteration, and length dependencies once", () => {
     const object = $signal<Record<string, number>>({});
     let objectRuns = 0;

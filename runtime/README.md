@@ -28,7 +28,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `options.ts` snapshots exact own enumerable data-property records for stable public option and
   configuration boundaries.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
-  checks, and descriptor-based writes that preserve setter-only assignment semantics, deduplicated
+  checks, own-property descriptors, prototypes, extensibility reflection, and descriptor-based writes
+  that preserve setter-only assignment semantics, deduplicated
   proxy invalidation without key-iteration work for hole-only array length growth, render ownership state,
   identity-preserving array mutator batching and nested proxy caching even after targets become
   non-extensible, rejection of descriptor locks that would expose an already-proxied raw child,

@@ -12,6 +12,7 @@ interface Dependency {
   readonly effects: Set<ReactiveEffect>;
   readonly key: PropertyKey;
   readonly target: Map<PropertyKey, Dependency>;
+  readonly onEmpty?: () => void;
 }
 
 interface ReactiveEffect {
@@ -28,8 +29,11 @@ interface EffectQueue {
 }
 
 const ITERATE = Symbol("sol.iterate");
+const PROTOTYPE = Symbol("sol.prototype");
+const EXTENSIBLE = Symbol("sol.extensible");
 const SIGNAL = Symbol("sol.signal");
 const dependencies = new WeakMap<object, Map<PropertyKey, Dependency>>();
+const descriptorDependencies = new WeakMap<object, Map<PropertyKey, symbol>>();
 const proxyCache = new WeakMap<object, object>();
 const proxyTargets = new WeakMap<object, object>();
 const mutatingArrayMethods = new Set([
@@ -106,12 +110,15 @@ export function assertOwnerActive(owner: Cleanup[], label: string): void {
 function cleanupEffect(effect: ReactiveEffect): void {
   for (const dependency of effect.dependencies) {
     dependency.effects.delete(effect);
-    if (dependency.effects.size === 0) dependency.target.delete(dependency.key);
+    if (dependency.effects.size === 0) {
+      dependency.target.delete(dependency.key);
+      dependency.onEmpty?.();
+    }
   }
   effect.dependencies.clear();
 }
 
-function track(target: object, key: PropertyKey): void {
+function track(target: object, key: PropertyKey, onEmpty?: () => void): void {
   if (!activeEffect?.active) return;
   let targetDependencies = dependencies.get(target);
   if (!targetDependencies) {
@@ -120,11 +127,32 @@ function track(target: object, key: PropertyKey): void {
   }
   let dependency = targetDependencies.get(key);
   if (!dependency) {
-    dependency = { effects: new Set(), key, target: targetDependencies };
+    dependency = { effects: new Set(), key, onEmpty, target: targetDependencies };
     targetDependencies.set(key, dependency);
   }
   dependency.effects.add(activeEffect);
   activeEffect.dependencies.add(dependency);
+}
+
+function descriptorDependency(target: object, key: PropertyKey, create = true): symbol | undefined {
+  let targetDependencies = descriptorDependencies.get(target);
+  if (!targetDependencies) {
+    if (!create) return undefined;
+    targetDependencies = new Map();
+    descriptorDependencies.set(target, targetDependencies);
+  }
+  let dependency = targetDependencies.get(key);
+  if (!dependency && create) {
+    dependency = Symbol("sol.descriptor");
+    targetDependencies.set(key, dependency);
+  }
+  return dependency;
+}
+
+function trackDescriptor(target: object, key: PropertyKey): void {
+  if (!activeEffect?.active) return;
+  const dependency = descriptorDependency(target, key)!;
+  track(target, dependency, () => descriptorDependencies.get(target)?.delete(key));
 }
 
 function runEffectQueue(queue: EffectQueue): void {
@@ -357,6 +385,23 @@ function descriptorsEqual(
   );
 }
 
+function descriptorShapesEqual(
+  left: PropertyDescriptor | undefined,
+  right: PropertyDescriptor | undefined,
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      "value" in left === "value" in right &&
+      left.get === right.get &&
+      left.set === right.set &&
+      left.writable === right.writable &&
+      left.enumerable === right.enumerable &&
+      left.configurable === right.configurable)
+  );
+}
+
 export function reactive<T extends object>(target: T): T {
   const cached = existingProxy(target);
   if (cached) return cached;
@@ -376,6 +421,7 @@ export function reactive<T extends object>(target: T): T {
     wasPresent: boolean,
     oldLength: number,
     iterationChanged: boolean,
+    descriptorChanged: boolean,
   ): void => {
     if (Array.isArray(target) && key === "length") {
       const removed = dependencies.get(target)
@@ -387,13 +433,26 @@ export function reactive<T extends object>(target: T): T {
                 Number(dependency) >= target.length),
           )
         : [];
-      triggerMany(target, ["length", ...removed]);
+      triggerMany(
+        target,
+        [
+          "length",
+          ...removed.flatMap((dependency) => [
+            dependency,
+            descriptorDependency(target, dependency, false),
+          ]),
+        ].filter((dependency): dependency is PropertyKey => dependency !== undefined),
+      );
       return;
     }
-    const affected: PropertyKey[] = [key];
+    const affected: Array<PropertyKey | undefined> = [key];
+    if (descriptorChanged) affected.push(descriptorDependency(target, key, false));
     if (!wasPresent || iterationChanged) affected.push(ITERATE);
     if (Array.isArray(target) && target.length !== oldLength) affected.push("length");
-    triggerMany(target, affected);
+    triggerMany(
+      target,
+      affected.filter((dependency): dependency is PropertyKey => dependency !== undefined),
+    );
   };
 
   const proxy = new Proxy(target, {
@@ -433,6 +492,14 @@ export function reactive<T extends object>(target: T): T {
       track(object, key);
       return Reflect.has(object, key);
     },
+    getOwnPropertyDescriptor(object, key) {
+      trackDescriptor(object, key);
+      return Reflect.getOwnPropertyDescriptor(object, key);
+    },
+    getPrototypeOf(object) {
+      track(object, PROTOTYPE);
+      return Reflect.getPrototypeOf(object);
+    },
     set(object, key, value, receiver) {
       const previous = Reflect.getOwnPropertyDescriptor(object, key);
       const wasPresent = previous !== undefined;
@@ -448,9 +515,16 @@ export function reactive<T extends object>(target: T): T {
         setOperations.pop();
       }
       const isPresent = Object.prototype.hasOwnProperty.call(object, key);
+      const current = Reflect.getOwnPropertyDescriptor(object, key);
       const dataUnchanged = previous && "value" in previous && Object.is(oldValue, nextValue);
       if (changed && !operation.handled && !dataUnchanged) {
-        invalidate(key, wasPresent || !isPresent, oldLength, wasPresent !== isPresent);
+        invalidate(
+          key,
+          wasPresent || !isPresent,
+          oldLength,
+          wasPresent !== isPresent,
+          !descriptorShapesEqual(previous, current),
+        );
       }
       return changed;
     },
@@ -485,6 +559,7 @@ export function reactive<T extends object>(target: T): T {
             previous !== undefined,
             oldLength,
             previous?.enumerable !== current?.enumerable,
+            !descriptorShapesEqual(previous, current),
           );
         }
       }
@@ -497,13 +572,38 @@ export function reactive<T extends object>(target: T): T {
           if (childProxy !== undefined && childProxy !== descriptor.value) return false;
         }
       }
-      return Reflect.preventExtensions(object);
+      const wasExtensible = Reflect.isExtensible(object);
+      const prevented = Reflect.preventExtensions(object);
+      if (prevented && wasExtensible && !Reflect.isExtensible(object)) trigger(object, EXTENSIBLE);
+      return prevented;
+    },
+    isExtensible(object) {
+      track(object, EXTENSIBLE);
+      return Reflect.isExtensible(object);
+    },
+    setPrototypeOf(object, prototype) {
+      const previous = Reflect.getPrototypeOf(object);
+      const changed = Reflect.setPrototypeOf(object, prototype);
+      if (changed && prototype !== previous) {
+        const descriptorKeys = new Set(descriptorDependencies.get(object)?.values());
+        const inheritedDependencies = [...(dependencies.get(object)?.keys() ?? [])].filter(
+          (key) =>
+            key !== ITERATE &&
+            key !== PROTOTYPE &&
+            key !== EXTENSIBLE &&
+            !descriptorKeys.has(key as symbol) &&
+            !Object.prototype.hasOwnProperty.call(object, key),
+        );
+        triggerMany(object, [PROTOTYPE, ITERATE, ...inheritedDependencies]);
+      }
+      return changed;
     },
     deleteProperty(object, key) {
       const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
       const deleted = Reflect.deleteProperty(object, key);
       if (deleted && wasPresent) {
-        triggerMany(object, [key, ITERATE]);
+        const descriptor = descriptorDependency(object, key, false);
+        triggerMany(object, descriptor ? [key, descriptor, ITERATE] : [key, ITERATE]);
       }
       return deleted;
     },

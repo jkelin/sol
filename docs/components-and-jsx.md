@@ -26,7 +26,9 @@ Event attributes use React-style capitalization such as `onClick`, while handler
 
 HTML attribute identity is ASCII-case-insensitive. The compiler rejects differently cased
 duplicates and reserves `data-sol-e` and `data-sol-hydration` in every casing for hydration
-metadata. Component prop names remain case-sensitive.
+metadata. Standard boolean attribute expressions use truthy presence semantics consistently across
+mounting, SSR, and hydration, while a quoted boolean attribute remains authored presence.
+Component prop names remain case-sensitive.
 
 ## Conditional classes
 

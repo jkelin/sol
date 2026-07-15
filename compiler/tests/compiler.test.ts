@@ -235,6 +235,25 @@ describe("compiler", () => {
     expect(result.code).toContain('"itemScope", () => (0)');
   });
 
+  test("keeps falsey boolean expression literals distinct from authored presence", () => {
+    const result = compile(
+      `export const App = $component(function App() {
+        return <main>
+          <button id="quoted" disabled="">Quoted</button>
+          <button id="expression" disabled={""}>Expression</button>
+          <video disablePictureInPicture={0} disableRemotePlayback={0}></video>
+        </main>;
+      });`,
+      "boolean-expressions.tsx",
+    );
+
+    expect(result.code).toContain('id="quoted" disabled=""');
+    expect(result.code).not.toContain('id="expression" disabled=""');
+    expect(result.code).toContain('"disabled", () => ("")');
+    expect(result.code).toContain('"disablePictureInPicture", () => (0)');
+    expect(result.code).toContain('"disableRemotePlayback", () => (0)');
+  });
+
   test("interns identical compiled templates", () => {
     const result = compile(
       `import { $component } from "@soljs/sol";

@@ -148,6 +148,21 @@ function expectBooleanValueParity(target: ParentNode): void {
   expect(target.querySelector("#dynamic-class")!.className).toBe("0");
 }
 
+function expectFalseyBooleanAbsence(target: ParentNode): void {
+  const quoted = target.querySelector<HTMLButtonElement>("#quoted")!;
+  const empty = target.querySelector<HTMLButtonElement>("#empty")!;
+  const readonly = target.querySelector<HTMLInputElement>("#readonly")!;
+  const media = target.querySelector<HTMLVideoElement>("#media")!;
+  expect(quoted.disabled).toBe(true);
+  expect(quoted.hasAttribute("disabled")).toBe(true);
+  expect(empty.disabled).toBe(false);
+  expect(empty.hasAttribute("disabled")).toBe(false);
+  expect(readonly.readOnly).toBe(false);
+  expect(readonly.hasAttribute("readonly")).toBe(false);
+  expect(media.hasAttribute("disablepictureinpicture")).toBe(false);
+  expect(media.hasAttribute("disableremoteplayback")).toBe(false);
+}
+
 test("compiled components update fine-grained DOM without rerunning setup", async () => {
   const module = await loadCompiled(`
     const Child = $component(function Child(props: { item: { id: number; label: string } }) {
@@ -2093,6 +2108,32 @@ test("keeps boolean input values and numeric zero classes consistent across rend
   );
   expect(target.querySelector("#dynamic-value")).toBe(serverInput);
   expect(serverInput.value).toBe("false");
+});
+
+test("omits falsey mixed-case and media boolean attributes in every rendering mode", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      return <main>
+        <button id="quoted" disabled="">Quoted</button>
+        <button id="empty" DISABLED={""}>Empty</button>
+        <input id="readonly" READONLY={0} />
+        <video id="media" disablePictureInPicture={0} disableRemotePlayback={0}></video>
+      </main>;
+    });
+  `);
+  const App = module.App as Component;
+
+  const mounted = document.createElement("div");
+  const disposeMount = mount(App, mounted);
+  expectFalseyBooleanAbsence(mounted);
+  disposeMount();
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expectFalseyBooleanAbsence(target);
+  const disposeHydration = await hydrate(App, target);
+  expectFalseyBooleanAbsence(target);
+  disposeHydration();
 });
 
 test("hydration rejects a Link destination mismatch without rewriting href", async () => {

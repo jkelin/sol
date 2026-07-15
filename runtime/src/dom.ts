@@ -194,6 +194,44 @@ export function head(render: RenderFactory, cleanups: Cleanup[], frame: RenderFr
 
 const writableProperties = new WeakMap<Element, Map<string, boolean>>();
 
+const BOOLEAN_PROPERTIES = new Map([
+  ["allowfullscreen", "allowFullscreen"],
+  ["async", "async"],
+  ["autofocus", "autofocus"],
+  ["autoplay", "autoplay"],
+  ["checked", "checked"],
+  ["controls", "controls"],
+  ["default", "default"],
+  ["defer", "defer"],
+  ["disabled", "disabled"],
+  ["disablepictureinpicture", "disablePictureInPicture"],
+  ["disableremoteplayback", "disableRemotePlayback"],
+  ["formnovalidate", "formNoValidate"],
+  ["hidden", "hidden"],
+  ["inert", "inert"],
+  ["ismap", "isMap"],
+  ["itemscope", "itemScope"],
+  ["loop", "loop"],
+  ["multiple", "multiple"],
+  ["muted", "muted"],
+  ["nomodule", "noModule"],
+  ["novalidate", "noValidate"],
+  ["open", "open"],
+  ["playsinline", "playsInline"],
+  ["readonly", "readOnly"],
+  ["required", "required"],
+  ["reversed", "reversed"],
+  ["selected", "selected"],
+]);
+
+function booleanProperty(name: string): string | undefined {
+  return BOOLEAN_PROPERTIES.get(name.toLowerCase());
+}
+
+function isBooleanAttribute(name: string): boolean {
+  return booleanProperty(name) !== undefined;
+}
+
 function isWritableProperty(element: Element, property: string): boolean {
   let properties = writableProperties.get(element);
   if (!properties) {
@@ -223,6 +261,18 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     else element.setAttribute(name, String(value));
     return;
   }
+  const reflectedBoolean = booleanProperty(name);
+  if (reflectedBoolean) {
+    const enabled = Boolean(value);
+    if (reflectedBoolean in element && isWritableProperty(element, reflectedBoolean)) {
+      (element as unknown as Record<string, unknown>)[reflectedBoolean] = enabled;
+    } else if (enabled) {
+      element.setAttribute(name, "");
+    } else {
+      element.removeAttribute(name);
+    }
+    return;
+  }
   if (property in element && isWritableProperty(element, property)) {
     (element as unknown as Record<string, unknown>)[property] = value == null ? "" : value;
   } else if (value == null || value === false) {
@@ -230,38 +280,6 @@ function setDomValue(element: Element, name: string, value: unknown): void {
   } else {
     element.setAttribute(name, value === true ? "" : String(value));
   }
-}
-
-const BOOLEAN_ATTRIBUTES = new Set([
-  "allowfullscreen",
-  "async",
-  "autofocus",
-  "autoplay",
-  "checked",
-  "controls",
-  "default",
-  "defer",
-  "disabled",
-  "formnovalidate",
-  "hidden",
-  "inert",
-  "ismap",
-  "itemscope",
-  "loop",
-  "multiple",
-  "muted",
-  "nomodule",
-  "novalidate",
-  "open",
-  "playsinline",
-  "readonly",
-  "required",
-  "reversed",
-  "selected",
-]);
-
-function isBooleanAttribute(name: string): boolean {
-  return BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
 }
 
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);

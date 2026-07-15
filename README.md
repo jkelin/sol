@@ -85,7 +85,9 @@ collections, and class instances retain their original identity.
 
 Intrinsic HTML attribute identity is ASCII-case-insensitive, so differently cased duplicates are
 rejected and form-control semantics match the browser. `data-sol-e` and `data-sol-hydration` are
-reserved for compiler and SSR metadata in every casing. Component prop names remain case-sensitive.
+reserved for compiler and SSR metadata in every casing. Standard boolean attributes use truthy
+presence semantics for expression values in every rendering mode; quoted values remain authored
+presence attributes. Component prop names remain case-sensitive.
 
 ## Refs and portals
 

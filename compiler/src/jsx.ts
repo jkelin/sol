@@ -36,6 +36,8 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "default",
   "defer",
   "disabled",
+  "disablepictureinpicture",
+  "disableremoteplayback",
   "formnovalidate",
   "hidden",
   "inert",
@@ -748,6 +750,10 @@ export function compileIntrinsicElement(
         : sourceName;
     const staticValue = staticAttributeValue(compiler, attribute);
     const stringBoolean = targetName.startsWith("aria-") || targetName.startsWith("data-");
+    const expressionStringBoolean =
+      BOOLEAN_ATTRIBUTES.has(targetName) &&
+      t.isJSXExpressionContainer(attribute.value) &&
+      t.isStringLiteral(attribute.value.expression);
     if (
       name === "value" &&
       (tag === "textarea" ||
@@ -769,7 +775,7 @@ export function compileIntrinsicElement(
     } else if (typeof staticValue === "boolean" && stringBoolean) {
       attributes.push(`${name}="${String(staticValue)}"`);
     } else if (staticValue === true) attributes.push(name);
-    else if (typeof staticValue === "string")
+    else if (typeof staticValue === "string" && !expressionStringBoolean)
       attributes.push(`${name}="${escapeAttribute(staticValue)}"`);
     else if (
       t.isJSXExpressionContainer(attribute.value) &&

@@ -24,9 +24,10 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
-  shared object-or-callable promise-like detection, and primary-failure-preserving teardown.
+  identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
+  primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-safe value cloning, validation normalization,
-  and submission state.
+  submission state, and frame-explicit ownership for async component setup.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
   polling, eviction, Suspense participation, request-isolated server caches, hydration replay, and
   compiler-authored diagnostic source attachment.
@@ -47,7 +48,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
-  generation, and route handles.
+  generation, route handles, and frame-explicit reads used after async setup resumes.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
   application paths.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned document-head mounting and reactive raw text.
@@ -57,7 +58,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
 - `router.ts` connects compiled route definitions to browser history, request URLs, SSR route rendering,
   initial asynchronous route readiness, deployment-base translation, trailing-slash directory URL
-  normalization, and hydration of the active route.
+  normalization, request-frame reads, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.

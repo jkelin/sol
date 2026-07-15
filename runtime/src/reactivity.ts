@@ -310,6 +310,15 @@ export function reactive<T extends object>(target: T): T {
   if (cached) return cached as T;
 
   const setOperations: Array<{ key: PropertyKey; handled: boolean }> = [];
+  let arrayMutatorWrappers:
+    | Map<
+        string,
+        {
+          method: (...args: unknown[]) => unknown;
+          wrapper: (...args: unknown[]) => unknown;
+        }
+      >
+    | undefined;
   const invalidate = (
     key: PropertyKey,
     wasPresent: boolean,
@@ -337,15 +346,26 @@ export function reactive<T extends object>(target: T): T {
 
   const proxy = new Proxy(target, {
     get(object, key, receiver) {
-      if (Array.isArray(object) && typeof key === "string" && mutatingArrayMethods.has(key)) {
-        return (...args: unknown[]) =>
-          batch(() => {
-            const method = Reflect.get(object, key, receiver) as (...values: unknown[]) => unknown;
-            return method.apply(receiver, args);
-          });
-      }
       track(object, key);
       const value = Reflect.get(object, key, receiver) as unknown;
+      if (
+        Array.isArray(object) &&
+        typeof key === "string" &&
+        mutatingArrayMethods.has(key) &&
+        !Object.hasOwn(object, key) &&
+        value === Reflect.get(Array.prototype, key)
+      ) {
+        const method = value as (...values: unknown[]) => unknown;
+        let cachedWrapper = arrayMutatorWrappers?.get(key);
+        if (cachedWrapper?.method !== method) {
+          const wrapper = function (this: unknown, ...args: unknown[]) {
+            return batch(() => Reflect.apply(method, this, args));
+          };
+          cachedWrapper = { method, wrapper };
+          (arrayMutatorWrappers ??= new Map()).set(key, cachedWrapper);
+        }
+        return cachedWrapper.wrapper;
+      }
       return wrap(value);
     },
     has(object, key) {

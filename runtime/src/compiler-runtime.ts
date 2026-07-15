@@ -1,5 +1,6 @@
 export { contextProvider } from "./dom.ts";
 export { contextUse } from "./components.ts";
+export { formInFrame } from "./forms.ts";
 export {
   attribute,
   bindValue,
@@ -42,6 +43,7 @@ export {
   resolveRoute,
   route,
   routeHref,
+  routeRead,
   type NavigateOptions,
   type RawRouteParams,
   type RouteConfig,

@@ -4,8 +4,14 @@ import * as v from "valibot";
 import { z } from "zod";
 import { $component, $context, contextUse, Head, type Context } from "../src/components.ts";
 import { normalizeClass } from "../src/dom.ts";
-import { $form } from "../src/forms.ts";
-import { $computed, $signal, rethrowWithCleanups, type Signal } from "../src/reactivity.ts";
+import { $form, formInFrame } from "../src/forms.ts";
+import {
+  $computed,
+  $signal,
+  reactive,
+  rethrowWithCleanups,
+  type Signal,
+} from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
 import { mount, rootFrame } from "../src/rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
@@ -29,6 +35,7 @@ import {
   renderComponent,
   resolveRoute,
   routeHref,
+  routeRead,
   runtimeEffect,
   ref,
   template,
@@ -153,6 +160,12 @@ describe("forms", () => {
         noopSubmit,
       ),
     ).toThrow("validationStrategy");
+    expect(() =>
+      (formInFrame as (...args: unknown[]) => unknown)(rootFrame(), {
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "" },
+      }),
+    ).toThrow("submit function");
   });
 
   test("preserves prototype-named fields and validation paths", async () => {
@@ -587,6 +600,50 @@ describe("reactivity", () => {
     );
     expect(contextUse(service as Context<{ kind: string }>, rootFrame(), false)).toBe(ordinary);
     expect(contextUse(service as Context<{ kind: string }>, rootFrame(), true)).toBe(optional);
+    expect(
+      contextUse(
+        {} as Context<{ kind: string }>,
+        rootFrame(),
+        false,
+        false,
+        true,
+        (value) => value!.kind,
+      ),
+    ).toBeUndefined();
+    let getterReads = 0;
+    const getterService = {
+      get use() {
+        getterReads++;
+        return function (this: typeof getterService) {
+          return { kind: this === getterService ? "ordinary receiver" : "wrong receiver" };
+        };
+      },
+      get useOptional() {
+        getterReads++;
+        return function (this: typeof getterService) {
+          return { kind: this === getterService ? "optional receiver" : "wrong receiver" };
+        };
+      },
+    };
+    expect(
+      contextUse(
+        getterService as unknown as Context<{ kind: string }>,
+        rootFrame(),
+        false,
+        false,
+        true,
+      ),
+    ).toEqual({ kind: "ordinary receiver" });
+    expect(
+      contextUse(
+        getterService as unknown as Context<{ kind: string }>,
+        rootFrame(),
+        true,
+        false,
+        true,
+      ),
+    ).toEqual({ kind: "optional receiver" });
+    expect(getterReads).toBe(2);
   });
 
   test("validates the public compiler boundary and class values", () => {
@@ -727,6 +784,36 @@ describe("reactivity", () => {
     state.value.todos.splice(0, 1);
 
     expect(observations).toEqual(["1:false", "1:true", "2:true", "1:false"]);
+  });
+
+  test("preserves overridden array mutator properties", () => {
+    const nonCallable = reactive<unknown[]>([]);
+    Object.defineProperty(nonCallable, "push", {
+      value: 7,
+      configurable: true,
+      writable: true,
+    });
+    expect(nonCallable.push as unknown).toBe(7);
+
+    const expected = 42;
+    const custom = () => expected;
+    const callable = reactive<unknown[]>([]);
+    Object.defineProperty(callable, "push", {
+      value: custom,
+      configurable: true,
+      writable: true,
+    });
+    expect(callable.push).toBe(custom);
+    expect(callable.push).toBe(callable.push);
+
+    class Items extends Array<unknown> {}
+    const inherited = reactive(new Items());
+    const inheritedPush = inherited.push;
+    const receiver: unknown[] = [];
+    inheritedPush.call(receiver, "value");
+    expect(receiver).toEqual(["value"]);
+    expect(inherited).toHaveLength(0);
+    expect(inherited.push).toBe(inheritedPush);
   });
 
   test("invalidates removed array indexes when length shrinks", () => {
@@ -995,6 +1082,21 @@ describe("compiled DOM runtime", () => {
     expect(() => detail.navigate({ params: { id: "one", extra: "two" } } as never)).toThrow(
       "Unknown route parameter extra",
     );
+
+    const reads: PropertyKey[] = [];
+    const ordinary = new Proxy(
+      { params: { id: "ordinary" } },
+      {
+        get(target, key, receiver) {
+          if (typeof key === "symbol") throw new Error("unexpected symbol read");
+          reads.push(key);
+          return Reflect.get(target, key, receiver) as unknown;
+        },
+      },
+    );
+    expect(routeRead(ordinary, "params", rootFrame())).toEqual({ id: "ordinary" });
+    expect(reads).toEqual(["params"]);
+    expect(routeRead(undefined, "params", rootFrame(), (value) => value)).toBeUndefined();
 
     active = todo;
     pathname = "/";

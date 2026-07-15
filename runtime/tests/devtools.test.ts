@@ -8,8 +8,16 @@ import {
 } from "../src/devtools-hook.ts";
 import { installDevtools } from "../src/devtools.ts";
 import { awaitBlock } from "../src/async.ts";
-import { $signal, reactive, runtimeEffect } from "../src/reactivity.ts";
-import { block, blockLifecycle, component, mount, type Block } from "../src/rendering.ts";
+import { formInFrame } from "../src/forms.ts";
+import { $signal, disposeOwner, reactive, runtimeEffect } from "../src/reactivity.ts";
+import {
+  block,
+  blockLifecycle,
+  component,
+  mount,
+  rootFrame,
+  type Block,
+} from "../src/rendering.ts";
 
 declare global {
   var __sol: import("../src/devtools.ts").SolDevtools | undefined;
@@ -63,6 +71,45 @@ test("installs the development global, panel, and WebMCP tools", () => {
     "sol_get_diagnostics",
     "sol_inspect_element",
   ]);
+});
+
+test("disposes forms created after async component setup resumes", async () => {
+  const api = installDevtools()!;
+  const AsyncForm = component(async (_props, frame) => {
+    await Promise.resolve();
+    formInFrame(
+      frame,
+      {
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "draft" },
+      },
+      () => {},
+    );
+    return block(document.createDocumentFragment());
+  });
+  const dispose = mount(AsyncForm, document.createElement("main"));
+
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(api.forms).toHaveLength(1);
+
+  dispose();
+  expect(api.forms).toHaveLength(0);
+
+  const owner: Array<() => void> = [];
+  const disposedFrame = { ...rootFrame(), owner };
+  disposeOwner(owner);
+  expect(() =>
+    formInFrame(
+      disposedFrame,
+      {
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "late" },
+      },
+      () => {},
+    ),
+  ).toThrow("owner has been disposed");
+  expect(api.forms).toHaveLength(0);
 });
 
 test("toggles the panel from the launcher and restores its persisted layout", () => {

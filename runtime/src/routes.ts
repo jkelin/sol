@@ -4,7 +4,7 @@ import { hasParser, parseValue, type Parser } from "./validation.ts";
 import { isObject, isPromiseLike } from "./reactivity.ts";
 import { ROUTE } from "./symbols.ts";
 import { validationFailure } from "./forms.ts";
-import { getFactory, routeRuntime } from "./rendering.ts";
+import { getFactory, routeRuntime, type RenderFrame } from "./rendering.ts";
 
 export interface NavigateOptions {
   readonly replace?: boolean;
@@ -138,10 +138,78 @@ export interface RouteRuntimeDefinition {
 }
 
 export interface RouteRuntimeAdapter {
-  getParams(definition: RouteRuntimeDefinition): RouteValues;
-  getPathname(): string;
-  isActive(definition: RouteRuntimeDefinition): boolean;
+  getParams(definition: RouteRuntimeDefinition, frame?: RenderFrame): RouteValues;
+  getPathname(frame?: RenderFrame): string;
+  isActive(definition: RouteRuntimeDefinition, frame?: RenderFrame): boolean;
+  readRouter?(key: RouterReadKey, frame?: RenderFrame): unknown;
   navigate(path: string, options?: NavigateOptions): void;
+}
+
+export type RouterReadKey =
+  | "pathname"
+  | "search"
+  | "hash"
+  | "searchParams"
+  | "params"
+  | "query"
+  | "route";
+
+export type RouteReadKey = RouterReadKey | "isActive" | "isActivePrefix";
+
+const routePrefixes = new WeakMap<RouteRuntimeDefinition, string>();
+const routerValues = new WeakSet<object>();
+
+export function registerRouter<T extends object>(candidate: T): T {
+  routerValues.add(candidate);
+  return candidate;
+}
+
+function routeIsActivePrefix(definition: RouteRuntimeDefinition, frame?: RenderFrame): boolean {
+  const rawPathname = routeRuntime?.getPathname(frame);
+  let pathname: string | undefined;
+  try {
+    pathname = rawPathname ? canonicalizePathname(rawPathname) : undefined;
+  } catch {
+    return false;
+  }
+  if (!pathname) return false;
+  const staticPrefix = routePrefixes.get(definition);
+  if (!staticPrefix) return false;
+  return staticPrefix === "/"
+    ? definition.compiled.pathnameParameterNames.length > 0 || pathname === "/"
+    : pathname === staticPrefix || pathname.startsWith(`${staticPrefix}/`);
+}
+
+export function routeRead(
+  candidate: unknown,
+  key: RouteReadKey,
+  frame: RenderFrame,
+  continuation?: (value: unknown) => unknown,
+): unknown {
+  if (candidate == null) {
+    if (continuation) return undefined;
+    return (candidate as unknown as Record<RouteReadKey, unknown>)[key];
+  }
+  let value: unknown;
+  if (typeof candidate === "object" && routePrefixes.has(candidate as RouteRuntimeDefinition)) {
+    const definition = candidate as RouteRuntimeDefinition;
+    if (key === "params" || key === "query") {
+      if (!routeRuntime) throw new Error("Route runtime is not initialized");
+      value = routeRuntime.getParams(definition, frame);
+    } else if (key === "isActive") {
+      value = routeRuntime?.isActive(definition, frame) ?? false;
+    } else if (key === "isActivePrefix") {
+      value = routeIsActivePrefix(definition, frame);
+    } else {
+      value = (candidate as unknown as Record<RouteReadKey, unknown>)[key];
+    }
+  } else if (typeof candidate === "object" && routerValues.has(candidate)) {
+    if (!routeRuntime?.readRouter) throw new Error("Router runtime is not initialized");
+    value = routeRuntime.readRouter(key as RouterReadKey, frame);
+  } else {
+    value = (candidate as Record<RouteReadKey, unknown>)[key];
+  }
+  return continuation ? continuation(value) : value;
 }
 
 function validateRouteValues(
@@ -395,17 +463,7 @@ export function route<
       return routeRuntime?.isActive(definition) ?? false;
     },
     get isActivePrefix() {
-      const rawPathname = routeRuntime?.getPathname();
-      let pathname: string | undefined;
-      try {
-        pathname = rawPathname ? canonicalizePathname(rawPathname) : undefined;
-      } catch {
-        return false;
-      }
-      if (!pathname) return false;
-      return staticPrefix === "/"
-        ? compiled.pathnameParameterNames.length > 0 || pathname === "/"
-        : pathname === staticPrefix || pathname.startsWith(`${staticPrefix}/`);
+      return routeIsActivePrefix(definition);
     },
     navigate(destination: RouteDestination<Values>, options?: NavigateOptions) {
       if (!routeRuntime) throw new Error("Route runtime is not initialized");
@@ -418,6 +476,7 @@ export function route<
       );
     },
   }) as CompiledRouteDefinition<Path, Values>;
+  routePrefixes.set(definition, staticPrefix);
   return definition;
 }
 

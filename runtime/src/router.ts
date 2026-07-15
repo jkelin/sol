@@ -21,6 +21,7 @@ import {
 import {
   canonicalizePathname,
   defineRouteValue,
+  registerRouter,
   resolveRoute,
   type NavigateOptions,
   type RawRouteParams,
@@ -189,7 +190,7 @@ function resolveLocation(location: RouterState): RouterState | PromiseLike<Route
   const match = matchRoute(location.pathname, location.searchParams);
   if (!match) return unmatchedState(location);
   const result = resolveRoute(match.definition, match.params);
-  if (result && typeof result === "object" && "then" in result) {
+  if (isPromiseLike(result)) {
     return Promise.resolve(result).then((resolution) =>
       resolution.matched
         ? resolvedState(location, match, resolution.values)
@@ -199,17 +200,16 @@ function resolveLocation(location: RouterState): RouterState | PromiseLike<Route
   return result.matched ? resolvedState(location, match, result.values) : unmatchedState(location);
 }
 
-function currentState(): RouterState {
-  const url = runtimeState.activeFrame?.url;
+function currentState(frame = runtimeState.activeFrame): RouterState {
+  const url = frame?.url;
   if (!url) return state.value;
   const existing = serverStates.get(url);
   if (existing) return existing;
-  const location = readLocation(runtimeState.activeFrame);
+  const location = readLocation(frame);
   const resolved = resolveLocation(location);
-  const initial =
-    resolved && typeof resolved === "object" && "then" in resolved
-      ? { ...unmatchedState(location), status: "pending" as const }
-      : resolved;
+  const initial = isPromiseLike(resolved)
+    ? { ...unmatchedState(location), status: "pending" as const }
+    : resolved;
   serverStates.set(url, initial);
   return initial;
 }
@@ -259,7 +259,7 @@ function synchronizeLocation(): void | Promise<void> {
     return;
   }
 
-  if (!(result && typeof result === "object" && "then" in result)) {
+  if (!isPromiseLike(result)) {
     setRouterState(
       result.matched ? resolvedState(location, match, result.values) : unmatchedState(location),
     );
@@ -325,44 +325,52 @@ function navigate(path: string, options: NavigateOptions = {}): void {
   void synchronizeLocation();
 }
 
-export const router: Router = Object.freeze({
-  get pathname() {
-    return currentState().pathname;
-  },
-  get search() {
-    return currentState().search;
-  },
-  get hash() {
-    return currentState().hash;
-  },
-  get searchParams() {
-    return currentState().searchParams;
-  },
-  get params() {
-    return currentState().values ?? Object.freeze({});
-  },
-  get query() {
-    return currentState().values ?? Object.freeze({});
-  },
-  get route() {
-    return currentState().route;
-  },
-  navigate,
-});
+export const router: Router = registerRouter(
+  Object.freeze({
+    get pathname() {
+      return currentState().pathname;
+    },
+    get search() {
+      return currentState().search;
+    },
+    get hash() {
+      return currentState().hash;
+    },
+    get searchParams() {
+      return currentState().searchParams;
+    },
+    get params() {
+      return currentState().values ?? Object.freeze({});
+    },
+    get query() {
+      return currentState().values ?? Object.freeze({});
+    },
+    get route() {
+      return currentState().route;
+    },
+    navigate,
+  }),
+);
 
 configureRouteRuntime({
-  getParams(definition) {
-    const current = currentState();
+  getParams(definition, frame) {
+    const current = currentState(frame);
     if (current.pattern !== definition.compiled.pattern || !current.values) {
       throw new Error("Cannot read values from an inactive route");
     }
     return current.values;
   },
-  getPathname() {
-    return currentState().pathname;
+  getPathname(frame) {
+    return currentState(frame).pathname;
   },
-  isActive(definition) {
-    return currentState().pattern === definition.compiled.pattern;
+  isActive(definition, frame) {
+    return currentState(frame).pattern === definition.compiled.pattern;
+  },
+  readRouter(key, frame) {
+    const current = currentState(frame);
+    if (key === "params" || key === "query") return current.values ?? Object.freeze({});
+    if (key === "route") return current.route;
+    return current[key];
   },
   navigate,
 });
@@ -456,7 +464,7 @@ export const Route = component((props: Readonly<{ pending?: Component }>, frame)
       renderedRoute?.mount(region);
       return block(view.fragment, renderedRoute ? [() => renderedRoute.dispose()] : []);
     };
-    return resolution && typeof resolution === "object" && "then" in resolution
+    return isPromiseLike(resolution)
       ? Promise.resolve(resolution).then(render)
       : render(resolution);
   }

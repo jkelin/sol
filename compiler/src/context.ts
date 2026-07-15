@@ -63,7 +63,7 @@ export interface CompilerContext {
     "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute"
   >;
   declarationHelperNamespaceImports: Set<t.Identifier>;
-  requestHelpers: Map<string, "$query" | "$mutation">;
+  requestHelpers: Map<string, "$query" | "$mutation" | "$form">;
   propsName?: string;
   mappingMarkerPrefix: string;
   mappingOrigins: Array<{ marker: string; originalOffset: number }>;

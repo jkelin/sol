@@ -515,6 +515,11 @@ function instrumentRequestSources(
       if (!t.isIdentifier(call.callee) || !helper || path.scope.hasBinding(call.callee.name)) {
         return;
       }
+      if (helper === "$form") {
+        call.arguments.unshift(t.identifier("__sol_frame"));
+        call.callee = t.identifier("__sol_form");
+        return;
+      }
       const config = call.arguments[0];
       if (!config || !t.isExpression(config)) return;
       call.arguments[0] = t.callExpression(t.identifier("__sol_request_source"), [
@@ -544,6 +549,124 @@ function ancestorWithinFunction<T extends t.Node>(
     if (matches(candidate)) return candidate;
   }
   return undefined;
+}
+
+function instrumentContextCall(
+  path: NodePath<t.CallExpression | t.OptionalCallExpression>,
+  optionalMethod: boolean,
+): void {
+  if (path.node.arguments.length !== 0) return;
+  const callee = path.node.callee;
+  if (!t.isMemberExpression(callee) && !t.isOptionalMemberExpression(callee)) return;
+  if (!t.isExpression(callee.object)) return;
+  const method = !callee.computed
+    ? t.isIdentifier(callee.property)
+      ? callee.property.name
+      : undefined
+    : t.isStringLiteral(callee.property)
+      ? callee.property.value
+      : undefined;
+  if (method !== "use" && method !== "useOptional") return;
+  const optionalCandidate = t.isOptionalMemberExpression(callee) && callee.optional;
+  let outer: NodePath<t.Expression> | undefined;
+  if (optionalCandidate || optionalMethod) {
+    const extent = optionalChainExtent(path as NodePath<t.Expression>);
+    if (extent.outer !== path) outer = extent.outer;
+    const parent = outer?.parentPath?.node ?? path.parentPath?.node;
+    if (
+      (!outer &&
+        (t.isCallExpression(parent) || t.isOptionalCallExpression(parent)) &&
+        parent.callee === path.node) ||
+      (t.isTaggedTemplateExpression(parent) && parent.tag === (outer?.node ?? path.node)) ||
+      (t.isUnaryExpression(parent, { operator: "delete" }) &&
+        parent.argument === (outer?.node ?? path.node))
+    ) {
+      return;
+    }
+  }
+  const callArguments: t.Expression[] = [
+    callee.object,
+    t.identifier("__sol_frame"),
+    t.booleanLiteral(method === "useOptional"),
+  ];
+  if (optionalCandidate || optionalMethod) {
+    callArguments.push(t.booleanLiteral(optionalCandidate), t.booleanLiteral(optionalMethod));
+  }
+  if (outer) {
+    const value = t.identifier("__sol_context_value");
+    callArguments.push(
+      t.arrowFunctionExpression([value], replaceOptionalChainBase(outer.node, path.node, value)),
+    );
+    outer.replaceWith(t.callExpression(t.identifier("__sol_context_use"), callArguments));
+    outer.skip();
+  } else {
+    path.replaceWith(t.callExpression(t.identifier("__sol_context_use"), callArguments));
+    path.skip();
+  }
+}
+
+function optionalChainExtent(path: NodePath<t.Expression>): {
+  outer: NodePath<t.Expression>;
+  hasMemberContinuation: boolean;
+} {
+  let outer = path;
+  let hasMemberContinuation = false;
+  for (;;) {
+    const parent = outer.parentPath;
+    if (
+      parent &&
+      (parent.isMemberExpression() || parent.isOptionalMemberExpression()) &&
+      parent.node.object === outer.node
+    ) {
+      outer = parent as NodePath<t.Expression>;
+      hasMemberContinuation = true;
+      continue;
+    }
+    if (
+      hasMemberContinuation &&
+      parent &&
+      (parent.isCallExpression() || parent.isOptionalCallExpression()) &&
+      parent.node.callee === outer.node
+    ) {
+      outer = parent as NodePath<t.Expression>;
+      continue;
+    }
+    break;
+  }
+  return { outer, hasMemberContinuation };
+}
+
+function staticMemberName(
+  member: t.MemberExpression | t.OptionalMemberExpression,
+): string | undefined {
+  return !member.computed
+    ? t.isIdentifier(member.property)
+      ? member.property.name
+      : undefined
+    : t.isStringLiteral(member.property)
+      ? member.property.value
+      : undefined;
+}
+
+function replaceOptionalChainBase(
+  expression: t.Expression,
+  target: t.Expression,
+  replacement: t.Identifier,
+): t.Expression {
+  if (expression === target) return replacement;
+  if (t.isMemberExpression(expression) || t.isOptionalMemberExpression(expression)) {
+    if (!t.isExpression(expression.object)) throw new Error("Expected a member expression object");
+    const cloned = t.cloneNode(expression, false);
+    cloned.object = replaceOptionalChainBase(expression.object, target, replacement);
+    return cloned;
+  }
+  if (t.isCallExpression(expression) || t.isOptionalCallExpression(expression)) {
+    if (!t.isExpression(expression.callee)) throw new Error("Expected a call expression callee");
+    const cloned = t.cloneNode(expression, false);
+    cloned.callee = replaceOptionalChainBase(expression.callee, target, replacement);
+    return cloned;
+  }
+  throw new Error("Expected a direct optional expression chain");
 }
 
 function instrumentAwaitExpressions(
@@ -770,24 +893,80 @@ function instrumentAwaitExpressions(
 
   traverse(file, {
     CallExpression(path: NodePath<t.CallExpression>) {
+      instrumentContextCall(path, false);
+    },
+    OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
+      instrumentContextCall(path, path.node.optional);
+    },
+  });
+
+  if (!declaration.async) return;
+  const routeReadKeys = new Set([
+    "pathname",
+    "search",
+    "hash",
+    "searchParams",
+    "params",
+    "query",
+    "route",
+    "isActive",
+    "isActivePrefix",
+  ]);
+  const instrumentRouteRead = (path: NodePath<t.MemberExpression>): void => {
+    if (!path.isReferenced() || !t.isExpression(path.node.object)) return;
+    const parent = path.parentPath?.node;
+    if (
+      ((t.isCallExpression(parent) ||
+        t.isOptionalCallExpression(parent) ||
+        t.isNewExpression(parent)) &&
+        parent.callee === path.node) ||
+      (t.isTaggedTemplateExpression(parent) && parent.tag === path.node)
+    ) {
+      return;
+    }
+    const key = staticMemberName(path.node);
+    if (!key || !routeReadKeys.has(key)) return;
+    const callArguments: t.Expression[] = [
+      path.node.object,
+      t.stringLiteral(key),
+      t.identifier("__sol_frame"),
+    ];
+    path.replaceWith(t.callExpression(t.identifier("__sol_route_read"), callArguments));
+    path.skip();
+  };
+  traverse(file, {
+    MemberExpression(path: NodePath<t.MemberExpression>) {
+      instrumentRouteRead(path);
+    },
+    OptionalMemberExpression(path: NodePath<t.OptionalMemberExpression>) {
+      if (!path.node.optional || !t.isExpression(path.node.object)) return;
+      const key = staticMemberName(path.node);
+      if (!key || !routeReadKeys.has(key)) return;
+      const { outer, hasMemberContinuation } = optionalChainExtent(path as NodePath<t.Expression>);
+      const parent = outer.parentPath?.node;
       if (
-        path.node.arguments.length !== 0 ||
-        !t.isMemberExpression(path.node.callee) ||
-        path.node.callee.computed ||
-        !t.isIdentifier(path.node.callee.property) ||
-        (path.node.callee.property.name !== "use" &&
-          path.node.callee.property.name !== "useOptional")
+        (!hasMemberContinuation &&
+          (t.isCallExpression(parent) ||
+            t.isOptionalCallExpression(parent) ||
+            t.isNewExpression(parent)) &&
+          parent.callee === outer.node) ||
+        (t.isTaggedTemplateExpression(parent) && parent.tag === outer.node) ||
+        (t.isUnaryExpression(parent, { operator: "delete" }) && parent.argument === outer.node)
       ) {
         return;
       }
-      path.replaceWith(
-        t.callExpression(t.identifier("__sol_context_use"), [
-          path.node.callee.object as t.Expression,
+      const value = t.identifier("__sol_route_value");
+      const continuation =
+        outer.node === path.node ? value : replaceOptionalChainBase(outer.node, path.node, value);
+      outer.replaceWith(
+        t.callExpression(t.identifier("__sol_route_read"), [
+          path.node.object,
+          t.stringLiteral(key),
           t.identifier("__sol_frame"),
-          t.booleanLiteral(path.node.callee.property.name === "useOptional"),
+          t.arrowFunctionExpression([value], continuation),
         ]),
       );
-      path.skip();
+      outer.skip();
     },
   });
 }

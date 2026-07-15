@@ -1,6 +1,7 @@
-import { $signal, isObject, runtimeState } from "./reactivity.ts";
+import { $signal, assertOwnerActive, isObject, runtimeState } from "./reactivity.ts";
 import { devtoolsFormCreated, devtoolsFormDisposed, devtoolsFormUpdated } from "./devtools-hook.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
+import type { Cleanup, RenderFrame } from "./rendering.ts";
 
 export type FormValidationStrategy = "onSubmit" | "onBlur" | "onInput";
 export type FormParser<TValues extends Record<string, unknown>, TOutput> = Parser<TValues, TOutput>;
@@ -99,6 +100,23 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
   config: FormConfig<TValues, TOutput>,
   onSubmit: (values: TOutput) => void | PromiseLike<void>,
 ): FormController<TValues> {
+  return createForm(config, onSubmit, runtimeState.activeOwner);
+}
+
+export function formInFrame<TValues extends Record<string, unknown>, TOutput>(
+  frame: RenderFrame,
+  config: FormConfig<TValues, TOutput>,
+  onSubmit: (values: TOutput) => void | PromiseLike<void>,
+): FormController<TValues> {
+  assertOwnerActive(frame.owner, "$form()");
+  return createForm(config, onSubmit, frame.owner);
+}
+
+function createForm<TValues extends Record<string, unknown>, TOutput>(
+  config: FormConfig<TValues, TOutput>,
+  onSubmit: (values: TOutput) => void | PromiseLike<void>,
+  owner: Cleanup[] | undefined,
+): FormController<TValues> {
   if (!isObject(config) || Array.isArray(config))
     throw new TypeError("$form() expects a config object");
   if (!isObject(config.defaultValues) || Array.isArray(config.defaultValues)) {
@@ -129,7 +147,7 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
     isSubmitting: isSubmitting.value,
   });
   const devtoolsId = devtoolsFormCreated(strategy, devtoolsState());
-  runtimeState.activeOwner?.push(() => devtoolsFormDisposed(devtoolsId));
+  owner?.push(() => devtoolsFormDisposed(devtoolsId));
   const publish = (): void => devtoolsFormUpdated(devtoolsId, devtoolsState());
 
   const parse = async (): Promise<TOutput> => {

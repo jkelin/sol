@@ -99,7 +99,7 @@ function installAnimations(): Array<{ cancelled: boolean; finish(): void }> {
 
 async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const result = compile(source, "Integration.tsx");
-  const runtimeModule = ["components.ts", "portals.ts", "queries.ts", "refs.ts"]
+  const runtimeModule = ["components.ts", "forms.ts", "portals.ts", "queries.ts", "refs.ts"]
     .map(
       (file) =>
         `export * from ${JSON.stringify(new URL(`../../runtime/src/${file}`, import.meta.url).href)};`,
@@ -867,9 +867,9 @@ test("query and mutation controllers update compiled DOM and opt into Suspense p
   expect(target.childNodes).toHaveLength(0);
 });
 
-test("creates frame-bound query and mutation controllers after async setup resumes", async () => {
+test("creates frame-bound controllers after async setup resumes", async () => {
   const module = await loadCompiled(`
-    import { $component, $query, $mutation } from "sol";
+    import { $component, $form, $query, $mutation } from "sol";
 
     export const App = $component(async function App() {
       await Promise.resolve();
@@ -880,7 +880,11 @@ test("creates frame-bound query and mutation controllers after async setup resum
         cacheTime: 0,
       });
       const mutation = $mutation({ mutation: async () => "saved" });
-      return <p id="late-controllers">{String(query.isFetching)}:{String(mutation.isMutating)}</p>;
+      const form = $form({
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "draft" },
+      }, () => {});
+      return <p id="late-controllers">{String(query.isFetching)}:{String(mutation.isMutating)}:{form.values.title}</p>;
     });
   `);
   const target = document.createElement("div");
@@ -890,7 +894,7 @@ test("creates frame-bound query and mutation controllers after async setup resum
   await Promise.resolve();
   await Promise.resolve();
 
-  expect(target.querySelector("#late-controllers")?.textContent).toBe("false:false");
+  expect(target.querySelector("#late-controllers")?.textContent).toBe("false:false:draft");
   dispose();
 });
 
@@ -1018,9 +1022,14 @@ test("preserves context reads after async setup resumes", async () => {
     const AsyncChild = $component(async function AsyncChild(props: { context: typeof shared }) {
       const alias = props.context;
       await Promise.resolve();
-      const value = alias.use();
+      const first = alias?.use();
+      const second = alias.use?.();
+      const third = alias["use"]();
+      const fourth = alias.use().label;
+      const fifth = alias?.use().label;
+      const sixth = alias.use?.().label;
       const service = { use() { return "ordinary method"; } };
-      return <p id="async-context">{value.label}:{service.use()}</p>;
+      return <p id="async-context">{first?.label}:{second?.label}:{third.label}:{fourth}:{fifth}:{sixth}:{service.use()}</p>;
     });
     export const App = $component(function App() {
       const value = { label: "provided" };
@@ -1033,10 +1042,14 @@ test("preserves context reads after async setup resumes", async () => {
   const target = document.createElement("div");
   target.innerHTML = await renderToStringAsync(App);
   const paragraph = target.querySelector("#async-context");
-  expect(paragraph?.textContent).toBe("provided:ordinary method");
+  expect(paragraph?.textContent).toBe(
+    "provided:provided:provided:provided:provided:provided:ordinary method",
+  );
   const dispose = await hydrate(App, target);
   expect(target.querySelector("#async-context")).toBe(paragraph);
-  expect(paragraph?.textContent).toBe("provided:ordinary method");
+  expect(paragraph?.textContent).toBe(
+    "provided:provided:provided:provided:provided:provided:ordinary method",
+  );
   dispose();
 });
 

@@ -88,7 +88,9 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
           }
           if (
             t.isIdentifier(specifier.imported) &&
-            (specifier.imported.name === "$query" || specifier.imported.name === "$mutation")
+            (specifier.imported.name === "$query" ||
+              specifier.imported.name === "$mutation" ||
+              specifier.imported.name === "$form")
           ) {
             compiler.requestHelpers.set(specifier.local.name, specifier.imported.name);
           }

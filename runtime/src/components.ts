@@ -85,18 +85,35 @@ export function $context<TShape extends object>(): Context<TShape> {
 }
 
 export function contextUse<TShape extends object>(
-  candidate: Context<TShape>,
+  candidate: Context<TShape> | null | undefined,
   frame: RenderFrame,
   optional: boolean,
+  optionalCandidate = false,
+  optionalMethod = false,
+  continuation?: (value: TShape | undefined) => unknown,
 ) {
+  if (candidate == null) {
+    if (optionalCandidate) return undefined;
+    return optional ? candidate!.useOptional() : candidate!.use();
+  }
+  let value: TShape | undefined;
   if (contexts.has(candidate)) {
     const internal = candidate as Context<TShape> & {
       use(frame: RenderFrame): TShape;
       useOptional(frame: RenderFrame): TShape | undefined;
     };
-    return optional ? internal.useOptional(frame) : internal.use(frame);
+    value = optional ? internal.useOptional(frame) : internal.use(frame);
+  } else if (optionalMethod) {
+    const method = Reflect.get(candidate, optional ? "useOptional" : "use") as
+      | ((this: Context<TShape>) => TShape | undefined)
+      | null
+      | undefined;
+    if (method == null) return undefined;
+    value = Reflect.apply(method, candidate, []);
+  } else {
+    value = optional ? candidate.useOptional() : candidate.use();
   }
-  return optional ? candidate.useOptional() : candidate.use();
+  return continuation ? continuation(value) : value;
 }
 
 function contextProxy(source: () => object): object {

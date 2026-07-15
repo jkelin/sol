@@ -44,9 +44,10 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
   conditionals, and child expressions into interned templates and runtime operations.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly
   mutations in dot or bracket syntax, and rewrites local state, derived values, props,
-  frame-explicit context reads, and component factories while preserving `createRef()` objects as
-  non-reactive handles, recognizing explicit reactive helpers and capturing awaits through
-  transparent TypeScript expressions, and attaching authored locations to query/mutation diagnostics.
+  frame-explicit context and route reads, frame-owned form/query/mutation helpers, and component
+  factories while preserving `createRef()` objects as non-reactive handles, recognizing explicit
+  reactive helpers and capturing awaits through transparent TypeScript expressions, and attaching
+  authored locations to query/mutation diagnostics.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
 - `runtime-import.ts` resolves referenced compiler-runtime identifiers from generated syntax and emits one minimal import; output adds
   a target-specific endpoint import only for modules containing server declarations.

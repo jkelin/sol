@@ -1019,6 +1019,118 @@ describe("compiler", () => {
     expect(result.code).toContain("__sol_context_use(sharedContext, __sol_frame, false)");
   });
 
+  test("keeps frame-bound setup helpers and route reads after awaits", () => {
+    const result = compile(
+      `
+      import { $component, $form, router } from "sol";
+      import { detail } from "./routes.ts";
+      const App = $component(async function App(props: { route: typeof detail }) {
+        await Promise.resolve();
+        const form = $form({ schema: (value: { title: string }) => value, defaultValues: { title: "" } }, () => {});
+        const ordinary = { params: { id: "ordinary" } };
+        const optionalRouter = router?.params.id;
+        const optionalRoute = props.route?.params.id;
+        return <p>{router.params.id}:{props.route.params.id}:{optionalRouter}:{optionalRoute}:{ordinary.params.id}:{form.values.title}</p>;
+      });
+    `,
+      "AsyncRoute.tsx",
+    );
+
+    expect(result.code).toContain("__sol_form(");
+    expect(result.code).toContain("__sol_form(__sol_frame,");
+    expect(result.code).toContain("__sol_frame");
+    expect(result.code).toContain('__sol_route_read(router, "params", __sol_frame)');
+    expect(result.code).toContain('__sol_route_read(props.route, "params", __sol_frame)');
+    expect(result.code).toContain('__sol_route_read(ordinary.value, "params", __sol_frame)');
+    expect(result.code).toContain(
+      '__sol_route_read(router, "params", __sol_frame, __sol_route_value => __sol_route_value.id)',
+    );
+    expect(result.code).toContain(
+      '__sol_route_read(props.route, "params", __sol_frame, __sol_route_value => __sol_route_value.id)',
+    );
+  });
+
+  test("instruments optional and computed context reads", () => {
+    const result = compile(
+      `
+      import { $component, $context } from "sol";
+      const context = $context<{ label: string }>();
+      const App = $component(async function App() {
+        await Promise.resolve();
+        const first = context?.use();
+        const second = context.use?.();
+        const third = context["use"]();
+        const fourth = context.use().label;
+        const fifth = context?.use().label;
+        const sixth = context.use?.().label;
+        const seventh = context?.use().label.toString();
+        return <p>{first?.label}:{second?.label}:{third.label}:{fourth}:{fifth}:{sixth}:{seventh}</p>;
+      });
+    `,
+      "OptionalContext.tsx",
+    );
+
+    expect(result.code.match(/__sol_context_use\(/g)?.length).toBe(7);
+    expect(result.code).toContain("__sol_context_use(context, __sol_frame, false).label");
+    expect(result.code).toContain(
+      "__sol_context_use(context, __sol_frame, false, true, false, __sol_context_value => __sol_context_value.label)",
+    );
+    expect(result.code).toContain(
+      "__sol_context_use(context, __sol_frame, false, false, true, __sol_context_value => __sol_context_value.label)",
+    );
+    expect(result.code).toContain(
+      "__sol_context_use(context, __sol_frame, false, true, false, __sol_context_value => __sol_context_value.label.toString())",
+    );
+    expect(result.code).not.toContain("context?.use()");
+    expect(result.code).not.toContain('context["use"]()');
+  });
+
+  test("preserves ordinary method receivers and optional-chain continuations", () => {
+    const result = compile(
+      `
+      const App = $component(async function App() {
+        const service = {
+          query() { return this; },
+          use() { return { label: "ordinary" }; },
+        };
+        const maybe = undefined as undefined | { params: { id: string } };
+        const maybeContext = undefined as undefined | { use(): { label: string } };
+        function remove(candidate: undefined | { params: { id?: string } }) {
+          return delete candidate?.params.id;
+        }
+        function removeContext(candidate: undefined | { use(): { label?: string } }) {
+          return delete candidate?.use().label;
+        }
+        await Promise.resolve();
+        const owner = service.query();
+        const id = maybe?.params.id;
+        const stringId = maybe?.params.id.toString();
+        const first = maybeContext?.use().label;
+        const second = service.use?.().label;
+        return <p>{owner === service}:{id}:{stringId}:{String(remove)}:{String(removeContext)}:{first}:{second}</p>;
+      });
+    `,
+      "OrdinaryChains.tsx",
+    );
+
+    expect(result.code).not.toContain('__sol_route_read(service.value, "query"');
+    expect(result.code).toContain("service.value.query()");
+    expect(result.code).toContain(
+      '__sol_route_read(maybe.value, "params", __sol_frame, __sol_route_value => __sol_route_value.id)',
+    );
+    expect(result.code).toContain(
+      '__sol_route_read(maybe.value, "params", __sol_frame, __sol_route_value => __sol_route_value.id.toString())',
+    );
+    expect(result.code).toContain("delete candidate?.params.id");
+    expect(result.code).toContain("delete candidate?.use().label");
+    expect(result.code).toContain(
+      "__sol_context_use(maybeContext.value, __sol_frame, false, true, false, __sol_context_value => __sol_context_value.label)",
+    );
+    expect(result.code).toContain(
+      "__sol_context_use(service.value, __sol_frame, false, false, true, __sol_context_value => __sol_context_value.label)",
+    );
+  });
+
   test("reserves private hydration element markers", () => {
     expect(() =>
       compile(

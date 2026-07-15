@@ -6,7 +6,15 @@ import { installDevtools } from "../src/devtools.ts";
 import { mount } from "../src/rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
 import { transition } from "../src/transitions.ts";
-import { block, component, instantiate, route, template, text } from "../src/compiler-runtime.ts";
+import {
+  block,
+  component,
+  instantiate,
+  route,
+  routeRead,
+  template,
+  text,
+} from "../src/compiler-runtime.ts";
 
 interface ControlledAnimation {
   animation: Animation;
@@ -105,6 +113,22 @@ const prototypeRoute = route({ path: "/:__proto__" }, Plain, {
   queryParameters: [],
   specificity: [0],
 });
+const asyncRoute = route(
+  {
+    path: "/async/:id",
+    schema: async (raw: Readonly<Record<string, string | undefined>>) => ({
+      id: Number(raw.id),
+    }),
+  },
+  Async,
+  {
+    pattern: "^/async/([^/]+)$",
+    parameterNames: ["id"],
+    pathnameParameterNames: ["id"],
+    queryParameters: [],
+    specificity: [1, 2],
+  },
+);
 const routes = [
   route({ path: "/" }, First, {
     pattern: "^/$",
@@ -136,22 +160,7 @@ const routes = [
     queryParameters: [],
     specificity: [1],
   }),
-  route(
-    {
-      path: "/async/:id",
-      schema: async (raw: Readonly<Record<string, string | undefined>>) => ({
-        id: Number(raw.id),
-      }),
-    },
-    Async,
-    {
-      pattern: "^/async/([^/]+)$",
-      parameterNames: ["id"],
-      pathnameParameterNames: ["id"],
-      queryParameters: [],
-      specificity: [1, 2],
-    },
-  ),
+  asyncRoute,
 ];
 
 await mock.module("virtual:sol/routes", () => ({ default: routes }));
@@ -210,15 +219,34 @@ test("renders the matched route from an isolated server request URL", async () =
   expect(html).not.toContain('data-page="first"');
 });
 
-test("resolves asynchronous route state before rendering the server root", async () => {
+test("preserves request route state after async component setup resumes", async () => {
   const definition = template("<p><!--sol:s:0--><!--sol:e:0--></p>", "route-shell", {
     elements: [],
     regionCount: 1,
     propertyValueElements: [],
   });
-  const Shell = component((_props, frame) => {
+  const Shell = component(async (_props, frame) => {
+    await Promise.resolve();
     const view = instantiate(definition, frame);
-    text(view.regions[0]!, () => String(router.params.id), []);
+    const routerId = routeRead(
+      router,
+      "params",
+      frame,
+      (value) => (value as typeof router.params).id,
+    );
+    const definitionId = routeRead(
+      asyncRoute,
+      "params",
+      frame,
+      (value) => (value as typeof asyncRoute.params).id,
+    );
+    const active = routeRead(asyncRoute, "isActive", frame);
+    const activePrefix = routeRead(asyncRoute, "isActivePrefix", frame);
+    text(
+      view.regions[0]!,
+      () => `${String(routerId)}:${String(definitionId)}:${String(active)}:${String(activePrefix)}`,
+      [],
+    );
     return block(view.fragment);
   });
 
@@ -226,7 +254,7 @@ test("resolves asynchronous route state before rendering the server root", async
     url: "https://example.test/async/7",
   });
 
-  expect(html).toContain("<p><!--sol:s:0-->7<!--sol:e:0--></p>");
+  expect(html).toContain("<p><!--sol:s:0-->7:7:true:true<!--sol:e:0--></p>");
 });
 
 test("tracks native hash-only navigation", () => {

@@ -12,27 +12,27 @@ Sol is an experimental JSX framework whose compiler turns components into **stat
 Add the browser runtime, compiler, and Vite:
 
 ```sh
-bun add sol
-bun add --dev @sol/compiler vite
+bun add @soljs/sol
+bun add --dev @soljs/compiler vite
 ```
 
 Enable the compiler before Vite transforms JSX:
 
 ```ts
-import { sol } from "@sol/compiler/vite";
+import { sol } from "@soljs/compiler/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({ plugins: [sol()] });
 ```
 
-Set TypeScript's `jsxImportSource` to `sol`, then mount a compiled component into a real DOM element. Validate that mount boundary instead of assuming it exists.
+Set TypeScript's `jsxImportSource` to `@soljs/sol`, then mount a compiled component into a real DOM element. Validate that mount boundary instead of assuming it exists.
 
 ## First light
 
 This source is both the code-panel content and the component running beside it.
 
 ```sol live preview=FirstCounter title="Your first reactive component"
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 const FirstCounter = $component(function FirstCounter() {
   let count = 0;
@@ -54,7 +54,7 @@ Writable declarations become signals and directly derived constants become compu
 ## Mount the application
 
 ```tsx
-import { mount } from "sol";
+import { mount } from "@soljs/sol";
 import { App } from "./App.tsx";
 
 const target = document.querySelector("#app");

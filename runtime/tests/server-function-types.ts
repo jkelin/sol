@@ -1,4 +1,4 @@
-import { $httpRoute, $rpcMutation, $rpcQuery, type HttpRouteInput } from "sol";
+import { $httpRoute, $rpcMutation, $rpcQuery, type HttpRouteInput } from "@soljs/sol";
 import * as v from "valibot";
 
 const load = $rpcQuery(

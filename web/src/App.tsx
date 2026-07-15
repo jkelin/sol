@@ -1,4 +1,4 @@
-import { $component, Route } from "sol";
+import { $component, Route } from "@soljs/sol";
 import { siteHref } from "./urls.ts";
 
 const RoutePending = $component(function RoutePending() {

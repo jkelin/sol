@@ -1,7 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
-import { sol } from "@sol/compiler/vite";
-import { staticAdapter } from "solkit/adapters/static";
-import { solkit } from "solkit/vite";
+import { sol } from "@soljs/compiler/vite";
+import { staticAdapter } from "@soljs/solkit/adapters/static";
+import { solkit } from "@soljs/solkit/vite";
 import { defineConfig } from "vite";
 import { solMarkdown } from "./src/markdown/vite.ts";
 

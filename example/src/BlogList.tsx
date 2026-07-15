@@ -1,4 +1,4 @@
-import { $component, Link } from "sol";
+import { $component, Link } from "@soljs/sol";
 import { blogDetailRoute } from "./blog-detail.sol.tsx";
 import type { BlogEntry } from "./blog-store.ts";
 

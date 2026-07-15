@@ -14,7 +14,7 @@ import { sol } from "../src/vite.ts";
 
 function linkSource(link: string): string {
   return `
-    import { $component, Link } from "sol";
+    import { $component, Link } from "@soljs/sol";
     import { detail } from "./detail.route";
     const App = $component(function App() { return ${link}; });
   `;
@@ -22,7 +22,7 @@ function linkSource(link: string): string {
 
 function componentSource(jsx: string, imports = ""): string {
   return `
-    import { $component${imports} } from "sol";
+    import { $component${imports} } from "@soljs/sol";
     const Child = $component(function Child() { return <p>Child</p>; });
     const App = $component(function App() { return ${jsx}; });
   `;
@@ -42,7 +42,7 @@ describe("compiler", () => {
   test("compiles exported route declarations and path parameters", () => {
     const result = compile(
       `
-      import { $component, $route } from "sol";
+      import { $component, $route } from "@soljs/sol";
       const Blog = $component(function Blog() { return <main>Blog</main>; });
       export const blog = $route({ path: "/blog/:id?copy=:id&filter=:filter" }, Blog);
     `,
@@ -149,7 +149,7 @@ describe("compiler", () => {
 
   test("preserves authored mapping-sentinel text", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        const token = "/*__sol_source_0__*/";
        export const App = $component(function App() { return <p>{token}</p>; });`,
       "sentinel.tsx",
@@ -166,7 +166,7 @@ describe("compiler", () => {
 
   test("resolves reactive and ref helpers by lexical binding", () => {
     const result = compile(
-      `import { $component, $signal as state, $computed as derive, createRef as makeRef } from "sol";
+      `import { $component, $signal as state, $computed as derive, createRef as makeRef } from "@soljs/sol";
        export const App = $component(function App() {
          const count = state(1);
          const doubled = derive(() => count * 2);
@@ -187,7 +187,7 @@ describe("compiler", () => {
 
   test("ignores lexically shadowed declaration helper names", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        export const App = $component(function App() { return <p>Ready</p>; });
        export function invoke($route: () => string) { return $route(); }`,
       "shadowed-route.sol.tsx",
@@ -198,7 +198,7 @@ describe("compiler", () => {
 
   test("serializes static aria and data booleans as strings", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        export const App = $component(function App() {
          return <div aria-hidden={false} data-on={true}>Ready</div>;
        });`,
@@ -211,7 +211,7 @@ describe("compiler", () => {
 
   test("serializes static numeric intrinsic attributes", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        export const App = $component(function App() {
          return <>
            <input tabIndex={1} maxLength={12} disabled={0} checked={1} />
@@ -236,7 +236,7 @@ describe("compiler", () => {
 
   test("interns identical compiled templates", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        export const First = $component(function First() { return <p>Same</p>; });
        export const Second = $component(function Second() { return <p>Same</p>; });`,
       "templates.tsx",
@@ -248,7 +248,7 @@ describe("compiler", () => {
 
   test("interns identical dynamic templates without source-marker differences", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        export const First = $component(function First(props: { value: string }) { return <p>{props.value}</p>; });
        export const Second = $component(function Second(props: { value: string }) { return <p>{props.value}</p>; });`,
       "dynamic-templates.tsx",
@@ -273,7 +273,7 @@ describe("compiler", () => {
 
   test("does not import runtime helpers mentioned only in authored text", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        const diagnostic = { __sol_portal: "__sol_portal" };
        export const App = $component(function App() { return <p>{diagnostic.__sol_portal}</p>; });`,
       "text.tsx",
@@ -283,7 +283,7 @@ describe("compiler", () => {
 
   test("omits cleanup and lifecycle scaffolding from static templates", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        export const App = $component(function App() { return <p>Static</p>; });`,
       "static.tsx",
     );
@@ -296,7 +296,7 @@ describe("compiler", () => {
   test("preserves route schemas and compiles Link into its anchor child", () => {
     const result = compile(
       `
-      import { $component, $route, Link as RouteLink } from "sol";
+      import { $component, $route, Link as RouteLink } from "@soljs/sol";
       const schema = { parse: value => value };
       const Blog = $component(function Blog() { return <main>Blog</main>; });
       export const blog = $route({ path: "/blog/:id", schema }, Blog);
@@ -318,7 +318,7 @@ describe("compiler", () => {
 
   test("compiles server declarations for server and browser targets", () => {
     const source = `
-      import { $httpRoute, $rpcMutation, $rpcQuery } from "sol";
+      import { $httpRoute, $rpcMutation, $rpcQuery } from "@soljs/sol";
       const schema = value => value;
       export const load = $rpcQuery("load", { schema }, async (id) => ({ id }));
       export const save = $rpcMutation("save", { schema }, async (value) => value);
@@ -345,7 +345,7 @@ describe("compiler", () => {
 
   test("resolves server declaration helpers by Sol binding identity", () => {
     const alias = compile(
-      `import { $rpcQuery as declareQuery } from "sol";
+      `import { $rpcQuery as declareQuery } from "@soljs/sol";
        import { backend } from "./backend-secret";
        export const load = declareQuery("load", { schema: value => value }, backend);`,
       "alias.sol.ts",
@@ -360,7 +360,7 @@ describe("compiler", () => {
       map: null,
     });
     const namespace = compile(
-      `import * as sol from "sol";
+      `import * as sol from "@soljs/sol";
        const load = sol.$rpcQuery("load", { schema: x => x }, async () => 1);
        const save = sol["$rpcMutation"]("save", { schema: x => x }, async () => 1);
        export { load as query, save };`,
@@ -376,7 +376,7 @@ describe("compiler", () => {
     const result = compile(
       `
         import { readFile } from "node:fs/promises";
-        import { $rpcQuery } from "sol";
+        import { $rpcQuery } from "@soljs/sol";
         const serverRoot = "/private";
         async function readSecret(path) {
           return readFile(serverRoot + path, "utf8");
@@ -400,7 +400,7 @@ describe("compiler", () => {
 
   test("keeps backend handlers, validators, dependencies, and secrets out of client modules", () => {
     const source = `
-      import { $httpRoute, $rpcMutation, $rpcQuery } from "sol";
+      import { $httpRoute, $rpcMutation, $rpcQuery } from "@soljs/sol";
       import type { PublicResult } from "./public-types";
       import { backendDatabase } from "./backend-database-secret";
       import { backendValidator } from "./backend-validator-secret";
@@ -526,7 +526,7 @@ describe("compiler", () => {
   test("removes comments attached to stripped server dependencies", () => {
     const result = compile(
       `
-        import { $rpcQuery } from "sol";
+        import { $rpcQuery } from "@soljs/sol";
         // BACKEND_HANDLER_COMMENT_SECRET
         function backendHandler() { return Promise.resolve("secret"); }
         export const load = $rpcQuery("load", { schema: value => value }, backendHandler);
@@ -698,7 +698,7 @@ describe("compiler", () => {
   });
 
   test("requires runtime exports for routes and server endpoints", () => {
-    const component = `import { $component, $route, $rpcQuery } from "sol";
+    const component = `import { $component, $route, $rpcQuery } from "@soljs/sol";
       const Page = $component(function Page() { return <p>Page</p>; });`;
     expect(() =>
       compile(
@@ -720,7 +720,7 @@ describe("compiler", () => {
 
   test("does not compile declarations through type-only Sol imports", () => {
     const named = compile(
-      `import type { $route } from "sol";
+      `import type { $route } from "@soljs/sol";
        const page = $route({ path: "/named-type" }, Page);
        export { page };`,
       "named-type.sol.ts",
@@ -729,7 +729,7 @@ describe("compiler", () => {
     expect(named.code).not.toContain("__sol_route");
 
     const namespace = compile(
-      `import type * as Sol from "sol";
+      `import type * as Sol from "@soljs/sol";
        const page = Sol.$route({ path: "/namespace-type" }, Page);
        export { page };`,
       "namespace-type.sol.ts",
@@ -740,7 +740,7 @@ describe("compiler", () => {
 
   test("recognizes string-named Sol declaration helper imports", () => {
     const routeResult = compile(
-      `import { $component, "$route" as defineRoute } from "sol";
+      `import { $component, "$route" as defineRoute } from "@soljs/sol";
        const Page = $component(function Page() { return <p>Page</p>; });
        export const page = defineRoute({ path: "/string-helper" }, Page);`,
       "string-helper.sol.tsx",
@@ -748,7 +748,7 @@ describe("compiler", () => {
     expect(routeResult.code).toContain("export const page = __sol_route");
 
     const endpointResult = compile(
-      `import { "$rpcQuery" as defineQuery } from "sol";
+      `import { "$rpcQuery" as defineQuery } from "@soljs/sol";
        export const query = defineQuery("string-helper", { schema: value => value }, async () => 1);`,
       "string-helper-api.sol.ts",
       { target: "client" },
@@ -758,7 +758,7 @@ describe("compiler", () => {
 
   test("accepts identifier default exports for routes and server endpoints", () => {
     const routeResult = compile(
-      `import { $component, $route } from "sol";
+      `import { $component, $route } from "@soljs/sol";
        const Page = $component(function Page() { return <p>Page</p>; });
        const page = $route({ path: "/page" }, Page);
        export default page;`,
@@ -768,7 +768,7 @@ describe("compiler", () => {
     expect(routeResult.code).toContain("const page = __sol_route");
 
     const endpointResult = compile(
-      `import { $rpcQuery } from "sol";
+      `import { $rpcQuery } from "@soljs/sol";
        const load = $rpcQuery("load", { schema: value => value }, async () => 1);
        export default load;`,
       "default-endpoint.sol.ts",
@@ -780,7 +780,7 @@ describe("compiler", () => {
 
   test("compiles $component setup into inferred signals, computeds, and DOM effects", () => {
     const source = `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       export const Counter = $component(function Counter(props: { label: string }) {
         let count = 0;
         const doubled = count * 2;
@@ -811,7 +811,7 @@ describe("compiler", () => {
 
   test("maps generated setup and DOM effects to their authored locations", () => {
     const source = [
-      'import { $component } from "sol";',
+      'import { $component } from "@soljs/sol";',
       "const Counter = $component(function Counter() {",
       "  let count = 0;",
       "  function increment() { count++; }",
@@ -840,7 +840,7 @@ describe("compiler", () => {
   test("compiles inferred bindings, conditionals, components, and keyed maps", () => {
     const result = compile(
       `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const Row = $component(function Row(props: { todo: { id: number; done: boolean } }) {
         return <li><input type="checkbox" $bind={props.todo.done} /></li>;
       });
@@ -892,7 +892,7 @@ describe("compiler", () => {
   test("compiles intrinsic refs and portal builtins", () => {
     const result = compile(
       `
-      import { $component, createRef as makeRef, GlobalPortal as BodyPortal, Portal as TargetPortal } from "sol";
+      import { $component, createRef as makeRef, GlobalPortal as BodyPortal, Portal as TargetPortal } from "@soljs/sol";
       const App = $component(function App() {
         const target = makeRef<HTMLDivElement>();
         const callback = (element: HTMLButtonElement | null) => void element;
@@ -919,7 +919,7 @@ describe("compiler", () => {
 
   test("maps ref and portal operations to their authored JSX", () => {
     const source = [
-      'import { $component, createRef, GlobalPortal, Portal } from "sol";',
+      'import { $component, createRef, GlobalPortal, Portal } from "@soljs/sol";',
       "const App = $component(function App() {",
       "  const target = createRef<HTMLDivElement>();",
       "  const callback = (element: HTMLDivElement | null) => void element;",
@@ -1001,7 +1001,7 @@ describe("compiler", () => {
   test("supports explicit reactive overrides and every class alias", () => {
     const result = compile(
       `
-      import { $component, $computed, $signal } from "sol";
+      import { $component, $computed, $signal } from "@soljs/sol";
       const App = $component(function App() {
         const count = $signal(1);
         const doubled = $computed(() => count * 2);
@@ -1029,7 +1029,7 @@ describe("compiler", () => {
     ]) {
       const result = compile(
         `
-        import { $component, $computed, $signal } from "sol";
+        import { $component, $computed, $signal } from "@soljs/sol";
         const App = $component(function App() {
           const count = ${signal};
           const doubled = ${computed};
@@ -1052,7 +1052,7 @@ describe("compiler", () => {
   test("infers value and checked bindings for every supported form control", () => {
     const result = compile(
       `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const Form = $component(function Form() {
         let text = "";
         let selected = "all";
@@ -1112,7 +1112,7 @@ describe("compiler", () => {
   test("connects form controllers through the $form element property", () => {
     const result = compile(
       `
-      import { $component, $form } from "sol";
+      import { $component, $form } from "@soljs/sol";
       const Form = $component(function Form() {
         const controller = $form({ schema: value => value, defaultValues: { title: "" } }, () => {});
         return <form $form={controller}><input name="title" $bind={controller.values.title} /></form>;
@@ -1130,7 +1130,7 @@ describe("compiler", () => {
   test("resolves component declarations independently of capitalization", () => {
     const result = compile(
       `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const row = $component(function row() { return <span>Row</span>; });
       const app = $component(function app() { return <row />; });
     `,
@@ -1145,7 +1145,7 @@ describe("compiler", () => {
   test("does not classify shadowed component or Link bindings by name", () => {
     expect(() =>
       compile(
-        `import { $component, Link } from "sol";
+        `import { $component, Link } from "@soljs/sol";
          import { Child } from "./Child";
          const App = $component(function App() {
            const Child = 1;
@@ -1157,7 +1157,7 @@ describe("compiler", () => {
 
     expect(() =>
       compile(
-        `import { $component, Link } from "sol";
+        `import { $component, Link } from "@soljs/sol";
          const App = $component(function App() {
            const Link = 1;
            return <Link />;
@@ -1170,7 +1170,7 @@ describe("compiler", () => {
   test("compiles contexts, async components, suspense, await, and error boundaries", () => {
     const result = compile(
       `
-      import { $component, $context, Suspense, Await, ErrorBoundary } from "sol";
+      import { $component, $context, Suspense, Await, ErrorBoundary } from "@soljs/sol";
       const messageContext = $context<{ message: string }>();
       const AsyncChild = $component(async function AsyncChild() {
         const context = messageContext.use();
@@ -1236,7 +1236,7 @@ describe("compiler", () => {
   test("keeps frame-bound setup helpers and route reads after awaits", () => {
     const result = compile(
       `
-      import { $component, $form, router } from "sol";
+      import { $component, $form, router } from "@soljs/sol";
       import { detail } from "./routes.ts";
       const App = $component(async function App(props: { route: typeof detail }) {
         await Promise.resolve();
@@ -1267,7 +1267,7 @@ describe("compiler", () => {
   test("keeps route destructuring and object spreads frame-bound after awaits", () => {
     const result = compile(
       `
-      import { $component, router } from "sol";
+      import { $component, router } from "@soljs/sol";
       import { detail } from "./routes.ts";
       const App = $component(async function App() {
         function read() {
@@ -1307,7 +1307,7 @@ describe("compiler", () => {
 
   test("keeps constructor-returned route objects frame-bound", () => {
     const result = compile(
-      `import { $component } from "sol";
+      `import { $component } from "@soljs/sol";
        import { detail } from "./detail.sol.tsx";
        export const App = $component(async function App() {
          await Promise.resolve();
@@ -1323,7 +1323,7 @@ describe("compiler", () => {
   test("instruments optional and computed context reads", () => {
     const result = compile(
       `
-      import { $component, $context } from "sol";
+      import { $component, $context } from "@soljs/sol";
       const context = $context<{ label: string }>();
       const App = $component(async function App() {
         await Promise.resolve();
@@ -1537,7 +1537,7 @@ describe("compiler", () => {
   test("compiles Head children and raw-text elements", () => {
     const result = compile(
       `
-      import { $component, Head as DocumentHead } from "sol";
+      import { $component, Head as DocumentHead } from "@soljs/sol";
       const App = $component(function App() {
         let title = "First";
         const description = "Reactive description";
@@ -1564,15 +1564,15 @@ describe("compiler", () => {
   test("validates the compiler-specialized Head interface", () => {
     const cases = [
       {
-        source: `import { $component, Head } from "sol"; const App = $component(function App() { return <Head title="Invalid" />; });`,
+        source: `import { $component, Head } from "@soljs/sol"; const App = $component(function App() { return <Head title="Invalid" />; });`,
         message: "Unexpected title property",
       },
       {
-        source: `import { $component, Head } from "sol"; const props = {}; const App = $component(function App() { return <Head {...props} />; });`,
+        source: `import { $component, Head } from "@soljs/sol"; const props = {}; const App = $component(function App() { return <Head {...props} />; });`,
         message: "JSX spread attributes are not supported in v1",
       },
       {
-        source: `import { $component, Head } from "sol"; const App = $component(function App() { return <Head><title><span>Invalid</span></title></Head>; });`,
+        source: `import { $component, Head } from "@soljs/sol"; const App = $component(function App() { return <Head><title><span>Invalid</span></title></Head>; });`,
         message: "Raw-text element children must be text or expressions",
       },
     ];
@@ -1584,7 +1584,7 @@ describe("compiler", () => {
 
   test("treats empty Head blocks as no-ops and respects lexical shadowing", () => {
     const empty = compile(
-      `import { $component, Head } from "sol"; const App = $component(function App() { return <Head />; });`,
+      `import { $component, Head } from "@soljs/sol"; const App = $component(function App() { return <Head />; });`,
       "EmptyHead.tsx",
     );
     expect(empty.code.match(/__sol_head\(/g) ?? []).toHaveLength(0);
@@ -1592,7 +1592,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-        import { $component, Head as DocumentHead } from "sol";
+        import { $component, Head as DocumentHead } from "@soljs/sol";
         const Local = $component(function Local() { return <p>Local</p>; });
         const App = $component(function App() {
           const DocumentHead = Local;
@@ -1613,7 +1613,7 @@ describe("compiler", () => {
     for (const expression of expressions) {
       expect(() =>
         compile(
-          `import { $component } from "sol"; const App = $component(function App() { const ready = true; return <title>{${expression}}</title>; });`,
+          `import { $component } from "@soljs/sol"; const App = $component(function App() { const ready = true; return <title>{${expression}}</title>; });`,
           "RawText.tsx",
         ),
       ).toThrow("Raw-text element children must be text or expressions");
@@ -1623,31 +1623,31 @@ describe("compiler", () => {
   test("validates async boundary and context provider JSX contracts", () => {
     const cases = [
       {
-        source: `import { $component, Suspense } from "sol"; const App = $component(function App() { return <Suspense><p>Child</p></Suspense>; });`,
+        source: `import { $component, Suspense } from "@soljs/sol"; const App = $component(function App() { return <Suspense><p>Child</p></Suspense>; });`,
         message: "JSX property fallback is required",
       },
       {
-        source: `import { $component, Await } from "sol"; const App = $component(function App() { return <Await $promise={Promise.resolve(1)} />; });`,
+        source: `import { $component, Await } from "@soljs/sol"; const App = $component(function App() { return <Await $promise={Promise.resolve(1)} />; });`,
         message: "Await requires exactly one inline data-renderer child",
       },
       {
-        source: `import { $component, ErrorBoundary } from "sol"; const App = $component(function App() { return <ErrorBoundary fallback={<p>Error</p>}><p>Child</p></ErrorBoundary>; });`,
+        source: `import { $component, ErrorBoundary } from "@soljs/sol"; const App = $component(function App() { return <ErrorBoundary fallback={<p>Error</p>}><p>Child</p></ErrorBoundary>; });`,
         message: "Error and data renderers must be inline functions",
       },
       {
-        source: `import { $component, $context } from "sol"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider><p>Child</p></context.Provider>; });`,
+        source: `import { $component, $context } from "@soljs/sol"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider><p>Child</p></context.Provider>; });`,
         message: "JSX property data is required",
       },
       {
-        source: `import { $component, Await } from "sol"; const App = $component(function App() { return <Await $promise={123}>{value => <p>{value}</p>}</Await>; });`,
+        source: `import { $component, Await } from "@soljs/sol"; const App = $component(function App() { return <Await $promise={123}>{value => <p>{value}</p>}</Await>; });`,
         message: "Await $promise must be a promise expression",
       },
       {
-        source: `import { $component, Suspense } from "sol"; const App = $component(function App() { return <Suspense fallback={<p>Wait</p>} timeoutMs><p>Child</p></Suspense>; });`,
+        source: `import { $component, Suspense } from "@soljs/sol"; const App = $component(function App() { return <Suspense fallback={<p>Wait</p>} timeoutMs><p>Child</p></Suspense>; });`,
         message: "Suspense timeoutMs must be a number expression",
       },
       {
-        source: `import { $component, $context } from "sol"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider data={123}><p>Child</p></context.Provider>; });`,
+        source: `import { $component, $context } from "@soljs/sol"; const context = $context<{ value: string }>(); const App = $component(function App() { return <context.Provider data={123}><p>Child</p></context.Provider>; });`,
         message: "Context Provider data must be an object expression",
       },
     ];
@@ -1658,7 +1658,7 @@ describe("compiler", () => {
 
     expect(() =>
       compile(
-        `import { $component, $context } from "sol"; const context = $context<RegExp>(); const App = $component(function App() { return <context.Provider data={/valid object/}><p>Child</p></context.Provider>; });`,
+        `import { $component, $context } from "@soljs/sol"; const context = $context<RegExp>(); const App = $component(function App() { return <context.Provider data={/valid object/}><p>Child</p></context.Provider>; });`,
         "RegexContext.tsx",
       ),
     ).not.toThrow();
@@ -1692,7 +1692,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { signal } from "sol";
+      import { signal } from "@soljs/sol";
       export const value = signal(1);
     `,
         "Invalid.tsx",
@@ -1702,7 +1702,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App({ name }: { name: string }) {
         return <p>{name}</p>;
       });
@@ -1714,7 +1714,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App(props: { values: string[] }) {
         return <ul>{props.values.map(value => <li>{value}</li>)}</ul>;
       });
@@ -1736,7 +1736,7 @@ describe("compiler", () => {
       compile(
         `
       import type { Missing } from "./types";
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() { return <Missing />; });
     `,
         "Invalid.tsx",
@@ -1746,7 +1746,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let value = false;
         let kind = "checkbox";
@@ -1760,7 +1760,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         return <input $bind={"snapshot"} />;
       });
@@ -1772,7 +1772,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let value = "";
         return <input bind:value={value} />;
@@ -1785,7 +1785,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         return <p class="one" className="two">Duplicate</p>;
       });
@@ -1836,7 +1836,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let source = 1;
         const doubled = source * 2;
@@ -1852,7 +1852,7 @@ describe("compiler", () => {
       expect(() =>
         compile(
           `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let source = 1;
         function invalid() { ${assignment} }
@@ -1867,7 +1867,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         const later = source + 1;
         let source = 1;
@@ -1881,7 +1881,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         const value = value + 1;
         return <p>{value}</p>;
@@ -1894,7 +1894,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let values = [1];
         const length = values.push(2);
@@ -1907,7 +1907,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let values = [1];
         const length = values["push"](2);
@@ -1921,7 +1921,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App() {
         let source = 1;
         const doubled = source * 2;
@@ -1935,7 +1935,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App(props: { value: string }) {
         return <input $bind={props.value} />;
       });
@@ -1947,7 +1947,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const Child = $component(function Child() { return <p>Child</p>; });
       const App = $component(function App() {
         let value = "";
@@ -1961,7 +1961,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       function makeComponent() {
         return $component(function Nested() { return null as never; });
       }
@@ -1973,7 +1973,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App(props: { ready: boolean }) {
         if (!props.ready) return <p>Waiting</p>;
         return <p>Ready</p>;
@@ -1986,7 +1986,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App(props: { value: string }) {
         return <div {...props}>{props.value}</div>;
       });
@@ -1998,7 +1998,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(() => <p>Arrow</p>);
     `,
         "Invalid.tsx",
@@ -2148,7 +2148,7 @@ describe("compiler", () => {
     expect(() =>
       compile(
         `
-      import { $component, Fragment } from "sol";
+      import { $component, Fragment } from "@soljs/sol";
       const App = $component(function App() { return <Fragment />; });
     `,
         "FrameworkImport.tsx",
@@ -2157,7 +2157,7 @@ describe("compiler", () => {
 
     const externalComponent = compile(
       `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       import { Row } from "./Row";
       const App = $component(function App() { return <Row />; });
     `,
@@ -2169,7 +2169,7 @@ describe("compiler", () => {
   test("validates binding roots, readonly props, and event spelling", () => {
     const valid = compile(
       `
-      import { $component } from "sol";
+      import { $component } from "@soljs/sol";
       const App = $component(function App(props: { todo: { done: boolean } }) {
         let todos = [{ id: 1, done: false }];
         function updateNestedProp() { props.todo.done = true; }
@@ -2215,7 +2215,7 @@ describe("compiler", () => {
       expect(() =>
         compile(
           `
-        import { $component } from "sol";
+        import { $component } from "@soljs/sol";
         const external = { value: "" };
         const App = $component(function App() { return <input $bind={${expression}} />; });
       `,
@@ -2242,7 +2242,7 @@ describe("compiler", () => {
       expect(() =>
         compile(
           `
-        import { $component } from "sol";
+        import { $component } from "@soljs/sol";
         const App = $component(function App(props: { value: number }) {
           function mutate() { ${statement} }
           return <button onClick={mutate}>{props.value}</button>;
@@ -2309,7 +2309,7 @@ test("the Vite plugin enables devtools only for development by default", () => {
       tag: "script",
       attrs: {
         type: "module",
-        src: "/@id/sol/devtools",
+        src: "/@id/@soljs/sol/devtools",
         "data-sol-devtools": "",
       },
       injectTo: "head-prepend",
@@ -2372,11 +2372,11 @@ test("the Vite plugin rejects canonically equivalent route declarations", async 
   try {
     await writeFile(
       join(root, "first.sol.ts"),
-      'import { $route } from "sol"; import { Page } from "./Page"; export const first = $route({ path: "/café" }, Page);',
+      'import { $route } from "@soljs/sol"; import { Page } from "./Page"; export const first = $route({ path: "/café" }, Page);',
     );
     await writeFile(
       join(root, "second.sol.ts"),
-      'import { $route } from "sol"; import { Page } from "./Page"; export const second = $route({ path: "/caf%C3%A9" }, Page);',
+      'import { $route } from "@soljs/sol"; import { Page } from "./Page"; export const second = $route({ path: "/caf%C3%A9" }, Page);',
     );
     const plugin = sol();
     (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
@@ -2399,7 +2399,7 @@ test("the route manifest creates one lazy loader per route file and infers liter
   try {
     await writeFile(
       join(root, "pages.sol.tsx"),
-      `import { $route } from "sol";
+      `import { $route } from "@soljs/sol";
        import { Index, Detail } from "./Pages";
        export const index = $route({ path: "/docs" }, Index);
        const internal = $route({ path: "/docs/:slug" }, Detail);
@@ -2431,7 +2431,7 @@ test("deduplicates route aliases and projects default route handles", async () =
     await writeFile(join(root, "Page.tsx"), "export const Page = () => null;");
     await writeFile(
       join(root, "page.sol.tsx"),
-      `import { $route } from "sol";
+      `import { $route } from "@soljs/sol";
        import { Page } from "./Page";
        console.log("DEFAULT_PAGE_IMPLEMENTATION");
        const internal = $route({ path: "/page" }, Page);
@@ -2492,20 +2492,20 @@ test("ignores type-only Sol helpers in virtual manifests", async () => {
   try {
     await writeFile(
       join(root, "named.sol.ts"),
-      `import type { $route, $rpcQuery } from "sol";
+      `import type { $route, $rpcQuery } from "@soljs/sol";
        const page = $route({ path: "/named-type" }, Page);
        const endpoint = $rpcQuery("typed", { schema: value => value }, async () => 1);
        export { page, endpoint };`,
     );
     await writeFile(
       join(root, "namespace.sol.ts"),
-      `import type * as Sol from "sol";
+      `import type * as Sol from "@soljs/sol";
        const page = Sol.$route({ path: "/namespace-type" }, Page);
        export { page };`,
     );
     await writeFile(
       join(root, "string.sol.ts"),
-      `import { "$route" as defineRoute, "$rpcQuery" as defineQuery } from "sol";
+      `import { "$route" as defineRoute, "$rpcQuery" as defineQuery } from "@soljs/sol";
        export const page = defineRoute({ path: "/string-helper" }, Page);
        export const endpoint = defineQuery("string-helper", { schema: value => value }, async () => 1);`,
     );
@@ -2534,7 +2534,7 @@ test("preserves queried and type-only imports from route modules", async () => {
     const routeFile = join(root, "page.sol.ts");
     await writeFile(
       routeFile,
-      `import { $route } from "sol";
+      `import { $route } from "@soljs/sol";
        export const page = $route({ path: "/page" }, Page);`,
     );
     const transform = sol().transform as unknown as {
@@ -2586,13 +2586,13 @@ test("deduplicates endpoint aliases in the virtual manifest", async () => {
   try {
     await writeFile(
       join(root, "api.sol.ts"),
-      `import { $rpcQuery } from "sol";
+      `import { $rpcQuery } from "@soljs/sol";
        const load = $rpcQuery("load", { schema: value => value }, async () => 1);
        export { load as first, load as second };`,
     );
     await writeFile(
       join(root, "page.sol.ts"),
-      `import { $route } from "sol";
+      `import { $route } from "@soljs/sol";
        export const page = $route({ path: "/page" }, Page);`,
     );
     const plugin = sol();
@@ -2618,7 +2618,7 @@ test("discovers and projects string-named route exports", async () => {
     const routeFile = join(root, "page.sol.ts");
     await writeFile(
       routeFile,
-      `import { $route, $rpcQuery } from "sol";
+      `import { $route, $rpcQuery } from "@soljs/sol";
        const page = $route({ path: "/string" }, Page);
        const endpoint = $rpcQuery("string-endpoint", { schema: value => value }, async () => 1);
        export { page as "string-route", endpoint as "string-endpoint" };`,
@@ -2681,7 +2681,7 @@ test("projects extensionless route imports and rejects unsafe namespace and re-e
       writeFile(join(root, "Page.tsx"), `export function Page() { return null; }`),
       writeFile(
         join(root, "page.sol.tsx"),
-        `import { $route } from "sol";
+        `import { $route } from "@soljs/sol";
          import { Page } from "./Page";
          console.log("EXTENSIONLESS_PAGE_SECRET");
          export const page = $route({ path: "/page" }, Page);`,
@@ -2691,7 +2691,7 @@ test("projects extensionless route imports and rejects unsafe namespace and re-e
         `import {
   page,
 } from "./page.sol";
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 export const App = $component(function App() { return <p>Ready</p>; });
 console.log(page, App);`,
       ),
@@ -2728,7 +2728,7 @@ console.log(page, App);`,
       `import {
   page,
 } from "./page.sol";
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 export const App = $component(function App() { return <p>Ready</p>; });
 console.log(page, App);`,
     );
@@ -2763,7 +2763,7 @@ test("route and endpoint entries exclude lazy page dependencies", async () => {
       ),
       writeFile(
         join(root, "page.sol.tsx"),
-        `import { $httpRoute, $route } from "sol";
+        `import { $httpRoute, $route } from "@soljs/sol";
          import "./page.css";
          import { Page } from "./Page";
          import { routeSchema } from "./schema";
@@ -2775,7 +2775,7 @@ test("route and endpoint entries exclude lazy page dependencies", async () => {
       ),
       writeFile(
         join(root, "Page.tsx"),
-        `import { $component } from "sol";
+        `import { $component } from "@soljs/sol";
          import "./nested.css";
          import "./page-effect";
          export const Page = $component(function Page() {
@@ -2844,7 +2844,7 @@ test("mixed route imports preserve ordinary module exports and side effects", as
       ),
       writeFile(
         join(root, "page.sol.tsx"),
-        `import { $route } from "sol";
+        `import { $route } from "@soljs/sol";
          import "./module.css";
          import { Page } from "./Page";
          console.log("ORDINARY_MODULE_EFFECT_SECRET");
@@ -2854,7 +2854,7 @@ test("mixed route imports preserve ordinary module exports and side effects", as
       writeFile(join(root, "Page.tsx"), `export function Page() { return null; }`),
       writeFile(
         join(root, "bare.sol.tsx"),
-        `import { $route } from "sol";
+        `import { $route } from "@soljs/sol";
          import { Page } from "./Page";
          console.log("BARE_ROUTE_MODULE_EFFECT_SECRET");
          export const bare = $route({ path: "/bare" }, Page);`,
@@ -2908,7 +2908,7 @@ test("handle-only imports preserve authored initialization without page effects"
       ),
       writeFile(
         join(root, "page.sol.tsx"),
-        `import { $route } from "sol";
+        `import { $route } from "@soljs/sol";
          import "./page.css";
          import "./authored-setup";
          import { Page } from "./Page";
@@ -2981,7 +2981,7 @@ test("endpoint projections retain dependency initialization and project route ha
       ),
       writeFile(
         join(root, "endpoint.sol.tsx"),
-        `import { $component, $httpRoute, $route } from "sol";
+        `import { $component, $httpRoute, $route } from "@soljs/sol";
          import type { ExternalShape } from "./types";
          type Shape = ExternalShape;
          export type { Shape };
@@ -3018,7 +3018,7 @@ test("endpoint projections retain dependency initialization and project route ha
       writeFile(join(root, "types.ts"), `export type ExternalShape = unknown;`),
       writeFile(
         join(root, "detail.sol.tsx"),
-        `import { $route } from "sol";
+        `import { $route } from "@soljs/sol";
          import { Detail } from "./Detail";
          export const detail = $route({ path: "/detail" }, Detail);`,
       ),
@@ -3071,7 +3071,7 @@ test("the endpoint manifest respects helper bindings and canonical HTTP paths", 
   try {
     await writeFile(
       join(root, "real.sol.ts"),
-      `import * as sol from "sol"; const load = sol["$rpcQuery"]("load", { schema: x => x }, async () => 1); export { load as query };`,
+      `import * as sol from "@soljs/sol"; const load = sol["$rpcQuery"]("load", { schema: x => x }, async () => 1); export { load as query };`,
     );
     await writeFile(
       join(root, "shadow.sol.ts"),
@@ -3088,7 +3088,7 @@ test("the endpoint manifest respects helper bindings and canonical HTTP paths", 
 
     await writeFile(
       join(root, "unicode-a.sol.ts"),
-      `import { $httpRoute as route } from "sol"; export const a = route({ method: "GET", path: "/café space", schema: x => x }, async () => new Response());`,
+      `import { $httpRoute as route } from "@soljs/sol"; export const a = route({ method: "GET", path: "/café space", schema: x => x }, async () => new Response());`,
     );
     await writeFile(
       join(root, "unicode-b.sol.ts"),
@@ -3122,7 +3122,7 @@ test("retries route-file inspection after a source failure", async () => {
 
     await writeFile(
       file,
-      `import { $httpRoute } from "sol";
+      `import { $httpRoute } from "@soljs/sol";
        export const retry = $httpRoute(
          { method: "GET", path: "/retry", schema: value => value },
          async () => new Response(),
@@ -3142,7 +3142,7 @@ test("refreshes manifest generations for nested route additions", async () => {
     await mkdir(nested);
     await writeFile(
       join(nested, "a.sol.ts"),
-      `import { $route } from "sol"; export const a = $route({ path: "/a" }, A);`,
+      `import { $route } from "@soljs/sol"; export const a = $route({ path: "/a" }, A);`,
     );
     const plugin = sol();
     (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
@@ -3156,7 +3156,7 @@ test("refreshes manifest generations for nested route additions", async () => {
 
     await writeFile(
       join(nested, "b.sol.ts"),
-      `import { $route } from "sol"; export const b = $route({ path: "/b" }, B);`,
+      `import { $route } from "@soljs/sol"; export const b = $route({ path: "/b" }, B);`,
     );
     const secondRoutes = await load("\0virtual:sol/routes");
     expect(secondRoutes).toContain("b.sol.ts");
@@ -3168,7 +3168,7 @@ test("refreshes manifest generations for nested route additions", async () => {
 test("emits authored source metadata for query and mutation diagnostics", () => {
   const result = compile(
     `
-      import { $component, $query as query, $mutation } from "sol";
+      import { $component, $query as query, $mutation } from "@soljs/sol";
       const Requests = $component(function Requests() {
         const project = query({ queryKey: ["project"], query: async () => 1 });
         const save = $mutation({ mutation: async () => 1 });
@@ -3188,7 +3188,7 @@ test("emits authored source metadata for query and mutation diagnostics", () => 
 
 test("binds request helpers to async component frames", () => {
   const result = compile(
-    `import { $component, $query, $mutation } from "sol";
+    `import { $component, $query, $mutation } from "@soljs/sol";
      const Requests = $component(async function Requests() {
        await Promise.resolve();
        const query = $query({ queryKey: "late", query: async () => 1 });
@@ -3220,5 +3220,5 @@ test("an explicitly enabled production build bundles devtools", async () => {
     .join("\n");
 
   expect(bundled).toContain("sol_get_diagnostics");
-  expect(bundled).not.toContain("/@id/sol/devtools");
+  expect(bundled).not.toContain("/@id/@soljs/sol/devtools");
 });

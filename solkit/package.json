@@ -1,6 +1,11 @@
 {
-  "name": "solkit",
-  "version": "0.0.0",
+  "name": "@soljs/solkit",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jkelin/sol.git",
+    "directory": "solkit"
+  },
   "bin": {
     "solkit": "./src/cli.ts"
   },
@@ -13,12 +18,17 @@
     "./adapters/node": "./src/adapters/node.ts",
     "./adapters/static": "./src/adapters/static.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun ../scripts/build-package.ts .",
+    "prepublishOnly": "bun run build",
     "test": "bun test tests",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "sol": "workspace:*"
+    "@soljs/sol": "0.1.0"
   },
   "devDependencies": {
     "vite": "^8.0.10"

@@ -1,4 +1,4 @@
-import { hydrate } from "sol";
+import { hydrate } from "@soljs/sol";
 import { SsrApp } from "./ssr-app.tsx";
 
 interface BrowserTestRuntime {

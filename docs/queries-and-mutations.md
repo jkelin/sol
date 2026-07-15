@@ -12,7 +12,7 @@ Async operations that belong on the server can be declared beside routes in a `.
 value remains directly callable by the controllers:
 
 ```tsx
-import { $rpcMutation, $rpcQuery } from "sol";
+import { $rpcMutation, $rpcQuery } from "@soljs/sol";
 import * as v from "valibot";
 
 export const loadPosts = $rpcQuery("load-posts", { schema: v.tuple([v.number()]) }, async (page) =>
@@ -80,7 +80,7 @@ An uncached initial request participates in the nearest parent `Suspense` by def
 Opted-in failures select the parent Suspense error renderer. Without a participating boundary, automatic failures remain in controller state. Manual `refetch()` and `mutate()` calls always reject, so event handlers should await them or deliberately handle the returned promise.
 
 ```sol live preview=QueryWorkbench title="Cached query and explicit mutation"
-import { $component, $mutation, $query, Suspense } from "sol";
+import { $component, $mutation, $query, Suspense } from "@soljs/sol";
 
 let serverRevision = 1;
 

@@ -12,7 +12,7 @@ Direct writable declarations inside `$component` become signals automatically. D
 Arrays and plain objects are deep proxies. Nested assignments and mutating array methods remain reactive while Dates, collections, frozen objects, and class instances keep their identity.
 
 ```sol live preview=AssemblyQueue title="Deep object and array updates"
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 const AssemblyQueue = $component(function AssemblyQueue() {
   let blocks = [

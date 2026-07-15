@@ -1,5 +1,5 @@
-import { renderToStringAsync } from "sol";
-import { dispatchServerEndpoint, logicalPathname } from "sol/compiler-runtime";
+import { renderToStringAsync } from "@soljs/sol";
+import { dispatchServerEndpoint, logicalPathname } from "@soljs/sol/compiler-runtime";
 import type {
   RequestHandler,
   RequestHandlerOptions,

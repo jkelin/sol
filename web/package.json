@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "sol": "workspace:*",
-    "solkit": "workspace:*",
+    "@soljs/sol": "0.1.0",
+    "@soljs/solkit": "0.1.0",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
@@ -23,7 +23,7 @@
     "@fontsource/chivo-mono": "^5.2.6",
     "@fontsource/familjen-grotesk": "^5.2.6",
     "@playwright/test": "^1.61.1",
-    "@sol/compiler": "workspace:*",
+    "@soljs/compiler": "0.1.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/mdast": "^4.0.4",
     "remark-gfm": "^4.0.1",

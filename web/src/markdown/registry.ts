@@ -59,7 +59,7 @@ export async function registrySource(websiteRoot: string): Promise<string> {
     (document, index) =>
       `{props.slug === ${JSON.stringify(document.metadata.slug)} && <Doc${index} />}`,
   );
-  return `import { $component } from "sol";
+  return `import { $component } from "@soljs/sol";
 import { siteHref } from "/src/urls.ts";
 ${imports.join("\n")}
 export const docs = ${JSON.stringify(ordered.map((document) => document.metadata))} as const;

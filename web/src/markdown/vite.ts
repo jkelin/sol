@@ -1,4 +1,4 @@
-import { compile } from "@sol/compiler";
+import { compile } from "@soljs/compiler";
 import { resolve } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath, transformWithOxc } from "vite";

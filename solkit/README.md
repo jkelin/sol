@@ -1,12 +1,14 @@
 # Solkit
 
-`solkit` is the backend runtime and Vite integration for full-stack Sol applications. It renders
+`@soljs/solkit` is the backend runtime and Vite integration for full-stack Sol applications. It renders
 the same compiled root component on the server, injects managed `Head` output into the document,
 and hydrates the server tree in the browser. Development requests run through Vite middleware;
 production builds can emit a Bun or Node.js server, or prerender a multipage static site. The same
 request pipeline dispatches compiled RPC and HTTP endpoints before server-hosted document rendering.
 Named queries and mutations share the JSON `POST /api/rpc/:name` protocol; lower-level HTTP routes
 retain their explicitly declared methods and body modes.
+
+`bun run build` writes the publishable JavaScript, CLI, and type declarations to `dist/` using `tsconfig.build.json`. The installed command remains `solkit`.
 
 ## Configure an application
 
@@ -33,9 +35,9 @@ export { Shell as App } from "./Shell.tsx";
 Then add both Vite plugins and choose a deployment adapter:
 
 ```ts
-import { sol } from "@sol/compiler/vite";
-import { bunAdapter } from "solkit/adapters/bun";
-import { solkit } from "solkit/vite";
+import { sol } from "@soljs/compiler/vite";
+import { bunAdapter } from "@soljs/solkit/adapters/bun";
+import { solkit } from "@soljs/solkit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -75,7 +77,7 @@ export const staticPaths = ["/docs/routing"] as const;
 ```
 
 ```ts
-import { staticAdapter } from "solkit/adapters/static";
+import { staticAdapter } from "@soljs/solkit/adapters/static";
 
 solkit({ entry: "/src/entry.tsx", adapter: staticAdapter() });
 ```
@@ -134,7 +136,7 @@ The handler forwards the request URL into the Sol renderer, replaces both outlet
 the resulting hydration payload for the browser entry.
 
 ```ts
-import { createRequestHandler } from "solkit";
+import { createRequestHandler } from "@soljs/solkit";
 
 import { App } from "./entry.tsx";
 

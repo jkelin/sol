@@ -1,4 +1,4 @@
-import { $route, Link, type Component, type RouteDefinition } from "sol";
+import { $route, Link, type Component, type RouteDefinition } from "@soljs/sol";
 import type { JSX } from "../src/jsx-runtime.ts";
 
 declare const blogDetailRoute: RouteDefinition<"/blog/:id?from=:from">;

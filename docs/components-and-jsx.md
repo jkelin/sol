@@ -10,7 +10,7 @@ Create components with `$component`. Props are readonly and typed; writable loca
 ## Typed props and events
 
 ```sol live preview=SolarButton title="A typed component"
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 const SolarButton = $component<{ readonly label: string }>(function SolarButton(props) {
   let presses = 0;
@@ -43,7 +43,7 @@ General component children are not supported in the first version. Prefer explic
 `Head` appends its JSX children directly to `document.head` and renders no body wrapper:
 
 ```tsx
-import { Head } from "sol";
+import { Head } from "@soljs/sol";
 
 <Head>
   <title>{pageTitle}</title>
@@ -67,7 +67,7 @@ Scripts execute under native browser rules when inserted. Updating an inline scr
 `Portal` renders JSX, text, and primitive children into a reactive element target without recreating them when the target changes. `GlobalPortal` renders the same child types directly under `document.body`, which is useful for dialogs, notifications, and other page-level overlays. Both preserve context, async boundaries, events, refs, and transitions.
 
 ```sol live preview=PortalDemo title="Refs and portals"
-import { $component, createRef, GlobalPortal, Portal } from "sol";
+import { $component, createRef, GlobalPortal, Portal } from "@soljs/sol";
 
 const PortalDemo = $component(function PortalDemo() {
   const target = createRef<HTMLDivElement>();

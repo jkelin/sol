@@ -68,7 +68,7 @@ describe("Markdown-to-Sol compilation", () => {
 # Hello
 
 \`\`\`sol live preview=Demo title="Live demo"
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 const Demo = $component(function Demo() { let count = 0; return <button onClick={() => count++}>{count}</button>; });
 \`\`\``,
       file,
@@ -108,7 +108,7 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
     ).rejects.toThrow("invalid live Sol source");
     expect(
       markdownModule(
-        `${frontmatter}\n\`\`\`sol live preview=Demo\nimport { $component, mount } from "sol";\nconst Demo = $component(function Demo() { return <p>Demo</p>; });\nmount(Demo, document.body);\n\`\`\``,
+        `${frontmatter}\n\`\`\`sol live preview=Demo\nimport { $component, mount } from "@soljs/sol";\nconst Demo = $component(function Demo() { return <p>Demo</p>; });\nmount(Demo, document.body);\n\`\`\``,
         file,
       ),
     ).rejects.toThrow("must not call mount()");
@@ -124,7 +124,7 @@ const Demo = $component(function Demo() { let count = 0; return <button onClick=
   });
 
   test("emits browser-valid JavaScript for virtual development modules", async () => {
-    const source = `import { $component } from "sol";
+    const source = `import { $component } from "@soljs/sol";
 const values = [1] as const;
 export const Demo = $component(function Demo() { return <p>{values[0]}</p>; });`;
     const generated = await compileModule(source, "virtual-development-module.tsx");

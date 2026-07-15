@@ -13,12 +13,12 @@ bunx skills install https://github.com/jkelin/sol
 ## Install
 
 ```bash
-bun add sol
-bun add solkit
-bun add --dev @sol/compiler vite
+bun add @soljs/sol
+bun add @soljs/solkit
+bun add --dev @soljs/compiler vite
 ```
 
-Configure the compiler through the Vite plugin shown below, then set TypeScript's `jsxImportSource` to `sol`.
+Configure the compiler through the Vite plugin shown below, then set TypeScript's `jsxImportSource` to `@soljs/sol`.
 
 ## Run the example
 
@@ -33,6 +33,14 @@ The Tailwind-powered notebook example demonstrates compiler-managed state, keyed
 `example/dist/`: browser assets live in `client/`, and the bundled SSR handler plus Bun launcher live
 in `server/`. Use `bun run build:example:inspect` for a client-only readable build in
 `example/out/inspect/`.
+
+## Build and publish packages
+
+`bun run build:packages` compiles `@soljs/sol`, `@soljs/compiler`, and `@soljs/solkit` into each package's `dist/` directory with JavaScript, declarations, declaration maps, and source maps. `bun run publish:packages` uses `bun publish` to publish those three public packages to npm in dependency order. Each generated package runs its build through Bun's `prepublishOnly` lifecycle before packing, so publishing cannot skip compilation.
+
+The **Publish npm packages** GitHub Actions workflow can only be dispatched from `master` by `jkelin`. Choose its patch or minor input to run the corresponding publish job. Both jobs verify the repository, derive one synchronized version from npm, and publish with Bun. Add a granular npm automation token with publish access as the `NPM_TOKEN` repository secret; the workflow passes it to Bun as `NPM_CONFIG_TOKEN` only for the publish step.
+
+The initial package manifests are version `0.1.0`.
 
 ## Run the website
 
@@ -49,7 +57,7 @@ The original six standalone Tailwind Play CDN studies remain in `web/designs/` f
 ## Authoring model
 
 ```tsx
-import { $component, mount } from "sol";
+import { $component, mount } from "@soljs/sol";
 
 const Counter = $component(function Counter() {
   let count = 0;
@@ -76,7 +84,7 @@ Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `check
 Intrinsic elements accept callback refs and mutable object refs. `createRef<T>()` returns a typed, non-reactive `{ current: T | null }` object; refs attach after DOM insertion and clear during disposal.
 
 ```tsx
-import { $component, createRef, GlobalPortal, Portal } from "sol";
+import { $component, createRef, GlobalPortal, Portal } from "@soljs/sol";
 
 const Overlay = $component(function Overlay() {
   const target = createRef<HTMLDivElement>();
@@ -108,7 +116,7 @@ SSR omits portal children because their targets are browser-owned. During hydrat
 `$form()` owns a form's values, validation errors, and submission state. It accepts a callable parser or a schema with `parse()` or `parseAsync()`, so Valibot and Zod can share the same controller API.
 
 ```tsx
-import { $component, $form } from "sol";
+import { $component, $form } from "@soljs/sol";
 import * as v from "valibot";
 
 const TodoSchema = v.object({
@@ -151,7 +159,7 @@ Zod schemas can be passed directly as `schema`. `$form()` prefers `parseAsync()`
 `$query()` caches an asynchronous function by a JSON key and exposes reactive request state. It runs once when its component mounts unless `enabled` is false or the cache is still fresh. `$mutation()` wraps imperative asynchronous work without running it automatically.
 
 ```tsx
-import { $component, $mutation, $query, Suspense } from "sol";
+import { $component, $mutation, $query, Suspense } from "@soljs/sol";
 
 const Posts = $component(function Posts() {
   const posts = $query(
@@ -208,7 +216,7 @@ Query keys accept only JSON values and use their exact `JSON.stringify()` result
 Use the compiler-managed `Head` component to add reactive content to `document.head` without rendering a body wrapper:
 
 ```tsx
-import { $component, Head } from "sol";
+import { $component, Head } from "@soljs/sol";
 
 const Article = $component(function Article(props: { title: string; description: string }) {
   return (
@@ -236,7 +244,7 @@ During server rendering, pass `onHead` to collect the serialized managed head se
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string, so the application can define animation details with Tailwind, another CSS framework, or its own stylesheet. Transitions run only for updates after the initial render:
 
 ```tsx
-import { $component, type Transition } from "sol";
+import { $component, type Transition } from "@soljs/sol";
 
 const fade: Transition = {
   enter: "animate-in fade-in duration-150",
@@ -263,7 +271,7 @@ Enable compilation in Vite:
 
 ```ts
 import { defineConfig } from "vite";
-import { sol } from "@sol/compiler/vite";
+import { sol } from "@soljs/compiler/vite";
 
 export default defineConfig({ plugins: [sol()] });
 ```
@@ -354,7 +362,7 @@ components and `Await` blocks, serializes their results into the returned markup
 markers used by `hydrate()`:
 
 ```tsx
-import { hydrate, renderToStringAsync } from "sol";
+import { hydrate, renderToStringAsync } from "@soljs/sol";
 
 let head = "";
 const html = await renderToStringAsync(
@@ -401,7 +409,7 @@ schemas validate the complete argument tuple on the server; their compiled value
 callable during SSR and become Fetch-backed clients in the browser:
 
 ```tsx
-import { $rpcMutation, $rpcQuery } from "sol";
+import { $rpcMutation, $rpcQuery } from "@soljs/sol";
 import * as v from "valibot";
 
 export const loadPost = $rpcQuery("load-post", { schema: v.tuple([v.number()]) }, async (id) =>
@@ -442,7 +450,7 @@ route matches. Define each route as an exported
 top-level constant in a `.sol.ts` or `.sol.tsx` file:
 
 ```tsx
-import { $component, $route } from "sol";
+import { $component, $route } from "@soljs/sol";
 import * as v from "valibot";
 
 const BlogDetail = $component(function BlogDetail() {
@@ -479,7 +487,7 @@ Routes without a schema retain inferred string values for path parameters and op
 Use `Link` when the destination is represented by a route handle. It requires exactly one anchor child, supplies that anchor's `href`, and intercepts eligible same-tab clicks without adding a wrapper element:
 
 ```tsx
-import { Link } from "sol";
+import { Link } from "@soljs/sol";
 
 <Link route={blogDetailRoute} params={{ id: 42, page: 2 }}>
   <a class="entry-link">Open entry</a>
@@ -491,7 +499,7 @@ The route handle determines every required value in its single `params` prop. Au
 Place the route outlet in a compiled application shell and inspect the active location through the reactive `router` object:
 
 ```tsx
-import { $component, Route, router } from "sol";
+import { $component, Route, router } from "@soljs/sol";
 
 const LoadingRoute = $component(function LoadingRoute() {
   return <p>Loading…</p>;

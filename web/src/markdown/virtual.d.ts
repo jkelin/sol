@@ -1,5 +1,5 @@
 declare module "virtual:sol-docs" {
-  import type { Component } from "sol";
+  import type { Component } from "@soljs/sol";
 
   export interface DocNavigationItem {
     readonly slug: string;

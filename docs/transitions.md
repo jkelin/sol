@@ -8,7 +8,7 @@ order: 9
 Use `$transition` on an intrinsic element that can enter or leave a conditional, keyed list, or route. Each phase is a whitespace-separated CSS class string.
 
 ```sol live preview=TransitionDemo title="Conditional enter and leave"
-import { $component, type Transition } from "sol";
+import { $component, type Transition } from "@soljs/sol";
 
 const fade: Transition = {
   enter: "example-enter",

@@ -8,7 +8,7 @@ order: 5
 `$form()` owns a form's values, validation errors, and submission state. It accepts a callable parser, an object with `parse()` or `parseAsync()`, or a Standard Schema implementation such as Valibot or Zod.
 
 ```sol live preview=ContactForm title="Schema-aware submission"
-import { $component, $form } from "sol";
+import { $component, $form } from "@soljs/sol";
 import * as v from "valibot";
 
 const ContactSchema = v.object({

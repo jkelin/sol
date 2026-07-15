@@ -6,7 +6,7 @@ import {
   type Ref,
   type RefCallback,
   type RefObject,
-} from "sol";
+} from "@soljs/sol";
 
 const buttonRef = createRef<HTMLButtonElement>();
 const structuralRef: RefObject<HTMLInputElement> = { current: null };

@@ -1,4 +1,4 @@
-import { $component, $route, Head } from "sol";
+import { $component, $route, Head } from "@soljs/sol";
 import {
   counterLines,
   counterSource,
@@ -155,11 +155,13 @@ const LandingPage = $component(function LandingPage() {
                   </a>
                 </div>
                 <div class="mt-8 flex max-w-lg items-center justify-between gap-4 border-[3px] border-ink bg-ink p-3 text-white shadow-block-sm">
-                  <code class="overflow-x-auto font-mono text-sm text-solar">bun add sol</code>
+                  <code class="overflow-x-auto font-mono text-sm text-solar">
+                    bun add @soljs/sol
+                  </code>
                   <button
                     type="button"
                     class="border-2 border-cream px-3 py-2 font-mono text-[0.6875rem] font-bold uppercase hover:bg-cream hover:text-ink"
-                    onClick={() => navigator.clipboard.writeText("bun add sol")}
+                    onClick={() => navigator.clipboard.writeText("bun add @soljs/sol")}
                   >
                     Copy
                   </button>

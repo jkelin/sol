@@ -1,4 +1,4 @@
-import { $component, $route } from "sol";
+import { $component, $route } from "@soljs/sol";
 import { DocsContent, docs } from "virtual:sol-docs";
 import { Badge, buttonClass } from "./components/ui/index.ts";
 import { siteHref } from "./urls.ts";

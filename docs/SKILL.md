@@ -9,7 +9,7 @@ Sol is a compiled JSX framework. Its compiler turns component JSX into static HT
 
 ## Use Sol
 
-1. Install `sol` and the Vite compiler plugin `@sol/compiler`, put `sol()` before other JSX transforms, and set TypeScript's `jsxImportSource` to `sol`.
+1. Install `@soljs/sol` and the Vite compiler plugin `@soljs/compiler`, put `sol()` before other JSX transforms, and set TypeScript's `jsxImportSource` to `@soljs/sol`.
 2. Define components with `$component(function Name() { ... })`. Put component-owned state in writable local declarations and derived state in directly dependent `const` declarations.
 3. Return JSX from setup and mount the root component with `mount()`. Use ordinary reads and assignments inside compiled components; use `$signal()` and `$computed()` with `.value` only for state outside compiler-managed setup.
 4. Reach for Sol's owned primitives for forms, queries, routing, async boundaries, context, portals, document head, and transitions. Read the matching feature page below before using an API.
@@ -43,7 +43,7 @@ import {
   Head,
   Portal,
   type Transition,
-} from "sol";
+} from "@soljs/sol";
 
 const fade: Transition = { enter: "fade-in", leave: "fade-out" };
 
@@ -138,7 +138,7 @@ import {
   Route,
   Suspense,
   type HttpRouteInput,
-} from "sol";
+} from "@soljs/sol";
 import * as v from "valibot";
 
 interface Note {
@@ -238,7 +238,7 @@ export const App = $component(function App() {
 
 ## Public API
 
-Treat `sol/compiler-runtime` as compiler-generated infrastructure. Author application code with the APIs below.
+Treat `@soljs/sol/compiler-runtime` as compiler-generated infrastructure. Author application code with the APIs below.
 
 ### Components, rendering, and reactivity
 
@@ -279,14 +279,14 @@ Treat `sol/compiler-runtime` as compiler-generated infrastructure. Author applic
 
 ### Compiler, Vite, Solkit, and devtools
 
-- `compile(source, filename, options?)` from `@sol/compiler` validates and transforms one Sol module.
-- `sol(options?)` from `@sol/compiler/vite` compiles JSX, discovers route and server declarations, and optionally installs development tools.
+- `compile(source, filename, options?)` from `@soljs/compiler` validates and transforms one Sol module.
+- `sol(options?)` from `@soljs/compiler/vite` compiles JSX, discovers route and server declarations, and optionally installs development tools.
 - `solkit(options)` from `solkit/vite` adds client/server builds, request handling, routing setup, hydration, and the selected deployment adapter.
 - `createRequestHandler(root, endpoints?, options?)` from `solkit` creates a Fetch-compatible SSR and endpoint handler.
 - `bunAdapter()` from `solkit/adapters/bun` builds a Bun server launcher.
 - `nodeAdapter()` from `solkit/adapters/node` builds a Node.js server launcher.
 - `staticAdapter()` from `solkit/adapters/static` prerenders `staticPaths` into nested HTML documents.
-- `installDevtools()` from `sol/devtools` installs and returns the development inspector when a browser document is available. The inspector provides `getSnapshot()`, `inspectElement()`, `open()`, `close()`, `startElementPicker()`, and `subscribe()`.
+- `installDevtools()` from `@soljs/sol/devtools` installs and returns the development inspector when a browser document is available. The inspector provides `getSnapshot()`, `inspectElement()`, `open()`, `close()`, `startElementPicker()`, and `subscribe()`.
 
 `routerReady` is the promise that settles after initial router synchronization. `Transition` is the `{ enter?, leave? }` type used by `$transition`; the remaining exported names are supporting types for the APIs above.
 

@@ -41,7 +41,7 @@ interface RenderState {
 }
 
 const metadataKeys = new Set(["title", "description", "section", "order"]);
-const allowedExampleImports = new Set(["sol", "valibot"]);
+const allowedExampleImports = new Set(["@soljs/sol", "valibot"]);
 
 function fail(file: string, message: string, line?: number): never {
   throw new Error(`${file}${line ? `:${line}` : ""}: ${message}`);
@@ -382,7 +382,10 @@ function mergeImports(blocks: readonly LiveBlock[], file: string): string[] {
             specifier.imported.type === "Identifier"
               ? specifier.imported.name
               : specifier.imported.value;
-          if (specifier.importKind === "type" || (source === "sol" && imported === "$component")) {
+          if (
+            specifier.importKind === "type" ||
+            (source === "@soljs/sol" && imported === "$component")
+          ) {
             continue;
           }
           const sourceImports = imports.get(source) ?? new Map<string, string>();
@@ -444,7 +447,7 @@ export async function markdownModule(
     .join("\n");
   return {
     metadata: parsed.metadata,
-    code: `import { $component, Head } from "sol";
+    code: `import { $component, Head } from "@soljs/sol";
 import { CodePanel, ExampleViewToggle, type ExampleMode } from ${JSON.stringify(uiModule)};
 ${imports.join("\n")}
 ${state.moduleDeclarations.join("\n")}

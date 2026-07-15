@@ -13,7 +13,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
 
   for (const statement of ast.program.body) {
     if (t.isImportDeclaration(statement)) {
-      if (statement.importKind !== "type" && statement.source.value === "sol") {
+      if (statement.importKind !== "type" && statement.source.value === "@soljs/sol") {
         for (const specifier of statement.specifiers) {
           if (
             t.isImportSpecifier(specifier) &&
@@ -29,14 +29,15 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         }
       }
       const isFrameworkHelperModule =
-        statement.source.value === "sol" || statement.source.value.startsWith("sol/");
+        statement.source.value === "@soljs/sol" ||
+        statement.source.value.startsWith("@soljs/sol/");
       if (statement.importKind !== "type" && !isFrameworkHelperModule) {
         for (const specifier of statement.specifiers) {
           if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;
           compiler.componentNames.add(specifier.local.name);
           compiler.componentBindings.add(specifier.local);
         }
-      } else if (statement.importKind !== "type" && statement.source.value === "sol") {
+      } else if (statement.importKind !== "type" && statement.source.value === "@soljs/sol") {
         for (const specifier of statement.specifiers) {
           if (t.isImportNamespaceSpecifier(specifier)) {
             compiler.declarationHelperNamespaceImports.add(specifier.local);

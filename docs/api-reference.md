@@ -22,7 +22,7 @@ order: 10
 - `$computed(read)` creates an explicit derived value.
 - `$bind={state}` connects supported form controls in both directions.
 
-`batch()` is an internal compiler-runtime operation, not an author-facing export from `sol`.
+`batch()` is an internal compiler-runtime operation, not an author-facing export from `@soljs/sol`.
 
 ## Forms
 
@@ -37,7 +37,7 @@ order: 10
 - Query controllers expose `data`, `lastData`, `error`, `isFetching`, `isRefetching`, `isFailed`, and `refetch(options, ...args)`.
 - `$mutation({ mutation, suspense? })` creates an imperative mutation controller without starting work.
 - Mutation controllers expose `data`, `lastData`, `error`, `isMutating`, `isFailed`, and `mutate(options, ...args)`.
-- `QueryKey`, config, controller, Suspense, and per-call option types are exported from `sol`.
+- `QueryKey`, config, controller, Suspense, and per-call option types are exported from `@soljs/sol`.
 
 ## Server declarations
 
@@ -70,9 +70,9 @@ order: 10
 
 ## Compiler and Vite
 
-- `compile(source, filename, { target? })` from `@sol/compiler` validates and transforms one Sol module for a client or server target. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
+- `compile(source, filename, { target? })` from `@soljs/compiler` validates and transforms one Sol module for a client or server target. It returns `{ code, map }`, where `map` is the generated source map or `null` when no compiled declarations are present.
 - `CompileOptions` and `CompileResult` describe that boundary.
-- `sol()` from `@sol/compiler/vite` compiles TSX, discovers `.sol` UI and server declarations, rejects colliding route and endpoint matchers, and maintains both virtual manifests during development.
+- `sol()` from `@soljs/compiler/vite` compiles TSX, discovers `.sol` UI and server declarations, rejects colliding route and endpoint matchers, and maintains both virtual manifests during development.
 - `staticAdapter()` from `solkit/adapters/static` renders the entry module's non-empty `staticPaths` array into nested `index.html` documents beside Vite's client assets.
 - `configureRouterBase(base)` configures logical routing beneath a validated root-relative deployment base; Solkit calls it automatically with Vite's `BASE_URL` before hydration.
 - Place `sol()` before other JSX transforms in the Vite plugin list. The website additionally places its Markdown compiler before `sol()` so generated examples use the same compiler path.

@@ -1,5 +1,5 @@
-import type { Component } from "sol";
-import type { ServerEndpoint } from "sol/compiler-runtime";
+import type { Component } from "@soljs/sol";
+import type { ServerEndpoint } from "@soljs/sol/compiler-runtime";
 
 export interface RenderContext {
   readonly template: string;

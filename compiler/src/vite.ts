@@ -20,7 +20,8 @@ const virtualRoutes = "virtual:sol/routes";
 const resolvedVirtualRoutes = `\0${virtualRoutes}`;
 const virtualEndpoints = "virtual:sol/server-endpoints";
 const resolvedVirtualEndpoints = `\0${virtualEndpoints}`;
-const devtoolsBuildEntry = "/@sol/devtools";
+const devtoolsPackageEntry = "@soljs/sol/devtools";
+const devtoolsBuildEntry = "/@soljs/sol/devtools";
 const resolvedDevtoolsBuildEntry = "\0sol:devtools-entry";
 const componentFile = /\.tsx(?:\?.*)?$/;
 const solFile = /\.sol\.tsx?(?:\?.*)?$/i;
@@ -87,7 +88,7 @@ function routeManifest(inspections: readonly InspectedRouteFile[], root: string)
     .flat()
     .filter((route) => route.compiled.pathnameParameterNames.length === 0)
     .map((route) => route.path.split("?", 1)[0]);
-  return `import { lazyRoute as __sol_lazy_route } from "sol/compiler-runtime";
+  return `import { lazyRoute as __sol_lazy_route } from "@soljs/sol/compiler-runtime";
 ${loaders.join("\n")}
 ${routes.map((route) => route.code).join("\n")}
 export const staticRoutePaths = ${JSON.stringify([...new Set(staticPaths)])};
@@ -103,7 +104,7 @@ function endpointManifest(inspections: readonly InspectedRouteFile[]): string {
   });
   const modules = endpointFiles.map((_, index) => `__sol_endpoint_module_${index}`).join(", ");
   return `${imports.join("\n")}
-import { isServerEndpoint as __sol_is_endpoint } from "sol/compiler-runtime";
+import { isServerEndpoint as __sol_is_endpoint } from "@soljs/sol/compiler-runtime";
 const __sol_modules = [${modules}];
 export default [...new Set(__sol_modules.flatMap(module => Object.values(module).filter(__sol_is_endpoint)))];`;
 }
@@ -123,7 +124,7 @@ function routeHandleProjection(source: string, filename: string): string {
           } };`,
     ),
   );
-  return `import { routeHandle as __sol_route_handle } from "sol/compiler-runtime";
+  return `import { routeHandle as __sol_route_handle } from "@soljs/sol/compiler-runtime";
 ${declarations.join("\n")}
 ${exports.join("\n")}`;
 }
@@ -417,7 +418,7 @@ function dependencyProjection(source: string, filename: string): string {
       `const ${route.localName} = ${handleName}({ path: ${JSON.stringify(route.path)} }, ${JSON.stringify(route.compiled)});`,
   );
   const handleImport = localRoutes.length
-    ? `import { routeHandle as ${handleName} } from "sol/compiler-runtime";\n`
+    ? `import { routeHandle as ${handleName} } from "@soljs/sol/compiler-runtime";\n`
     : "";
   return `${handleImport}${handles.join("\n")}\n${generate(t.program(body)).code}`;
 }
@@ -464,7 +465,7 @@ async function projectRouteImports(
     if (
       (t.isImportDeclaration(statement) || t.isExportNamedDeclaration(statement)) &&
       statement.source &&
-      statement.source.value !== "sol" &&
+      statement.source.value !== "@soljs/sol" &&
       !/[?#]/.test(statement.source.value)
     ) {
       return [{ statement, specifier: statement.source.value }];
@@ -551,7 +552,7 @@ function declarationHelperBindings(ast: t.File): {
     if (
       !t.isImportDeclaration(statement) ||
       statement.importKind === "type" ||
-      statement.source.value !== "sol"
+      statement.source.value !== "@soljs/sol"
     )
       continue;
     for (const specifier of statement.specifiers) {
@@ -861,7 +862,7 @@ export function sol(options: SolPluginOptions = {}): Plugin {
             tag: "script",
             attrs: {
               type: "module",
-              src: config.command === "serve" ? "/@id/sol/devtools" : devtoolsBuildEntry,
+              src: config.command === "serve" ? `/@id/${devtoolsPackageEntry}` : devtoolsBuildEntry,
               "data-sol-devtools": "",
             },
             injectTo: "head-prepend",
@@ -875,7 +876,8 @@ export function sol(options: SolPluginOptions = {}): Plugin {
       return id === devtoolsBuildEntry ? resolvedDevtoolsBuildEntry : null;
     },
     async load(id) {
-      if (id === resolvedDevtoolsBuildEntry) return 'import "sol/devtools";';
+      if (id === resolvedDevtoolsBuildEntry)
+        return `import ${JSON.stringify(devtoolsPackageEntry)};`;
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
       if (generationConsumers.has(id)) {
         discoveredFiles = undefined;

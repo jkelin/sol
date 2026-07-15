@@ -1,6 +1,11 @@
 {
-  "name": "sol",
-  "version": "0.0.0",
+  "name": "@soljs/sol",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jkelin/sol.git",
+    "directory": "runtime"
+  },
   "type": "module",
   "module": "./src/index.ts",
   "exports": {
@@ -11,7 +16,12 @@
     "./jsx-dev-runtime": "./src/jsx-dev-runtime.ts",
     "./route-descriptors": "./src/route-descriptors.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun ../scripts/build-package.ts .",
+    "prepublishOnly": "bun run build",
     "test": "bun test tests/runtime.test.ts tests/router.test.ts tests/queries.test.ts tests/serialization.test.ts tests/server-functions.test.ts tests/devtools.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

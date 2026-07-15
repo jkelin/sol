@@ -1,7 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
-import { sol } from "@sol/compiler/vite";
-import { bunAdapter } from "solkit/adapters/bun";
-import { solkit } from "solkit/vite";
+import { sol } from "@soljs/compiler/vite";
+import { bunAdapter } from "@soljs/solkit/adapters/bun";
+import { solkit } from "@soljs/solkit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({

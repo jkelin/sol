@@ -13,6 +13,7 @@ import type { RequestHandler, SolkitAdapter, SolkitOptions } from "./types.ts";
 
 const CLIENT_ENTRY = "virtual:solkit/client";
 const SERVER_ENTRY = "virtual:solkit/server";
+const SERVER_ENTRY_URL = "/@solkit/server";
 const ADAPTER_ENTRY = "virtual:solkit/adapter";
 const RESOLVED_CLIENT_ENTRY = `\0${CLIENT_ENTRY}`;
 const RESOLVED_SERVER_ENTRY = `\0${SERVER_ENTRY}`;
@@ -181,7 +182,7 @@ export function solkit(options: SolkitOptions): Plugin {
         };
       }
       return environment.command === "serve" && !environment.isPreview
-        ? { appType: "custom" }
+        ? { appType: "custom", ssr: { noExternal: true } }
         : {
             build: {
               outDir: clientOutDir,
@@ -197,14 +198,14 @@ export function solkit(options: SolkitOptions): Plugin {
       order: "pre",
       handler(id) {
         if (id === CLIENT_ENTRY) return RESOLVED_CLIENT_ENTRY;
-        if (id === SERVER_ENTRY) return RESOLVED_SERVER_ENTRY;
+        if (id === SERVER_ENTRY || id === SERVER_ENTRY_URL) return RESOLVED_SERVER_ENTRY;
         if (id === ADAPTER_ENTRY) return RESOLVED_ADAPTER_ENTRY;
         return null;
       },
     },
     load(id) {
       if (id === RESOLVED_CLIENT_ENTRY) {
-        return `import { configureRouterBase, configureRouterNavigation, hydrate, routerReady } from "sol";
+        return `import { configureRouterBase, configureRouterNavigation, hydrate, routerReady } from "@soljs/sol";
 import { ${exportName} as Root } from ${JSON.stringify(options.entry)};
 const target = document.querySelector("#app");
 if (!target) throw new Error("The #app hydration target is missing");
@@ -226,8 +227,8 @@ import { staticRoutePaths, staticRoutes } from "virtual:sol/routes";`
           ? `export const staticPaths = __solkit_entry.staticPaths;
 export { staticRoutePaths, staticRoutes };`
           : "";
-        return `import { createRequestHandler } from "solkit";
-import { configureRouteBase } from "sol/compiler-runtime";
+        return `import { createRequestHandler } from "@soljs/solkit";
+import { configureRouteBase } from "@soljs/sol/compiler-runtime";
 import endpoints from "virtual:sol/server-endpoints";
 ${rootImport}
 configureRouteBase(${JSON.stringify(config.base)});
@@ -253,7 +254,7 @@ ${staticPathExport}`;
               source,
             );
             const template = injectDevStyles(transformedTemplate, await collectDevStyles(server));
-            const module = (await server.ssrLoadModule(SERVER_ENTRY)) as {
+            const module = (await server.ssrLoadModule(SERVER_ENTRY_URL)) as {
               handle?: RequestHandler;
             };
             if (typeof module.handle !== "function") {

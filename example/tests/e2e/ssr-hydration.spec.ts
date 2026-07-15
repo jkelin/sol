@@ -3,13 +3,17 @@ import { createServer, type ViteDevServer } from "vite";
 
 let server: ViteDevServer;
 let serverHtml: () => Promise<string>;
+let serverUrl: string;
 
 test.beforeAll(async () => {
   server = await createServer({
     configFile: "vite.config.ts",
-    server: { host: "127.0.0.1", port: 4174, strictPort: true },
+    server: { host: "127.0.0.1", port: 0 },
   });
   await server.listen();
+  const resolvedUrl = server.resolvedUrls?.local[0];
+  if (!resolvedUrl) throw new Error("Vite did not expose its local development URL");
+  serverUrl = resolvedUrl;
   const fixture = (await server.ssrLoadModule("/tests/fixtures/ssr-app.tsx")) as {
     serverHtml: () => Promise<string>;
   };
@@ -22,9 +26,9 @@ test.afterAll(async () => {
 
 test("claims async server HTML and resumes a timed-out boundary", async ({ page }) => {
   const html = await serverHtml();
-  await page.goto("http://127.0.0.1:4174/");
+  await page.goto(serverUrl);
   await page.setContent(`
-    <base href="http://127.0.0.1:4174/">
+    <base href="${serverUrl}">
     <div id="ssr-app">${html}</div>
     <script type="module">
       const client = await import("/tests/fixtures/ssr-client.ts");

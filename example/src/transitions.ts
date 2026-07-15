@@ -1,4 +1,4 @@
-import type { Transition } from "sol";
+import type { Transition } from "@soljs/sol";
 
 export const pageTransition: Transition = {
   enter: "page-enter",

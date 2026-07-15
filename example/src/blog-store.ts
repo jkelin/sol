@@ -1,4 +1,4 @@
-import { $signal } from "sol";
+import { $signal } from "@soljs/sol";
 
 export interface BlogEntry {
   id: number;

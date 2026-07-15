@@ -10,7 +10,7 @@ Routes are exported top-level constants in files ending with `.sol.ts` or `.sol.
 ## Declare a typed route
 
 ```tsx
-import { $component, $route } from "sol";
+import { $component, $route } from "@soljs/sol";
 import * as v from "valibot";
 
 const BlogDetail = $component(function BlogDetail() {

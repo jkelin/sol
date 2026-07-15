@@ -67,7 +67,7 @@ Live examples use a `sol` fence with `live`, `preview`, and optional `title` met
 
 ````markdown
 ```sol live preview=Counter title="Reactive counter"
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 const Counter = $component(function Counter() {
   let count = 0;

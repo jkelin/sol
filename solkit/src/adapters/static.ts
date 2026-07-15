@@ -1,7 +1,10 @@
 import { access, mkdir, readFile, rm, rmdir, writeFile as writeFileToDisk } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import { compareRouteSpecificity, type StaticRouteDescriptor } from "sol/route-descriptors";
+import {
+  compareRouteSpecificity,
+  type StaticRouteDescriptor,
+} from "@soljs/sol/route-descriptors";
 import type { RequestHandler, SolkitAdapter, SolkitAdapterContext, StaticPaths } from "../types.ts";
 
 interface StaticApplication {

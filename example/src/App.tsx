@@ -1,4 +1,4 @@
-import { $component, $form, Head, type FormController } from "sol";
+import { $component, $form, Head, type FormController } from "@soljs/sol";
 import * as v from "valibot";
 import { pageTransition, todoTransition } from "./transitions.ts";
 

@@ -1,4 +1,4 @@
-import type { HttpRouteInput } from "sol";
+import type { HttpRouteInput } from "@soljs/sol";
 import * as v from "valibot";
 
 const schemaImplementationMarker = "SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP";

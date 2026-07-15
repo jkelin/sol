@@ -8,7 +8,7 @@ import {
   GlobalPortal,
   Portal,
   Suspense,
-} from "sol";
+} from "@soljs/sol";
 
 interface ShowcaseContextData {
   accent: string;

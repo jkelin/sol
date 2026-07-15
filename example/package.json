@@ -13,13 +13,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "sol": "workspace:*",
-    "solkit": "workspace:*",
+    "@soljs/sol": "0.1.0",
+    "@soljs/solkit": "0.1.0",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@sol/compiler": "workspace:*",
+    "@soljs/compiler": "0.1.0",
     "@tailwindcss/vite": "^4.1.14",
     "tailwindcss": "^4.1.14",
     "vite": "^8.0.10"

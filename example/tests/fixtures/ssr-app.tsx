@@ -1,4 +1,4 @@
-import { $component, renderToStringAsync, Suspense } from "sol";
+import { $component, renderToStringAsync, Suspense } from "@soljs/sol";
 
 interface TestRuntime {
   solPrimaryLoad?: () => Promise<string>;

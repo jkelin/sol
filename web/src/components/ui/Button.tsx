@@ -1,4 +1,4 @@
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 export type ButtonVariant = "primary" | "solar" | "outline" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";

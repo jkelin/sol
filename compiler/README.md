@@ -1,19 +1,19 @@
 # Sol compiler
 
-`@sol/compiler` transforms Sol TSX into static HTML templates and fine-grained DOM operations. Most projects use its Vite adapter:
+`@soljs/compiler` transforms Sol TSX into static HTML templates and fine-grained DOM operations. Most projects use its Vite adapter:
 
 ```ts
-import { sol } from "@sol/compiler/vite";
+import { sol } from "@soljs/compiler/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({ plugins: [sol()] });
 ```
 
-`sol()` injects `sol/devtools` into development HTML by default and omits it from production
+`sol()` injects `@soljs/sol/devtools` into development HTML by default and omits it from production
 builds. Pass `{ devtools: false }` to disable the development panel, or `{ devtools: true }` to
 include it explicitly for another Vite command. The option boundary rejects non-boolean values.
 
-Tooling can call `compile(source, filename, options)` from `@sol/compiler` directly. It returns
+Tooling can call `compile(source, filename, options)` from `@soljs/compiler` directly. It returns
 transformed code and a source map. The filename must be a non-empty string, and options are
 snapshotted from exact own enumerable data properties. `options.target` selects `"client"` or
 `"server"` endpoint lowering. `options.routeMode` selects a metadata-only `"handle"` projection or
@@ -30,14 +30,16 @@ of a mixed import retains the route module's full JavaScript, stylesheet, and si
 Namespace imports and direct re-exports of route modules are rejected because they cannot preserve
 the lazy implementation boundary; use named imports and an explicit local export instead.
 String-named route imports use the same metadata projection and re-export guard as identifier-named
-routes. String-named `sol` helper imports participate in the same binding-aware lowering as ordinary
-identifier imports. Whole-declaration type-only imports from `sol` never register compiler helpers.
+routes. String-named `@soljs/sol` helper imports participate in the same binding-aware lowering as ordinary
+identifier imports. Whole-declaration type-only imports from `@soljs/sol` never register compiler helpers.
 Handle-only projections contain metadata only. Bare imports and the ordinary side of mixed imports
 continue to execute the original module once, preserving authored initialization without pulling
 route schemas, components, stylesheets, or their transitive module effects through handle imports.
 Generated lazy loaders use the full page projection, while endpoint discovery uses an endpoint-only
 binding-and-initialization-effect closure that excludes route implementations and their transitive
 dependencies; route handles referenced by endpoint code are projected again as metadata.
+
+`bun run build` writes the publishable JavaScript and type declarations to `dist/` using `tsconfig.build.json`.
 
 ## Source files
 

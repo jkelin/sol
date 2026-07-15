@@ -1,4 +1,4 @@
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 export const ListExample = $component(function ListExample() {
   let items = [

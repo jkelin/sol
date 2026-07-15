@@ -9,7 +9,7 @@ import {
   renderToStringAsync,
   type Context,
   type RenderToStringOptions,
-} from "sol";
+} from "@soljs/sol";
 
 interface SharedData {
   count: number;

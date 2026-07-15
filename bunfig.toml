@@ -4,3 +4,4 @@ pathIgnorePatterns = ["example/tests/**", "**/tests/e2e/**"]
 [install]
 linker = "isolated"
 globalStore = true
+registry = "https://registry.npmjs.org"

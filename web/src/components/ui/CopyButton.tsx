@@ -1,4 +1,4 @@
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 import { buttonClass } from "./Button.tsx";
 
 export interface CopyButtonProps {

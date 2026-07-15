@@ -1,4 +1,4 @@
-import { $component, $form } from "sol";
+import { $component, $form } from "@soljs/sol";
 import * as v from "valibot";
 
 const emailSchema = v.object({

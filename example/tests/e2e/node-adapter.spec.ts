@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { nodeAdapter } from "solkit/adapters/node";
+import { nodeAdapter } from "@soljs/solkit/adapters/node";
 
 const port = 4176;
 const origin = `http://127.0.0.1:${port}`;

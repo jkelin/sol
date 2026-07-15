@@ -1,9 +1,9 @@
 # Sol runtime
 
-The `sol` package is the browser and server runtime plus author-facing interface for Sol applications. It provides compiled components, fine-grained reactive state, document-head content, DOM refs, portals, forms, cached queries, mutations, server RPC and HTTP declarations, context, async rendering, hydration, transitions, typed routes, and the browser router.
+The `@soljs/sol` package is the browser and server runtime plus author-facing interface for Sol applications. It provides compiled components, fine-grained reactive state, document-head content, DOM refs, portals, forms, cached queries, mutations, server RPC and HTTP declarations, context, async rendering, hydration, transitions, typed routes, and the browser router.
 
 ```tsx
-import { $component, mount } from "sol";
+import { $component, mount } from "@soljs/sol";
 
 const Greeting = $component(function Greeting() {
   let name = "Sol";
@@ -13,7 +13,9 @@ const Greeting = $component(function Greeting() {
 mount(Greeting, document.querySelector("#app")!);
 ```
 
-Application code normally imports only `sol`. The JSX transform resolves `sol/jsx-runtime` automatically. `sol/compiler-runtime` is reserved for code emitted by `@sol/compiler`.
+Application code normally imports only `@soljs/sol`. The JSX transform resolves `@soljs/sol/jsx-runtime` automatically. `@soljs/sol/compiler-runtime` is reserved for code emitted by `@soljs/compiler`.
+
+`bun run build` writes the publishable JavaScript and type declarations to `dist/` using `tsconfig.build.json`.
 
 ## Source files
 

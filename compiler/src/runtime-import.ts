@@ -66,5 +66,5 @@ export function runtimeImport(generatedCode: string): string {
   const used = RUNTIME_HELPERS.filter(([, local]) => referenced.has(local));
   if (used.length === 0) return "";
   const specifiers = used.map(([exported, local]) => `  ${exported} as ${local}`).join(",\n");
-  return `import {\n${specifiers}\n} from "sol/compiler-runtime";`;
+  return `import {\n${specifiers}\n} from "@soljs/sol/compiler-runtime";`;
 }

@@ -24,8 +24,8 @@ export function emitCompilation(state: CompilationState): CompileResult {
     state.serverCallRanges.size === 0
       ? ""
       : compiler.target === "server"
-        ? `import { httpRouteServer as __sol_http_route_server, rpcMutationServer as __sol_rpc_mutation_server, rpcQueryServer as __sol_rpc_query_server } from "sol/compiler-runtime";`
-        : `import { httpRouteClient as __sol_http_route_client, rpcMutationClient as __sol_rpc_mutation_client, rpcQueryClient as __sol_rpc_query_client } from "sol/compiler-runtime";`;
+        ? `import { httpRouteServer as __sol_http_route_server, rpcMutationServer as __sol_rpc_mutation_server, rpcQueryServer as __sol_rpc_query_server } from "@soljs/sol/compiler-runtime";`
+        : `import { httpRouteClient as __sol_http_route_client, rpcMutationClient as __sol_rpc_mutation_client, rpcQueryClient as __sol_rpc_query_client } from "@soljs/sol/compiler-runtime";`;
   const generatedBody = `${templates}\n${transformedSource.toString()}`;
   const imports = [runtimeImport(generatedBody), serverRuntimeImport].filter(Boolean).join("\n");
   transformedSource.prepend(`${imports}\n${templates}\n`);

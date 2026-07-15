@@ -10,6 +10,9 @@
         "@babel/traverse": "^7.28.4",
         "@babel/types": "^7.28.4",
         "@playwright/test": "^1.61.1",
+        "@soljs/compiler": "workspace:*",
+        "@soljs/sol": "workspace:*",
+        "@soljs/solkit": "workspace:*",
         "@tailwindcss/vite": "^4.1.14",
         "@types/babel__generator": "^7.27.0",
         "@types/babel__traverse": "^7.28.0",
@@ -30,8 +33,8 @@
       },
     },
     "compiler": {
-      "name": "@sol/compiler",
-      "version": "0.0.0",
+      "name": "@soljs/compiler",
+      "version": "0.1.0",
       "dependencies": {
         "@babel/generator": "^7.28.4",
         "@babel/parser": "^7.28.4",
@@ -41,8 +44,8 @@
         "source-map-js": "^1.2.1",
       },
       "devDependencies": {
+        "@soljs/sol": "0.1.0",
         "happy-dom": "^20.10.6",
-        "sol": "workspace:*",
       },
       "peerDependencies": {
         "vite": "^8.0.10",
@@ -52,21 +55,21 @@
       "name": "@sol/example",
       "version": "0.0.0",
       "dependencies": {
-        "sol": "workspace:*",
-        "solkit": "workspace:*",
+        "@soljs/sol": "0.1.0",
+        "@soljs/solkit": "0.1.0",
         "valibot": "^1.4.2",
       },
       "devDependencies": {
         "@playwright/test": "^1.61.1",
-        "@sol/compiler": "workspace:*",
+        "@soljs/compiler": "0.1.0",
         "@tailwindcss/vite": "^4.1.14",
         "tailwindcss": "^4.1.14",
         "vite": "^8.0.10",
       },
     },
     "runtime": {
-      "name": "sol",
-      "version": "0.0.0",
+      "name": "@soljs/sol",
+      "version": "0.1.0",
       "devDependencies": {
         "happy-dom": "^20.10.6",
       },
@@ -75,13 +78,13 @@
       },
     },
     "solkit": {
-      "name": "solkit",
-      "version": "0.0.0",
+      "name": "@soljs/solkit",
+      "version": "0.1.0",
       "bin": {
-        "solkit": "./src/cli.ts",
+        "solkit": "./dist/cli.js",
       },
       "dependencies": {
-        "sol": "workspace:*",
+        "@soljs/sol": "0.1.0",
       },
       "devDependencies": {
         "vite": "^8.0.10",
@@ -94,8 +97,8 @@
       "name": "@sol/web",
       "version": "0.0.0",
       "dependencies": {
-        "sol": "workspace:*",
-        "solkit": "workspace:*",
+        "@soljs/sol": "0.1.0",
+        "@soljs/solkit": "0.1.0",
         "valibot": "^1.4.2",
       },
       "devDependencies": {
@@ -105,7 +108,7 @@
         "@fontsource/chivo-mono": "^5.2.6",
         "@fontsource/familjen-grotesk": "^5.2.6",
         "@playwright/test": "^1.61.1",
-        "@sol/compiler": "workspace:*",
+        "@soljs/compiler": "0.1.0",
         "@tailwindcss/vite": "^4.1.14",
         "@types/mdast": "^4.0.4",
         "remark-gfm": "^4.0.1",
@@ -299,11 +302,15 @@
 
     "@shikijs/vscode-textmate": ["@shikijs/vscode-textmate@10.0.2", "", {}, "sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg=="],
 
-    "@sol/compiler": ["@sol/compiler@workspace:compiler"],
-
     "@sol/example": ["@sol/example@workspace:example"],
 
     "@sol/web": ["@sol/web@workspace:web"],
+
+    "@soljs/compiler": ["@soljs/compiler@workspace:compiler"],
+
+    "@soljs/sol": ["@soljs/sol@workspace:runtime"],
+
+    "@soljs/solkit": ["@soljs/solkit@workspace:solkit"],
 
     "@tailwindcss/node": ["@tailwindcss/node@4.3.2", "", { "dependencies": { "@jridgewell/remapping": "^2.3.5", "enhanced-resolve": "5.21.6", "jiti": "^2.7.0", "lightningcss": "1.32.0", "magic-string": "^0.30.21", "source-map-js": "^1.2.1", "tailwindcss": "4.3.2" } }, "sha512-yWP/sqEcBLaD8JuA6zNwxoYKr75qxTioYwlRwekj5Jr/I5GXnoJfjetH/psLUIv74cYTH2lBUEzBkinthoYcBg=="],
 
@@ -608,10 +615,6 @@
     "signal-exit": ["signal-exit@4.1.0", "", {}, "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw=="],
 
     "slice-ansi": ["slice-ansi@8.0.0", "", { "dependencies": { "ansi-styles": "^6.2.3", "is-fullwidth-code-point": "^5.1.0" } }, "sha512-stxByr12oeeOyY2BlviTNQlYV5xOj47GirPr4yA1hE9JCtxfQN0+tVbkxwCtYDQWhEKWFHsEK48ORg5jrouCAg=="],
-
-    "sol": ["sol@workspace:runtime"],
-
-    "solkit": ["solkit@workspace:solkit"],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 

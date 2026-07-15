@@ -1,4 +1,4 @@
-import { $component } from "sol";
+import { $component } from "@soljs/sol";
 
 export const CounterExample = $component(function CounterExample() {
   let count = 0;

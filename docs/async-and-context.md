@@ -8,7 +8,7 @@ order: 8
 Create object context with `$context<T>()`. A provider receives its object through `data`; descendants call `use()` for a stable reactive proxy that follows provider replacement.
 
 ```sol live preview=ContextDemo title="A reactive context provider"
-import { $component, $context } from "sol";
+import { $component, $context } from "@soljs/sol";
 
 const solarContext = $context<{ label: string; visits: number }>();
 

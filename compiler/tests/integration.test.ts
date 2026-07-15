@@ -110,8 +110,8 @@ async function loadCompiled(source: string): Promise<Record<string, unknown>> {
   const runtimeUrl = `data:text/javascript;base64,${Buffer.from(runtimeModule).toString("base64")}`;
   const compilerRuntimeUrl = new URL("../../runtime/src/compiler-runtime.ts", import.meta.url).href;
   const sourceWithRuntime = result.code
-    .replaceAll('"sol/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
-    .replaceAll('"sol"', JSON.stringify(runtimeUrl));
+    .replaceAll('"@soljs/sol/compiler-runtime"', JSON.stringify(compilerRuntimeUrl))
+    .replaceAll('"@soljs/sol"', JSON.stringify(runtimeUrl));
   const javascript =
     ts.transpileModule(sourceWithRuntime, {
       compilerOptions: {
@@ -213,7 +213,7 @@ test("Head mounts reactive owned content into document.head", async () => {
   preservedTitle.textContent = "Static title";
   document.head.append(preserved, preservedTitle);
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App() {
       let title = "First";
       let description = "Initial description";
@@ -262,7 +262,7 @@ test("Head mounts reactive owned content into document.head", async () => {
 test("Head keeps reactive script bindings on the executable replacement", async () => {
   window.happyDOM.settings.enableJavaScriptEvaluation = true;
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App() {
       let body = "globalThis.dynamicHeadScripts = (globalThis.dynamicHeadScripts ?? 0) + 1;";
       let nonce = "first";
@@ -309,7 +309,7 @@ test("SSR serializes Head separately and hydration claims its owned nodes", asyn
   staticTitle.textContent = "Static title";
   document.head.append(staticTitle);
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App() {
       let title = "Server title";
       let description = "Server description";
@@ -367,7 +367,7 @@ test("SSR serializes Head separately and hydration claims its owned nodes", asyn
 
 test("SSR Head preserves independent ordering and script identity through hydration", async () => {
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App() {
       let showNewer = true;
       return <main>
@@ -417,7 +417,7 @@ test("SSR Head preserves independent ordering and script identity through hydrat
 
 test("a later hydration mismatch preserves server-rendered Head nodes", async () => {
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App(props: { label: string }) {
       return <main>
         <Head><title>Preserved {props.label}</title><meta name="preserved-head" content={props.label} /></Head>
@@ -453,7 +453,7 @@ test("empty Head is inert and scripts outside Head stay inert", async () => {
   window.happyDOM.settings.enableJavaScriptEvaluation = true;
   const before = [...document.head.childNodes];
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App() {
       return <main>
         <Head />
@@ -473,7 +473,7 @@ test("empty Head is inert and scripts outside Head stay inert", async () => {
 
 test("raw-text elements render mixed values and update without marker text", async () => {
   const module = await loadCompiled(`
-    import { $component } from "sol";
+    import { $component } from "@soljs/sol";
     export const App = $component(function App() {
       let count = 1;
       const missing = null;
@@ -502,7 +502,7 @@ test("conditional and sibling Head blocks retain independent ownership", async (
   staticTitle.textContent = "Static";
   document.head.append(staticTitle);
   const module = await loadCompiled(`
-    import { $component, Head } from "sol";
+    import { $component, Head } from "@soljs/sol";
     export const App = $component(function App() {
       let showOptional = true;
       let olderTitle = "Older";
@@ -719,7 +719,7 @@ test("nested keyed lists preserve and react to outer row state", async () => {
 
 test("contexts compose with async components, Suspense, Await, and ErrorBoundary", async () => {
   const module = await loadCompiled(`
-    import { $component, $context, Suspense, Await, ErrorBoundary } from "sol";
+    import { $component, $context, Suspense, Await, ErrorBoundary } from "@soljs/sol";
 
     const sharedContext = $context<{ label: string; count: number }>();
 
@@ -783,7 +783,7 @@ test("contexts compose with async components, Suspense, Await, and ErrorBoundary
 
 test("query and mutation controllers update compiled DOM and opt into Suspense per request", async () => {
   const module = await loadCompiled(`
-    import { $component, Suspense } from "sol";
+    import { $component, Suspense } from "@soljs/sol";
 
     const DataPanel = $component(function DataPanel() {
       const query = globalThis.integrationQuery({
@@ -879,7 +879,7 @@ test("query and mutation controllers update compiled DOM and opt into Suspense p
 
 test("creates frame-bound controllers after async setup resumes", async () => {
   const module = await loadCompiled(`
-    import { $component, $form, $query, $mutation } from "sol";
+    import { $component, $form, $query, $mutation } from "@soljs/sol";
 
     export const App = $component(async function App() {
       await Promise.resolve();
@@ -910,7 +910,7 @@ test("creates frame-bound controllers after async setup resumes", async () => {
 
 test("rejects frame-bound controller factories retained past setup", async () => {
   const module = await loadCompiled(`
-    import { $component, $form, $query, $mutation } from "sol";
+    import { $component, $form, $query, $mutation } from "@soljs/sol";
 
     export const App = $component(function App() {
       const makeQuery = () => $query({
@@ -938,7 +938,7 @@ test("rejects frame-bound controller factories retained past setup", async () =>
 
 test("rejects an aliased form helper after async setup loses its active frame", async () => {
   const module = await loadCompiled(`
-    import { $component, $form } from "sol";
+    import { $component, $form } from "@soljs/sol";
 
     export const App = $component(async function App() {
       const createForm = $form;
@@ -991,7 +991,7 @@ test("hydrates a fulfilled non-suspending initial query from its server loading 
 
 test("disposing a suspended query finishes its parent boundary before settlement", async () => {
   const module = await loadCompiled(`
-    import { $component, Suspense } from "sol";
+    import { $component, Suspense } from "@soljs/sol";
     const Pending = $component(function Pending() {
       const query = globalThis.integrationQuery({
         queryKey: ["disposed-query", ${JSON.stringify(crypto.randomUUID())}],
@@ -1016,7 +1016,7 @@ test("disposing a suspended query finishes its parent boundary before settlement
 
 test("a query failure without an async boundary remains in reactive controller state", async () => {
   const module = await loadCompiled(`
-    import { $component } from "sol";
+    import { $component } from "@soljs/sol";
     export const App = $component(function App() {
       const query = globalThis.integrationQuery({
         queryKey: ["boundary-free-failure", ${JSON.stringify(crypto.randomUUID())}],
@@ -1046,7 +1046,7 @@ test("a query failure without an async boundary remains in reactive controller s
 
 test("context optional reads and local Await errors work without Suspense", async () => {
   const module = await loadCompiled(`
-    import { $component, $context, Await } from "sol";
+    import { $component, $context, Await } from "@soljs/sol";
     const optionalContext = $context<{ value: string }>();
     export const App = $component(function App() {
       const optional = optionalContext.useOptional();
@@ -1073,7 +1073,7 @@ test("context optional reads and local Await errors work without Suspense", asyn
 
 test("preserves context reads after async setup resumes", async () => {
   const module = await loadCompiled(`
-    import { $component, $context, Suspense } from "sol";
+    import { $component, $context, Suspense } from "@soljs/sol";
     const shared = $context<{ label: string }>();
     const AsyncChild = $component(async function AsyncChild(props: { context: typeof shared }) {
       const alias = props.context;
@@ -1140,7 +1140,7 @@ test("renders immutable primitive setup constants without reactive effects", asy
 
 test("missing contexts throw and ErrorBoundary catches sync and async render failures", async () => {
   const missingModule = await loadCompiled(`
-    import { $component, $context } from "sol";
+    import { $component, $context } from "@soljs/sol";
     const missingContext = $context<{ value: string }>();
     export const App = $component(function App() {
       const value = missingContext.use();
@@ -1153,7 +1153,7 @@ test("missing contexts throw and ErrorBoundary catches sync and async render fai
   );
 
   const boundaryModule = await loadCompiled(`
-    import { $component, ErrorBoundary } from "sol";
+    import { $component, ErrorBoundary } from "@soljs/sol";
     const SyncFailure = $component(function SyncFailure() {
       throw new Error("sync failure");
       return <p>unreachable</p>;
@@ -1186,7 +1186,7 @@ test("missing contexts throw and ErrorBoundary catches sync and async render fai
 
 test("Await replaces stale promises and re-enters its Suspense fallback", async () => {
   const module = await loadCompiled(`
-    import { $component, Await, Suspense } from "sol";
+    import { $component, Await, Suspense } from "@soljs/sol";
     let resolveFirst!: (value: string) => void;
     const first = new Promise<string>(resolve => resolveFirst = resolve);
     export function settleFirst() { resolveFirst("stale"); }
@@ -1219,7 +1219,7 @@ test("Await replaces stale promises and re-enters its Suspense fallback", async 
 
 test("nested and sibling providers select the nearest context value", async () => {
   const module = await loadCompiled(`
-    import { $component, $context } from "sol";
+    import { $component, $context } from "@soljs/sol";
     const context = $context<{ value: string }>();
     const Consumer = $component(function Consumer(props: { id: string }) {
       const data = context.use();
@@ -1249,7 +1249,7 @@ test("nested and sibling providers select the nearest context value", async () =
 
 test("nested Suspense owns its work while a parent waits for multiple promises", async () => {
   const module = await loadCompiled(`
-    import { $component, Await, Suspense } from "sol";
+    import { $component, Await, Suspense } from "@soljs/sol";
     let resolveFirst!: (value: string) => void;
     let resolveSecond!: (value: string) => void;
     let resolveNested!: (value: string) => void;
@@ -1294,7 +1294,7 @@ test("nested Suspense owns its work while a parent waits for multiple promises",
 
 test("async rejections prefer Await, then Suspense, then ErrorBoundary", async () => {
   const module = await loadCompiled(`
-    import { $component, Await, ErrorBoundary, Suspense } from "sol";
+    import { $component, Await, ErrorBoundary, Suspense } from "@soljs/sol";
     export const App = $component(function App() {
       const localFailure = Promise.reject(new Error("local"));
       const suspenseFailure = Promise.reject(new Error("suspense"));
@@ -1337,7 +1337,7 @@ test("async rejections prefer Await, then Suspense, then ErrorBoundary", async (
 
 test("async mount failures reach ErrorBoundary and settle Suspense", async () => {
   const module = await loadCompiled(`
-    import { ErrorBoundary, Suspense } from "sol";
+    import { ErrorBoundary, Suspense } from "@soljs/sol";
     const Async = $component(async function Async() {
       await Promise.resolve();
       return <p ref={() => { throw new Error("async mount failed"); }}>Ready</p>;
@@ -1364,7 +1364,7 @@ test("async mount failures reach ErrorBoundary and settle Suspense", async () =>
 test("compiled refs and portals preserve ownership across targets and body", async () => {
   const animations = installAnimations();
   const module = await loadCompiled(`
-    import { $component, $context, Await, createRef, GlobalPortal, Portal } from "sol";
+    import { $component, $context, Await, createRef, GlobalPortal, Portal } from "@soljs/sol";
     const context = $context<{ label: string }>();
 
     const PortalContent = $component(function PortalContent() {
@@ -1450,7 +1450,7 @@ test("compiled refs and portals preserve ownership across targets and body", asy
 
 test("defers nested mount phases and activates keyed refs and portals", async () => {
   const module = await loadCompiled(`
-    import { $component, createRef, Portal } from "sol";
+    import { $component, createRef, Portal } from "@soljs/sol";
     export const App = $component(function App() {
       const conditionalTarget = createRef<HTMLDivElement>();
       const listTarget = createRef<HTMLDivElement>();
@@ -1502,7 +1502,7 @@ test("defers nested mount phases and activates keyed refs and portals", async ()
 
 test("server renders compiled primitives and resolved Suspense without a DOM", async () => {
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Child = $component(async function Child(props: { label: string }) {
       const value = await Promise.resolve(props.label);
       return <strong className={["ready", { active: true }]}>{value}</strong>;
@@ -1609,7 +1609,7 @@ test("server rendering keeps parent region slots distinct from nested region mar
 
 test("server renders a timed-out Suspense fallback and rejects root timeouts", async () => {
   const module = await loadCompiled(`
-    import { ErrorBoundary, Suspense } from "sol";
+    import { ErrorBoundary, Suspense } from "@soljs/sol";
     const Pending = $component(async function Pending() {
       await new Promise(() => {});
       return <p>never</p>;
@@ -1665,7 +1665,7 @@ test("server renders a timed-out Suspense fallback and rejects root timeouts", a
 test("hydrates server DOM in place and replays async component data", async () => {
   globalThis.integrationSetups.app = 0;
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Child = $component(async function Child() {
       const value = await Promise.resolve().then(() => {
         globalThis.integrationSetups.app += 1;
@@ -1700,7 +1700,7 @@ test("hydrates server DOM in place and replays async component data", async () =
 
 test("hydrates refs and mounts browser-only portals after claiming server DOM", async () => {
   const module = await loadCompiled(`
-    import { $component, createRef, Portal } from "sol";
+    import { $component, createRef, Portal } from "@soljs/sol";
     export const App = $component(function App() {
       const target = createRef<HTMLDivElement>();
       return <main>
@@ -1799,7 +1799,7 @@ test("hydrates a timed-out fallback and resumes only its pending work", async ()
     globalThis.integrationResolve = resolve;
   });
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Child = $component(async function Child() {
       const value = await (() => {
         globalThis.integrationSetups.app += 1;
@@ -1876,7 +1876,7 @@ test("rejects hydration mismatches without replacing server DOM", async () => {
 
 test("does not let ErrorBoundary swallow hydration mismatches", async () => {
   const module = await loadCompiled(`
-    import { ErrorBoundary, Suspense } from "sol";
+    import { ErrorBoundary, Suspense } from "@soljs/sol";
     export const App = $component(function App(props: { label: string }) {
       return <ErrorBoundary fallback={error => <p id="boundary-fallback">{String(error)}</p>}>
         <Suspense fallback={<p>Loading</p>} error={error => <p id="suspense-error">{String(error)}</p>}>
@@ -2063,8 +2063,8 @@ test("keeps boolean input values and numeric zero classes consistent across rend
 
 test("hydration rejects a Link destination mismatch without rewriting href", async () => {
   const module = await loadCompiled(`
-    import { Link } from "sol";
-    import { route as runtimeRoute } from "sol/compiler-runtime";
+    import { Link } from "@soljs/sol";
+    import { route as runtimeRoute } from "@soljs/sol/compiler-runtime";
     const Page = $component(function Page() { return <main>Page</main>; });
     const destination = runtimeRoute(
       { path: "/item/:id" },
@@ -2198,7 +2198,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     "onHead must be a function",
   );
   const headModule = await loadCompiled(`
-    import { Head } from "sol";
+    import { Head } from "@soljs/sol";
     export const App = $component(function App() { return <><Head><title>Required callback</title></Head><main /></>; });
   `);
   await expectRejection(
@@ -2207,7 +2207,7 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
   );
 
   const suspenseModule = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     export const App = $component(function App(props: { timeoutMs: number }) {
       return <Suspense fallback={<p>Loading</p>} timeoutMs={props.timeoutMs}><main>Ready</main></Suspense>;
     });
@@ -2503,7 +2503,7 @@ test("replays eagerly initialized promises and Promise.all helper sites", async 
 
 test("SSR preserves Await promise-like validation", async () => {
   const module = await loadCompiled(`
-    import { Await } from "sol";
+    import { Await } from "@soljs/sol";
     export const App = $component(function App() {
       const invalid = 123 as unknown as Promise<number>;
       return <Await $promise={invalid}>{value => <main>{value}</main>}</Await>;
@@ -2512,7 +2512,7 @@ test("SSR preserves Await promise-like validation", async () => {
   await expectRejection(renderToStringAsync(module.App as Component), "promise-like");
 
   const callableModule = await loadCompiled(`
-    import { Await } from "sol";
+    import { Await } from "@soljs/sol";
     export const App = $component(function App() {
       const callable = Object.assign(() => {}, {
         then(resolve: (value: string) => unknown) {
@@ -2528,7 +2528,7 @@ test("SSR preserves Await promise-like validation", async () => {
 test("SSR and hydration preserve Await, Suspense, and ErrorBoundary failures", async () => {
   globalThis.integrationSetups.app = 0;
   const module = await loadCompiled(`
-    import { Await, ErrorBoundary, Suspense } from "sol";
+    import { Await, ErrorBoundary, Suspense } from "@soljs/sol";
     const SuspenseFailure = $component(async function SuspenseFailure() {
       await Promise.reject(new Error("suspense failed"));
       return <p>unexpected</p>;
@@ -2573,7 +2573,7 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
     globalThis.integrationResolve = resolve;
   });
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Pending = $component(async function Pending() {
       const value = await globalThis.integrationPending;
       return <p id="nested-ready">{value}</p>;
@@ -2606,7 +2606,7 @@ test("nested SSR Suspense owns its timeout while its parent resolves", async () 
 
 test("an outer Suspense timeout retires pending descendant boundaries", async () => {
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Pending = $component(async function Pending() {
       await new Promise(() => {});
       return <p>Never</p>;
@@ -2647,7 +2647,7 @@ test("keeps late settlements from timed-out boundaries uncaptured", async () => 
     return new Promise((resolve) => setTimeout(() => resolve(`${id} result`), delay));
   };
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Child = $component(async function Child(props: { id: string }) {
       const value = await globalThis.integrationLoad(props.id);
       return <p data-id={props.id}>{String(value)}</p>;
@@ -2687,7 +2687,7 @@ test("a timed-out outer boundary resumes nested boundary payloads", async () => 
     globalThis.integrationResolve = resolve;
   });
   const module = await loadCompiled(`
-    import { Suspense } from "sol";
+    import { Suspense } from "@soljs/sol";
     const Ready = $component(async function Ready() {
       const value = await Promise.resolve("nested ready");
       return <p id="nested-resume-ready">{value}</p>;

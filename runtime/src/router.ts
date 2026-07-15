@@ -417,6 +417,7 @@ configureRouteRuntime({
     const current = currentState(frame);
     if (key === "params" || key === "query") return current.values ?? EMPTY_ROUTE_VALUES;
     if (key === "route") return current.route;
+    if (key === "searchParams") return new URLSearchParams(current.searchParams);
     return current[key];
   },
   navigate,

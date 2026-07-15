@@ -28,6 +28,14 @@ import { escapeAttribute, escapeText, normalizeHtmlString, VOID_ELEMENTS } from 
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
+const NON_HYDRATABLE_DOM_PROPERTIES = new Set([
+  "indeterminate",
+  "innerHTML",
+  "innerText",
+  "outerHTML",
+  "outerText",
+  "textContent",
+]);
 const BOOLEAN_ATTRIBUTES = new Set([
   "allowfullscreen",
   "async",
@@ -759,6 +767,13 @@ export function compileIntrinsicElement(
     if (sourceName === "key") continue;
     if (targetName === "data-sol-e" || targetName === "data-sol-hydration") {
       codeFrame(compiler, attribute, `${targetName} is reserved for hydration metadata`);
+    }
+    if (NON_HYDRATABLE_DOM_PROPERTIES.has(sourceName)) {
+      codeFrame(
+        compiler,
+        attribute,
+        `DOM property ${sourceName} cannot be represented during SSR and hydration`,
+      );
     }
     if (sourceName === "$form") {
       useRuntimeHelper(compiler, "__sol_event");

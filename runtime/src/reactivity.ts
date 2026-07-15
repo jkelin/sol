@@ -381,7 +381,7 @@ export function reactive<T extends object>(target: T): T {
       const removed = dependencies.get(target)
         ? [...dependencies.get(target)!.keys()].filter(
             (dependency) =>
-              dependency === ITERATE ||
+              (dependency === ITERATE && target.length < oldLength) ||
               (typeof dependency === "string" &&
                 /^(0|[1-9]\d*)$/.test(dependency) &&
                 Number(dependency) >= target.length),

@@ -1405,6 +1405,20 @@ describe("reactivity", () => {
     expect(keys).toEqual(["first,second", "second"]);
   });
 
+  test("does not invalidate array key iteration when length only grows", () => {
+    const state = $signal<number[]>([]);
+    const keys: string[] = [];
+    runtimeEffect(() => keys.push(Object.keys(state.value).join(",")));
+
+    state.value.length = 100;
+    expect(keys).toEqual([""]);
+
+    state.value[2] = 2;
+    expect(keys).toEqual(["", "2"]);
+    state.value.length = 1;
+    expect(keys).toEqual(["", "2", ""]);
+  });
+
   test("tracks property presence checks", () => {
     const state = $signal<Record<string, number>>({});
     const observations: boolean[] = [];
@@ -2397,6 +2411,21 @@ describe("compiled DOM runtime", () => {
 
     formId.value = "second-form";
     expect(input.getAttribute("form")).toBe("second-form");
+    for (const cleanup of cleanups.toReversed()) cleanup();
+  });
+
+  test("writes generic non-reflected DOM names as attributes", () => {
+    const offset = $signal(12);
+    const element = document.createElement("div");
+    const cleanups: Array<() => void> = [];
+
+    attribute(element, "scrollTop", () => offset.value, cleanups);
+    expect(element.scrollTop).toBe(0);
+    expect(element.getAttribute("scrollTop")).toBe("12");
+
+    offset.value = 24;
+    expect(element.scrollTop).toBe(0);
+    expect(element.getAttribute("scrollTop")).toBe("24");
     for (const cleanup of cleanups.toReversed()) cleanup();
   });
 

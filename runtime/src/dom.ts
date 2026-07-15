@@ -414,12 +414,7 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     element.setAttribute(name, "");
     return;
   }
-  const normalized = typeof value === "string" ? attributeString(value) : value;
-  if (property in element && isWritableProperty(element, property)) {
-    (element as unknown as Record<string, unknown>)[property] = normalized;
-  } else {
-    element.setAttribute(name, attributeString(normalized));
-  }
+  element.setAttribute(name, attributeString(value));
 }
 
 function setServerValue(element: ServerElement, name: string, value: unknown): void {

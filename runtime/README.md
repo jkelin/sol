@@ -29,7 +29,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   configuration boundaries.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes that preserve setter-only assignment semantics, deduplicated
-  proxy invalidation, render ownership state,
+  proxy invalidation without key-iteration work for hole-only array length growth, render ownership state,
   identity-preserving array mutator batching and nested proxy caching even after targets become
   non-extensible, rejection of descriptor locks that would expose an already-proxied raw child,
   shared object-or-callable promise-like detection, Proxy-invariant-safe locked-property reads,
@@ -101,7 +101,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   document-head mounting, reactive or one-shot text rendering without materializing empty text
   nodes during hydration, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, boolean-valued enumerated
-  attribute tokens, unchanged-order keyed-list updates without DOM moves, consistent text-control
+  attribute tokens, SSR-consistent attribute writes for generic non-reflected DOM names,
+  unchanged-order keyed-list updates without DOM moves, consistent text-control
   stringification, fixed-length array-indexed keyed-list snapshots that preserve sparse `map()`
   semantics and ignore overridden array iterators, browser-normalized constrained-control hydration, reflected-attribute
   null/boolean parity, and shared U+0000 normalization for text and dynamic attributes across
@@ -123,7 +124,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial
   asynchronous route readiness, deployment-base translation, trailing-slash directory URL
-  normalization, shared empty route values, defensive public search-parameter views, snapshotted navigation options, request-frame reads,
+  normalization, shared empty route values, defensive public and frame-read search-parameter views,
+  snapshotted navigation options, request-frame reads,
   ErrorBoundary-owned browser and asynchronous retirement failure cleanup, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.

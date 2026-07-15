@@ -92,7 +92,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   ASCII-case-insensitive unique DOM attribute targets and private-marker reservation, unique
   case-sensitive component properties, truthy-presence boolean expressions, property-backed
   text-control values with controlled file inputs rejected, canonical boolean-valued enumerated
-  attribute tokens, lower-initial camel-case SVG intrinsic names, and runtime-validated Link
+  attribute tokens, diagnostics for content-replacing and non-hydratable DOM properties,
+  lower-initial camel-case SVG intrinsic names, and runtime-validated Link
   navigation options. Expression-free template attributes fold like quoted strings. Deterministic string, template, numeric, boolean, null, and bigint children
   fold directly into ordinary or parser-correct raw-text templates when safe and contain no matching closing-tag
   token; bigint radices and separators canonicalize to their decimal runtime display. Reactive and
@@ -109,7 +110,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned
   form/query/mutation helpers, and component
   factories while preserving `createRef()` objects and immutable primitive constants as
-  non-reactive values. Constant form/query/mutation controllers remain direct stable objects instead
+  non-reactive values, including primitive literals behind transparent TypeScript assertions,
+  `satisfies`, and non-null wrappers. Constant form/query/mutation controllers remain direct stable objects instead
   of receiving redundant signal wrappers, while their members remain valid binding roots. Authored
   `const` compiler-managed bindings reject direct assignment, compound assignment, updates, and loop
   target writes while retaining writable object members. Initializer free references are analyzed

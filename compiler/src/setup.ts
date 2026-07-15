@@ -426,12 +426,12 @@ export function compileSetup(
       }
       if (
         statement.kind === "const" &&
-        initializer &&
-        (t.isStringLiteral(initializer) ||
-          t.isNumericLiteral(initializer) ||
-          t.isBooleanLiteral(initializer) ||
-          t.isNullLiteral(initializer) ||
-          t.isBigIntLiteral(initializer))
+        unwrappedInitializer &&
+        (t.isStringLiteral(unwrappedInitializer) ||
+          t.isNumericLiteral(unwrappedInitializer) ||
+          t.isBooleanLiteral(unwrappedInitializer) ||
+          t.isNullLiteral(unwrappedInitializer) ||
+          t.isBigIntLiteral(unwrappedInitializer))
       ) {
         declarationKinds.set(declaration, "stable");
         stablePrimitiveNames.add(declaration.id.name);

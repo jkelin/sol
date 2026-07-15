@@ -1845,6 +1845,45 @@ describe("compiler", () => {
     expect(result.code).not.toContain("runtimeEffect");
   });
 
+  test("keeps transparently wrapped primitive constants stable", () => {
+    const result = compile(
+      `
+      const App = $component(function App() {
+        const mode = "dark" as const;
+        const count = (1 satisfies number);
+        const enabled = true!;
+        const empty = null as null;
+        const large = 1n as bigint;
+        return <p>{mode}:{count}:{enabled}:{String(empty)}:{large}</p>;
+      });
+    `,
+      "WrappedConstants.tsx",
+    );
+
+    expect(result.code).not.toContain("__sol_signal");
+    for (const name of ["mode", "count", "enabled", "empty", "large"]) {
+      expect(result.code).not.toContain(`${name}.value`);
+    }
+  });
+
+  test("rejects DOM properties without SSR and hydration semantics", () => {
+    for (const property of [
+      "innerHTML",
+      "outerHTML",
+      "innerText",
+      "outerText",
+      "textContent",
+      "indeterminate",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { return <div ${property}={"unsafe"} />; });`,
+          "NonHydratableProperty.tsx",
+        ),
+      ).toThrow(`DOM property ${property} cannot be represented during SSR and hydration`);
+    }
+  });
+
   test("preserves ordinary method receivers and optional-chain continuations", () => {
     const result = compile(
       `

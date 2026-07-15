@@ -3,7 +3,7 @@ import { Window } from "happy-dom";
 import type { Component } from "../src/components.ts";
 import { $signal } from "../src/reactivity.ts";
 import { installDevtools } from "../src/devtools.ts";
-import { mount } from "../src/rendering.ts";
+import { mount, rootFrame } from "../src/rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
 import { transition } from "../src/transitions.ts";
 import {
@@ -344,6 +344,28 @@ test("does not expose mutable router search parameter state", () => {
     expect(router.search).toBe(expectedSearch);
     expect(window.location.href).toBe(expectedUrl);
     expect(router.searchParams.toString()).toBe("first=one&second=two");
+  }
+
+  router.navigate("/");
+});
+
+test("does not expose mutable search parameters through frame route reads", () => {
+  router.navigate("/?first=one&second=two");
+  const frame = rootFrame();
+
+  for (const mutate of [
+    (params: URLSearchParams) => params.set("first", "changed"),
+    (params: URLSearchParams) => params.append("third", "three"),
+    (params: URLSearchParams) => params.delete("second"),
+    (params: URLSearchParams) => params.sort(),
+  ]) {
+    const params = routeRead(router, "searchParams", frame) as URLSearchParams;
+    mutate(params);
+    expect((routeRead(router, "searchParams", frame) as URLSearchParams).toString()).toBe(
+      "first=one&second=two",
+    );
+    expect(router.searchParams.toString()).toBe("first=one&second=two");
+    expect(router.search).toBe("?first=one&second=two");
   }
 
   router.navigate("/");

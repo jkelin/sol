@@ -27,13 +27,14 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
   primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-safe value cloning, validation normalization,
-  submission state, and frame-explicit ownership for async component setup.
+  disposal-safe submission state, and frame-explicit ownership for async component setup.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
-  polling, eviction, Suspense participation, request-isolated server caches, hydration replay, and
-  compiler-authored diagnostic source attachment.
+  setup-lifetime enforcement, polling, eviction, Suspense participation, request-isolated server
+  caches, hydration replay, and compiler-authored diagnostic source attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
-- `rendering.ts` implements templates, block lifecycle, compiled component factories, mounting, server
-  render preparation, render adapters, head-scoped executable script instantiation, and error propagation.
+- `rendering.ts` implements templates, block and setup lifecycle, compiled component factories,
+  mounting, server render preparation, render adapters, head-scoped executable script instantiation,
+  and error propagation.
 - `server-rendering.ts` implements the DOM-free template-string and block adapter used by SSR,
   including dynamic form-control serialization.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
@@ -58,7 +59,7 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `transitions.ts` implements enter/leave animation discovery, cancellation, and cleanup.
 - `router.ts` connects compiled route definitions to browser history, request URLs, SSR route rendering,
   initial asynchronous route readiness, deployment-base translation, trailing-slash directory URL
-  normalization, request-frame reads, and hydration of the active route.
+  normalization, shared empty route values, request-frame reads, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.
 - `jsx-dev-runtime.ts` mirrors the JSX runtime entrypoint used by development transforms.
@@ -75,7 +76,7 @@ router resolution, and form validation state. Its movable, resizable master-deta
 geometry in browser storage. The hooks remain no-ops when the entry is absent, so production builds omit
 the panel and global by default. WebMCP registration is feature-detected and requires no polyfill.
 
-`$query()` and `$mutation()` must be created during component setup. Compiled async setup binds them to its render frame, so creation remains valid after an `await`. Queries default to an automatic initial fetch, zero milliseconds of freshness, five minutes of unused browser-cache retention, and initial-only Suspense participation. Polling is visible-document and mounted-observer only. Same-key calls deduplicate while in flight; manual refetch and mutation methods accept a call-options object before their inferred argument tuple and reject on failure.
+`$form()`, `$query()`, and `$mutation()` must be created during component setup. Compiled async setup binds them to its render frame, so creation remains valid after an `await`, while retained closures reject creation after setup settles. Queries default to an automatic initial fetch, zero milliseconds of freshness, five minutes of unused browser-cache retention, and initial-only Suspense participation. Polling is visible-document and mounted-observer only. Same-key calls deduplicate while in flight; manual refetch and mutation methods accept a call-options object before their inferred argument tuple and reject on failure. Owner disposal invalidates pending form validation and prevents a late submit from publishing or invoking its handler.
 
 Compiler-managed `$rpcQuery()` and `$rpcMutation()` declarations attach stable names to request
 diagnostics. On the server they validate the full argument tuple before directly invoking the async

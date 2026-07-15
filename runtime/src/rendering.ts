@@ -113,6 +113,7 @@ export interface SuspenseController {
 
 export interface RenderFrame {
   readonly owner: Cleanup[];
+  readonly setup?: { open: boolean };
   readonly contexts: ReadonlyMap<symbol, () => object>;
   readonly mounts: MountCoordinator;
   readonly head?: boolean;
@@ -129,6 +130,12 @@ export interface RenderFrame {
   readonly devtoolsComponentId?: number;
   readonly url?: URL;
   readonly ssrRerender?: boolean;
+}
+
+export function assertSetupActive(frame: RenderFrame, label: string): void {
+  if (frame.setup && !frame.setup.open) {
+    throw new Error(`${label} must be called during component setup`);
+  }
 }
 
 export type ComponentFactory<Props extends object> = (
@@ -452,7 +459,8 @@ export function component<Props extends object>(
       parentFrame.devtoolsComponentId,
     );
     const owner: Cleanup[] = [];
-    const frame: RenderFrame = { ...parentFrame, owner, devtoolsComponentId: devtoolsId };
+    const setup = { open: true };
+    const frame: RenderFrame = { ...parentFrame, owner, setup, devtoolsComponentId: devtoolsId };
     const previousOwner = runtimeState.activeOwner;
     const previousFrame = runtimeState.activeFrame;
     runtimeState.activeOwner = owner;
@@ -461,6 +469,7 @@ export function component<Props extends object>(
     try {
       rendered = factory(props, frame);
     } catch (error) {
+      setup.open = false;
       runDisposals([
         () => {
           throw error;
@@ -479,6 +488,7 @@ export function component<Props extends object>(
       devtoolsLoaderUpdated(loaderId, { isLoading: true });
       const pending = Promise.resolve(rendered).then(
         (resolved) => {
+          setup.open = false;
           if (cancelled) return ownedBlock(resolved, owner);
           devtoolsLoaderUpdated(loaderId, {
             isLoading: false,
@@ -488,6 +498,7 @@ export function component<Props extends object>(
           return ownedBlock(resolved, owner, devtoolsId);
         },
         (error) => {
+          setup.open = false;
           if (!cancelled) {
             devtoolsLoaderUpdated(loaderId, { isLoading: false, isFailed: true, error });
           }
@@ -505,6 +516,7 @@ export function component<Props extends object>(
         value: () => {
           if (cancelled) return;
           cancelled = true;
+          setup.open = false;
           runDisposals([
             () => disposeOwner(owner),
             () => devtoolsComponentDisposed(devtoolsId),
@@ -514,6 +526,7 @@ export function component<Props extends object>(
       });
       return pending;
     }
+    setup.open = false;
     return ownedBlock(rendered, owner, devtoolsId);
   };
   Object.defineProperty(compiled, COMPONENT, { value: ownedFactory });

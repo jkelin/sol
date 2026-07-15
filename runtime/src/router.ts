@@ -61,6 +61,8 @@ interface RouteMatch {
   params: RawRouteParams;
 }
 
+const EMPTY_ROUTE_VALUES: Router["params"] = Object.freeze({});
+
 interface PreparedRoute {
   readonly definition: RouteDefinition;
   readonly matcher: RegExp;
@@ -340,10 +342,10 @@ export const router: Router = registerRouter(
       return currentState().searchParams;
     },
     get params() {
-      return currentState().values ?? Object.freeze({});
+      return currentState().values ?? EMPTY_ROUTE_VALUES;
     },
     get query() {
-      return currentState().values ?? Object.freeze({});
+      return currentState().values ?? EMPTY_ROUTE_VALUES;
     },
     get route() {
       return currentState().route;
@@ -368,7 +370,7 @@ configureRouteRuntime({
   },
   readRouter(key, frame) {
     const current = currentState(frame);
-    if (key === "params" || key === "query") return current.values ?? Object.freeze({});
+    if (key === "params" || key === "query") return current.values ?? EMPTY_ROUTE_VALUES;
     if (key === "route") return current.route;
     return current[key];
   },

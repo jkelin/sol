@@ -6,7 +6,7 @@ import {
   isPromiseLike,
   runtimeState,
 } from "./reactivity.ts";
-import type { Cleanup, RenderFrame } from "./rendering.ts";
+import { assertSetupActive, type Cleanup, type RenderFrame } from "./rendering.ts";
 import {
   devtoolsMutationCreated,
   devtoolsMutationDisposed,
@@ -439,6 +439,7 @@ export function queryInFrame<Data, Args extends unknown[]>(
   frame: RenderFrame,
   ...initialArgs: Args
 ): QueryController<Data, Args> {
+  assertSetupActive(frame, "$query()");
   return createQuery(config, initialArgs, frame.owner, frame);
 }
 
@@ -574,6 +575,7 @@ export function mutationInFrame<Data, Args extends unknown[]>(
   config: MutationConfig<Data, Args>,
   frame: RenderFrame,
 ): MutationController<Data, Args> {
+  assertSetupActive(frame, "$mutation()");
   return createMutation(config, frame.owner, frame);
 }
 

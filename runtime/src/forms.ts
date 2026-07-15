@@ -1,7 +1,7 @@
 import { $signal, assertOwnerActive, isObject, runtimeState } from "./reactivity.ts";
 import { devtoolsFormCreated, devtoolsFormDisposed, devtoolsFormUpdated } from "./devtools-hook.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
-import type { Cleanup, RenderFrame } from "./rendering.ts";
+import { assertSetupActive, type Cleanup, type RenderFrame } from "./rendering.ts";
 
 export type FormValidationStrategy = "onSubmit" | "onBlur" | "onInput";
 export type FormParser<TValues extends Record<string, unknown>, TOutput> = Parser<TValues, TOutput>;
@@ -100,7 +100,12 @@ export function $form<TValues extends Record<string, unknown>, TOutput>(
   config: FormConfig<TValues, TOutput>,
   onSubmit: (values: TOutput) => void | PromiseLike<void>,
 ): FormController<TValues> {
-  return createForm(config, onSubmit, runtimeState.activeOwner);
+  const owner = runtimeState.activeOwner;
+  const frame = runtimeState.activeFrame;
+  if (!owner || !frame) throw new Error("$form() must be called during component setup");
+  assertSetupActive(frame, "$form()");
+  assertOwnerActive(owner, "$form()");
+  return createForm(config, onSubmit, owner);
 }
 
 export function formInFrame<TValues extends Record<string, unknown>, TOutput>(
@@ -108,6 +113,7 @@ export function formInFrame<TValues extends Record<string, unknown>, TOutput>(
   config: FormConfig<TValues, TOutput>,
   onSubmit: (values: TOutput) => void | PromiseLike<void>,
 ): FormController<TValues> {
+  assertSetupActive(frame, "$form()");
   assertOwnerActive(frame.owner, "$form()");
   return createForm(config, onSubmit, frame.owner);
 }
@@ -140,6 +146,7 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
   const formErrors = $signal<string[]>([]);
   const isSubmitting = $signal(false);
   let validationId = 0;
+  let disposed = false;
   const devtoolsState = (): Record<string, unknown> => ({
     values: values.value,
     errors: errors.value,
@@ -147,8 +154,14 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
     isSubmitting: isSubmitting.value,
   });
   const devtoolsId = devtoolsFormCreated(strategy, devtoolsState());
-  owner?.push(() => devtoolsFormDisposed(devtoolsId));
-  const publish = (): void => devtoolsFormUpdated(devtoolsId, devtoolsState());
+  owner?.push(() => {
+    disposed = true;
+    validationId += 1;
+    devtoolsFormDisposed(devtoolsId);
+  });
+  const publish = (): void => {
+    if (!disposed) devtoolsFormUpdated(devtoolsId, devtoolsState());
+  };
 
   const parse = async (): Promise<TOutput> => {
     return parseValue(schema, values.value);
@@ -180,6 +193,7 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
   };
 
   const clearErrors = (field?: string): void => {
+    if (disposed) return;
     if (field === undefined) {
       errors.value = {};
       formErrors.value = [];
@@ -215,20 +229,23 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
     },
     async submit(domEvent?: SubmitEvent): Promise<boolean> {
       domEvent?.preventDefault();
-      if (isSubmitting.value) return false;
+      if (disposed || isSubmitting.value) return false;
       isSubmitting.value = true;
       publish();
       try {
         const result = await validate();
         if (!result.valid || !result.current) return false;
         await onSubmit(result.output);
-        return true;
+        return !disposed;
       } finally {
-        isSubmitting.value = false;
-        publish();
+        if (!disposed) {
+          isSubmitting.value = false;
+          publish();
+        }
       }
     },
     async handleInput(domEvent: Event): Promise<void> {
+      if (disposed) return;
       if (strategy === "onInput") await validate();
       else {
         validationId += 1;
@@ -237,10 +254,12 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
       publish();
     },
     async handleBlur(_event: FocusEvent): Promise<void> {
+      if (disposed) return;
       if (strategy === "onBlur") await validate();
       publish();
     },
     reset(nextValues?: TValues): void {
+      if (disposed) return;
       validationId += 1;
       values.value = cloneFormValue(nextValues ?? defaults);
       clearErrors();

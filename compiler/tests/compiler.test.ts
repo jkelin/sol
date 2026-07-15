@@ -1764,6 +1764,24 @@ describe("compiler", () => {
       ),
     ).toThrow("reserved compiler prefix __sol_");
 
+    for (const nestedBinding of [
+      "function read(__sol_frame: unknown) { return __sol_frame; }",
+      "function read() { const __sol_route_value = 1; return __sol_route_value; }",
+      "try { throw new Error(); } catch (__sol_error) { String(__sol_error); }",
+    ]) {
+      expect(() =>
+        compile(
+          `
+          const App = $component(function App() {
+            ${nestedBinding}
+            return <p>reserved</p>;
+          });
+        `,
+          "ReservedNested.tsx",
+        ),
+      ).toThrow("reserved compiler prefix __sol_");
+    }
+
     expect(() =>
       compile(
         `

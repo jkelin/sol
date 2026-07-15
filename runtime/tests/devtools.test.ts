@@ -8,7 +8,7 @@ import {
 } from "../src/devtools-hook.ts";
 import { installDevtools } from "../src/devtools.ts";
 import { awaitBlock } from "../src/async.ts";
-import { formInFrame } from "../src/forms.ts";
+import { formInFrame, type FormController } from "../src/forms.ts";
 import { $signal, disposeOwner, reactive, runtimeEffect } from "../src/reactivity.ts";
 import {
   block,
@@ -25,6 +25,14 @@ declare global {
 
 let window: Window;
 let registeredTools: Array<{ name: string; execute(input: Record<string, unknown>): unknown }>;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 function modelContext() {
   return {
@@ -109,6 +117,66 @@ test("disposes forms created after async component setup resumes", async () => {
       () => {},
     ),
   ).toThrow("owner has been disposed");
+  expect(api.forms).toHaveLength(0);
+});
+
+test("cancels form submission work when its owner is disposed", async () => {
+  const api = installDevtools()!;
+  const validation = deferred<void>();
+  const submission = deferred<void>();
+  let validatedSubmitCalls = 0;
+  let pendingSubmitCalls = 0;
+  let validatingForm!: FormController<{ title: string }>;
+  let submittingForm!: FormController<{ title: string }>;
+
+  const Validating = component((_props, frame) => {
+    validatingForm = formInFrame(
+      frame,
+      {
+        schema: async (values: { title: string }) => {
+          await validation.promise;
+          return values;
+        },
+        defaultValues: { title: "draft" },
+      },
+      () => {
+        validatedSubmitCalls++;
+      },
+    );
+    return block(document.createDocumentFragment());
+  });
+  const disposeValidating = mount(Validating, document.createElement("main"));
+  const validatingResult = validatingForm.submit();
+  disposeValidating();
+  validation.resolve();
+
+  expect(await validatingResult).toBe(false);
+  expect(validatedSubmitCalls).toBe(0);
+  expect(api.forms).toHaveLength(0);
+
+  const Submitting = component((_props, frame) => {
+    submittingForm = formInFrame(
+      frame,
+      {
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "draft" },
+      },
+      async () => {
+        pendingSubmitCalls++;
+        await submission.promise;
+      },
+    );
+    return block(document.createDocumentFragment());
+  });
+  const disposeSubmitting = mount(Submitting, document.createElement("main"));
+  const submittingResult = submittingForm.submit();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(pendingSubmitCalls).toBe(1);
+  disposeSubmitting();
+  submission.resolve();
+
+  expect(await submittingResult).toBe(false);
   expect(api.forms).toHaveLength(0);
 });
 

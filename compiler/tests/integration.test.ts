@@ -35,6 +35,7 @@ declare global {
   var integrationResolve: (value: string) => void;
   var integrationLoads: number;
   var integrationLoad: (id: string) => Promise<unknown>;
+  var integrationControllerFactories: Array<() => unknown>;
 }
 
 let window: Window;
@@ -45,6 +46,7 @@ beforeEach(() => {
   globalThis.integrationSetups = { app: 0, child: 0 };
   globalThis.integrationLoads = 0;
   globalThis.integrationLoad = () => Promise.reject(new Error("integrationLoad is not configured"));
+  globalThis.integrationControllerFactories = [];
   Object.assign(globalThis, {
     integrationForm: $form,
     integrationMutation: $mutation,
@@ -896,6 +898,52 @@ test("creates frame-bound controllers after async setup resumes", async () => {
 
   expect(target.querySelector("#late-controllers")?.textContent).toBe("false:false:draft");
   dispose();
+});
+
+test("rejects frame-bound controller factories retained past setup", async () => {
+  const module = await loadCompiled(`
+    import { $component, $form, $query, $mutation } from "sol";
+
+    export const App = $component(function App() {
+      const makeQuery = () => $query({
+        queryKey: ["retained", ${JSON.stringify(crypto.randomUUID())}],
+        query: async () => "ready",
+        enabled: false,
+        cacheTime: 0,
+      });
+      const makeMutation = () => $mutation({ mutation: async () => "saved" });
+      const makeForm = () => $form({
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "draft" },
+      }, () => {});
+      globalThis.integrationControllerFactories = [makeQuery, makeMutation, makeForm];
+      return <p>ready</p>;
+    });
+  `);
+  const dispose = mount(module.App as Component, document.createElement("main"));
+
+  for (const factory of globalThis.integrationControllerFactories) {
+    expect(factory).toThrow("component setup");
+  }
+  dispose();
+});
+
+test("rejects an aliased form helper after async setup loses its active frame", async () => {
+  const module = await loadCompiled(`
+    import { $component, $form } from "sol";
+
+    export const App = $component(async function App() {
+      const createForm = $form;
+      await Promise.resolve();
+      const form = createForm({
+        schema: (values: { title: string }) => values,
+        defaultValues: { title: "draft" },
+      }, () => {});
+      return <p>{String(form.isSubmitting)}</p>;
+    });
+  `);
+
+  await expectRejection(renderToStringAsync(module.App as Component), "component setup");
 });
 
 test("hydrates a fulfilled non-suspending initial query from its server loading branch", async () => {

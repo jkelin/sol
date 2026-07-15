@@ -6,14 +6,6 @@ import * as t from "@babel/types";
 
 export function analyzeModule({ ast, compiler }: CompilationState): void {
   const declarationHelpers = new Set(["$route", "$rpcQuery", "$rpcMutation", "$httpRoute"]);
-  traverse(ast, {
-    Program(path) {
-      for (const binding of Object.values(path.scope.bindings)) {
-        validateReservedIdentifier(compiler, binding.identifier);
-      }
-      path.stop();
-    },
-  });
 
   for (const statement of ast.program.body) {
     if (t.isImportDeclaration(statement)) {
@@ -100,6 +92,12 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
   }
 
   traverse(ast, {
+    enter(path) {
+      if (!path.isScope()) return;
+      for (const binding of Object.values(path.scope.bindings)) {
+        validateReservedIdentifier(compiler, binding.identifier);
+      }
+    },
     CallExpression(path) {
       const callee = path.node.callee;
       if (t.isIdentifier(callee)) {

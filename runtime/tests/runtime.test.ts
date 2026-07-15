@@ -4,7 +4,7 @@ import * as v from "valibot";
 import { z } from "zod";
 import { $component, $context, contextUse, Head, type Context } from "../src/components.ts";
 import { normalizeClass } from "../src/dom.ts";
-import { $form, formInFrame } from "../src/forms.ts";
+import { $form, formInFrame, type FormConfig, type FormController } from "../src/forms.ts";
 import {
   $computed,
   $signal,
@@ -44,9 +44,11 @@ import {
 } from "../src/compiler-runtime.ts";
 
 let window: Window;
+let formDisposals: Array<() => void>;
 
 beforeEach(() => {
   window = new Window();
+  formDisposals = [];
   delete (window.Element.prototype as { getAnimations?: unknown }).getAnimations;
   Object.assign(globalThis, {
     window,
@@ -98,9 +100,26 @@ describe("DOM refs", () => {
   });
 });
 
-afterEach(() => window.close());
+afterEach(() => {
+  for (const dispose of formDisposals) dispose();
+  window.close();
+});
 
 function noopSubmit(): void {}
+
+function ownedForm<TValues extends Record<string, unknown>, TOutput>(
+  config: FormConfig<TValues, TOutput>,
+  onSubmit: (values: TOutput) => void | PromiseLike<void>,
+): FormController<TValues> {
+  let form!: FormController<TValues>;
+  const Owner = component((_props, frame) => {
+    form = formInFrame(frame, config, onSubmit);
+    return block(document.createDocumentFragment());
+  });
+  const rendered = renderComponent(Owner);
+  formDisposals.push(() => rendered.dispose());
+  return form;
+}
 
 interface ControlledAnimation {
   animation: Animation;
@@ -146,12 +165,15 @@ function installAnimations(): ControlledAnimation[] {
 
 describe("forms", () => {
   test("validates its public boundary", () => {
-    expect(() => $form(undefined as never, noopSubmit)).toThrow("expects a config object");
-    expect(() => $form({ schema: {} as never, defaultValues: { title: "" } }, noopSubmit)).toThrow(
-      "schema must be callable",
-    );
     expect(() =>
-      $form(
+      $form({ schema: (value: object) => value, defaultValues: {} }, noopSubmit),
+    ).toThrow("component setup");
+    expect(() => ownedForm(undefined as never, noopSubmit)).toThrow("expects a config object");
+    expect(() =>
+      ownedForm({ schema: {} as never, defaultValues: { title: "" } }, noopSubmit),
+    ).toThrow("schema must be callable");
+    expect(() =>
+      ownedForm(
         {
           schema: (values: { title: string }) => values,
           defaultValues: { title: "" },
@@ -176,7 +198,7 @@ describe("forms", () => {
       value: "proto",
       writable: true,
     });
-    const form = $form(
+    const form = ownedForm(
       {
         defaultValues: defaults,
         schema: () => {
@@ -208,7 +230,7 @@ describe("forms", () => {
       ),
     });
     const submissions: { title: string }[] = [];
-    const form = $form({ schema: v.parser(schema), defaultValues: { title: "" } }, (values) => {
+    const form = ownedForm({ schema: v.parser(schema), defaultValues: { title: "" } }, (values) => {
       submissions.push(values);
     });
 
@@ -226,7 +248,7 @@ describe("forms", () => {
   });
 
   test("uses Zod parseAsync and normalizes field and form issues", async () => {
-    const form = $form(
+    const form = ownedForm(
       {
         schema: z.object({
           profile: z.object({ name: z.string().min(2, "Name is too short.") }),
@@ -239,7 +261,7 @@ describe("forms", () => {
     expect(await form.submit()).toBe(false);
     expect(form.errors["profile.name"]).toEqual(["Name is too short."]);
 
-    const rootForm = $form(
+    const rootForm = ownedForm(
       {
         schema: z.object({ title: z.string() }).refine(() => false, "Form is invalid."),
         defaultValues: { title: "ok" },
@@ -258,7 +280,7 @@ describe("forms", () => {
         { path: [], message: "Form problem." },
       ],
     };
-    const form = $form(
+    const form = ownedForm(
       {
         schema: { parse: (_values: { title: string }) => Promise.reject(failure) } as never,
         defaultValues: { title: "" },
@@ -270,7 +292,7 @@ describe("forms", () => {
     expect(form.formErrors).toEqual(["Form problem."]);
 
     const unexpected = new Error("Network failed");
-    const broken = $form(
+    const broken = ownedForm(
       { schema: () => Promise.reject(unexpected), defaultValues: { title: "" } },
       () => {},
     );
@@ -281,7 +303,7 @@ describe("forms", () => {
     let release: (() => void) | undefined;
     const waiting = new Promise<void>((resolve) => (release = resolve));
     let submissions = 0;
-    const form = $form(
+    const form = ownedForm(
       { schema: (values: { title: string }) => values, defaultValues: { title: "ready" } },
       async () => {
         submissions += 1;
@@ -302,7 +324,7 @@ describe("forms", () => {
   test("prefers parseAsync and runs the configured validation handlers", async () => {
     let synchronousCalls = 0;
     let asynchronousCalls = 0;
-    const form = $form(
+    const form = ownedForm(
       {
         schema: {
           parse: (values: { title: string }) => {
@@ -335,7 +357,7 @@ describe("forms", () => {
         reject: (reason: unknown) => void;
       }
     >();
-    const form = $form(
+    const form = ownedForm(
       {
         schema: (values: { title: string }) =>
           new Promise<{ title: string }>((resolve, reject) =>
@@ -363,7 +385,7 @@ describe("forms", () => {
   test("does not submit stale output after an input change", async () => {
     let resolveValidation: ((value: { title: string }) => void) | undefined;
     const submissions: { title: string }[] = [];
-    const form = $form(
+    const form = ownedForm(
       {
         schema: (values: { title: string }) =>
           new Promise<{ title: string }>((resolve) => {
@@ -389,7 +411,7 @@ describe("forms", () => {
   test("does not submit stale output after reset", async () => {
     let resolveValidation: ((value: { title: string }) => void) | undefined;
     const submissions: { title: string }[] = [];
-    const form = $form(
+    const form = ownedForm(
       {
         schema: () =>
           new Promise<{ title: string }>((resolve) => {

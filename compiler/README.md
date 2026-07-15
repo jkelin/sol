@@ -21,7 +21,7 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 - `types.ts` defines the compilation result shared by callers and the implementation.
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures.
-- `module-analysis.ts` validates bindings and classifies framework helpers, declarations, builtins,
+- `module-analysis.ts` validates every lexical binding, including nested scopes, and classifies framework helpers, declarations, builtins,
   Head, Link, refs, and components by lexical binding identity.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
   selecting direct server definitions or browser stubs and pruning imports, declarators,

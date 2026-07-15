@@ -287,6 +287,16 @@ test("preserves prototype-named route parameters", () => {
   expect(router.params.__proto__).toBe("prototype-value");
 });
 
+test("reuses empty values for unmatched router reads", () => {
+  router.navigate("/not-a-route");
+  const params = router.params;
+  const query = router.query;
+
+  expect(router.params).toBe(params);
+  expect(router.query).toBe(query);
+  expect(query).toBe(params);
+});
+
 test("validates navigation options", () => {
   expect(() => router.navigate("/", { replace: "yes" } as never)).toThrow(
     "replace must be a boolean",

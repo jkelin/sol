@@ -102,7 +102,7 @@ Solkit configures server-rendered route links and browser routing with that base
 Literal application anchors should use `import.meta.env.BASE_URL`, while route state,
 `router.navigate()`, route handles, and `staticPaths` continue to use logical paths beginning at `/`.
 
-`nodeAdapter()` from `solkit/adapters/node` emits the equivalent Node.js HTTP launcher. Both
+`nodeAdapter()` from `@soljs/solkit/adapters/node` emits the equivalent Node.js HTTP launcher. Both
 adapters serve built static files from `dist/client`, dispatch `.sol` RPC and HTTP endpoints, and
 send HTML-accepting GET or HEAD requests through the SSR renderer. Extensionless routes with an
 absent or wildcard `Accept` header also count as document requests. Missing endpoints and

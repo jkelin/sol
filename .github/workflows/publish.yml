@@ -17,7 +17,7 @@ permissions:
 jobs:
   publish-patch:
     name: Publish patch version
-    if: github.actor == 'jkelin' && github.ref == 'refs/heads/master' && inputs.release == 'patch'
+    if: github.actor == 'jkelin' && github.triggering_actor == 'jkelin' && github.ref == 'refs/heads/master' && inputs.release == 'patch'
     runs-on: ubuntu-latest
     steps:
       - name: Check out master
@@ -45,7 +45,7 @@ jobs:
 
   publish-minor:
     name: Publish minor version
-    if: github.actor == 'jkelin' && github.ref == 'refs/heads/master' && inputs.release == 'minor'
+    if: github.actor == 'jkelin' && github.triggering_actor == 'jkelin' && github.ref == 'refs/heads/master' && inputs.release == 'minor'
     runs-on: ubuntu-latest
     steps:
       - name: Check out master

@@ -76,4 +76,4 @@ const Counter = $component(function Counter() {
 ```
 ````
 
-The named preview component must exist. Live fences may import only `sol` and `valibot`, may not use relative imports, and may not call `mount()`. The displayed source and preview are generated from the same fence.
+The named preview component must exist. Live fences may import only `@soljs/sol` and `valibot`, may not use relative imports, and may not call `mount()`. The displayed source and preview are generated from the same fence.

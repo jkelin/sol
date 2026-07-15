@@ -6,9 +6,8 @@ import {
   parseDocument,
   type DocMetadata,
 } from "../src/markdown/compile.ts";
-import { counterSource } from "../src/code-samples.ts";
 import { registrySource, validateDocuments } from "../src/markdown/registry.ts";
-import { compileModule } from "../src/markdown/vite.ts";
+import { compileModule, readLandingExampleSources } from "../src/markdown/vite.ts";
 
 const file = "C:/project/docs/example.md";
 const frontmatter = `---
@@ -130,12 +129,24 @@ export const Demo = $component(function Demo() { return <p>{values[0]}</p>; });`
     expect(generated.code).not.toContain("Array<");
   });
 
-  test("pre-highlights landing TSX with Shiki", async () => {
-    const lines = await highlightCode(counterSource, "tsx");
-    expect(lines).toHaveLength(counterSource.split("\n").length);
-    expect(JSON.stringify(lines)).toContain('"color":"#');
-    expect(counterSource).toContain('$rpcQuery(\n  "website-message"');
-    expect(counterSource).toContain("query: websiteMessage");
-    expect(counterSource).toContain("Call named RPC");
+  test("pre-highlights the exact landing example modules with Shiki", async () => {
+    const sources = await readLandingExampleSources(join(import.meta.dir, ".."));
+
+    await Promise.all(
+      Object.values(sources).map(async (source) => {
+        const lines = await highlightCode(source, "tsx");
+        expect(lines).toHaveLength(source.split("\n").length);
+        expect(JSON.stringify(lines)).toContain('"color":"#');
+      }),
+    );
+
+    expect(sources.counterSource).toContain("Add one");
+    expect(sources.counterSource).toContain("doubled / {doubled}");
+    expect(sources.listSource).toContain("DOM operation ${items.length + 1}");
+    expect(sources.formSource).toContain("Enter a valid email address.");
+    expect(Object.values(sources).join("\n")).not.toMatch(/\bclass(?:Names)?=/);
+    expect(Object.values(sources).join("\n")).not.toMatch(
+      /\$(?:rpcQuery|rpcMutation|httpRoute|query)\b|\bfetch\s*\(/,
+    );
   });
 });

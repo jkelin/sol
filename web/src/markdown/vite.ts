@@ -1,7 +1,7 @@
 import { compile } from "@sol/compiler";
+import { resolve } from "node:path";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath, transformWithOxc } from "vite";
-import { counterSource, formSource, listSource } from "../code-samples.ts";
 import { highlightCode, markdownModule } from "./compile.ts";
 import { documentationRoot, registrySource } from "./registry.ts";
 
@@ -10,6 +10,30 @@ const resolvedVirtualId = `\0/node_modules/${virtualId}.tsx`;
 const codeTokensId = "virtual:sol-code-tokens";
 const resolvedCodeTokensId = `\0${codeTokensId}`;
 const markdownPrefix = "\0/node_modules/sol-markdown:";
+const landingExampleFiles = {
+  counter: "CounterExample.tsx",
+  list: "ListExample.tsx",
+  form: "FormExample.tsx",
+} as const;
+
+export interface LandingExampleSources {
+  readonly counterSource: string;
+  readonly listSource: string;
+  readonly formSource: string;
+}
+
+function landingExamplePath(root: string, filename: string): string {
+  return resolve(root, "src", "examples", filename);
+}
+
+export async function readLandingExampleSources(root: string): Promise<LandingExampleSources> {
+  const [counterSource, listSource, formSource] = await Promise.all([
+    readFileSafe(landingExamplePath(root, landingExampleFiles.counter)),
+    readFileSafe(landingExamplePath(root, landingExampleFiles.list)),
+    readFileSafe(landingExamplePath(root, landingExampleFiles.form)),
+  ]);
+  return { counterSource, listSource, formSource };
+}
 
 export async function compileModule(
   source: string,
@@ -31,8 +55,18 @@ export function solMarkdown(): Plugin {
       !normalizedFile.endsWith("/SKILL.md")
     );
   };
-  const invalidate = (server: ViteDevServer): void => {
+  const isLandingExample = (file: string): boolean =>
+    Object.values(landingExampleFiles).some(
+      (filename) =>
+        normalizePath(file) === normalizePath(landingExamplePath(config.root, filename)),
+    );
+  const invalidateDocumentation = (server: ViteDevServer): void => {
     const module = server.moduleGraph.getModuleById(resolvedVirtualId);
+    if (module) server.moduleGraph.invalidateModule(module);
+    server.ws.send({ type: "full-reload" });
+  };
+  const invalidateLandingExamples = (server: ViteDevServer): void => {
+    const module = server.moduleGraph.getModuleById(resolvedCodeTokensId);
     if (module) server.moduleGraph.invalidateModule(module);
     server.ws.send({ type: "full-reload" });
   };
@@ -52,13 +86,19 @@ export function solMarkdown(): Plugin {
     },
     async load(id) {
       if (id === resolvedCodeTokensId) {
+        const { counterSource, listSource, formSource } = await readLandingExampleSources(
+          config.root,
+        );
         const [counterLines, listLines, formLines] = await Promise.all([
           highlightCode(counterSource, "tsx"),
           highlightCode(listSource, "tsx"),
           highlightCode(formSource, "tsx"),
         ]);
         return {
-          code: `export const counterLines = ${JSON.stringify(counterLines)};
+          code: `export const counterSource = ${JSON.stringify(counterSource)};
+export const listSource = ${JSON.stringify(listSource)};
+export const formSource = ${JSON.stringify(formSource)};
+export const counterLines = ${JSON.stringify(counterLines)};
 export const listLines = ${JSON.stringify(listLines)};
 export const formLines = ${JSON.stringify(formLines)};`,
           map: null,
@@ -75,18 +115,20 @@ export const formLines = ${JSON.stringify(formLines)};`,
       return compileModule(generated.code, `${file}.tsx`);
     },
     configureServer(server) {
-      const invalidateDocumentationRegistry = (file: string): void => {
-        if (isDocumentationPage(file)) invalidate(server);
+      const invalidateAddedOrRemovedSource = (file: string): void => {
+        if (isDocumentationPage(file)) invalidateDocumentation(server);
+        if (isLandingExample(file)) invalidateLandingExamples(server);
       };
-      server.watcher.on("add", invalidateDocumentationRegistry);
-      server.watcher.on("unlink", invalidateDocumentationRegistry);
+      server.watcher.on("add", invalidateAddedOrRemovedSource);
+      server.watcher.on("unlink", invalidateAddedOrRemovedSource);
       return () => {
-        server.watcher.off("add", invalidateDocumentationRegistry);
-        server.watcher.off("unlink", invalidateDocumentationRegistry);
+        server.watcher.off("add", invalidateAddedOrRemovedSource);
+        server.watcher.off("unlink", invalidateAddedOrRemovedSource);
       };
     },
     handleHotUpdate(context) {
-      if (isDocumentationPage(context.file)) invalidate(context.server);
+      if (isDocumentationPage(context.file)) invalidateDocumentation(context.server);
+      if (isLandingExample(context.file)) invalidateLandingExamples(context.server);
     },
   };
 }

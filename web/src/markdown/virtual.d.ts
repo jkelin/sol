@@ -16,6 +16,9 @@ declare module "virtual:sol-docs" {
 declare module "virtual:sol-code-tokens" {
   import type { CodeLine } from "../components/ui/CodePanel.tsx";
 
+  export const counterSource: string;
+  export const listSource: string;
+  export const formSource: string;
   export const counterLines: readonly CodeLine[];
   export const listLines: readonly CodeLine[];
   export const formLines: readonly CodeLine[];

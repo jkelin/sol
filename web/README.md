@@ -25,8 +25,11 @@ Production builds omit devtools and prerender the landing page plus every canoni
 
 - `src/main.tsx` imports the application styles and exports both the root component and generated static paths.
 - `src/App.tsx` owns the shared header, responsive navigation, route outlet, pending state, and footer.
-- `src/landing.sol.tsx` contains the landing page and its three compiled interactive examples.
-- `src/code-samples.ts` is the single source for landing-page example text and build-time Shiki tokens.
+- `src/landing.sol.tsx` contains the landing page and imports its three interactive examples.
+- `src/examples/` contains the importable landing examples and their plain CSS. The rendered
+  components and build-time Shiki panels both use the exact TSX files, keeping code and output in
+  sync. The examples use semantic markup without styling classes or Tailwind utilities; the landing
+  preview wrappers scope their element styles.
 - `src/docs.sol.tsx` contains the desktop/mobile documentation shell, route handles, navigation, and adjacent-page links.
 - `src/urls.ts` prefixes literal internal links with Vite's deployment base and emits trailing-slash directory URLs for prerendered pages.
 - `src/components/ui/` contains Sol-native, shadcn-inspired leaf components. Each component owns its typed variant recipe and runtime validation; the layer intentionally does not use React, Radix, or `components.json`.

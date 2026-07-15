@@ -54,6 +54,9 @@ test("runs landing examples and preserves preview state across view modes", asyn
         ).size,
     );
   expect(syntaxColorCount).toBeGreaterThan(3);
+  await expect(counter.getByLabel("Code panel")).toContainText("doubled / {doubled}");
+  await expect(counter.getByLabel("Code panel")).toContainText("Add one");
+  await expect(counter.getByLabel("Code panel")).not.toContainText(/RPC|HTTP/);
   await expect(counter.getByRole("button", { name: "−" })).toBeDisabled();
   await counter.getByRole("button", { name: "Add one" }).click();
   await expect(counter.locator("output")).toHaveText("1");
@@ -64,6 +67,7 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await counter.getByRole("button", { name: "both", exact: true }).click();
   await expect(counter.locator("output")).toHaveText("1");
   const list = page.getByTestId("list-example");
+  await expect(list.getByLabel("Code panel")).toContainText("DOM operation");
   const template = list.getByRole("button", { name: /Static template/ });
   await expect(template).toContainText("Ready");
   await template.click();
@@ -72,6 +76,8 @@ test("runs landing examples and preserves preview state across view modes", asyn
   await expect(list.getByRole("button", { name: /DOM operation 3/ })).toBeVisible();
 
   const form = page.getByTestId("form-example");
+  await expect(form.getByLabel("Code panel")).toContainText("Enter a valid email address.");
+  await expect(form.getByLabel("Code panel")).toContainText("Accepted:");
   await form.getByRole("button", { name: "Validate" }).click();
   await expect(form.getByRole("alert")).toContainText("valid email");
   await form.getByLabel("Email address").fill("hello@sol.dev");

@@ -1,20 +1,20 @@
-import { $component, $form, $route } from "sol";
-import * as v from "valibot";
-import { counterLines, formLines, listLines } from "virtual:sol-code-tokens";
-import { counterSource, formSource, listSource } from "./code-samples.ts";
+import { $component, $route } from "sol";
 import {
-  Badge,
-  Button,
-  CodePanel,
-  ExampleViewToggle,
-  type ExampleMode,
-} from "./components/ui/index.ts";
+  counterLines,
+  counterSource,
+  formLines,
+  formSource,
+  listLines,
+  listSource,
+} from "virtual:sol-code-tokens";
+import { Badge, CodePanel, ExampleViewToggle, type ExampleMode } from "./components/ui/index.ts";
+import { CounterExample } from "./examples/CounterExample.tsx";
+import { FormExample } from "./examples/FormExample.tsx";
+import { ListExample } from "./examples/ListExample.tsx";
 import { siteHref } from "./urls.ts";
 
-const CounterExample = $component(function CounterExample() {
+const CounterExampleCard = $component(function CounterExampleCard() {
   let mode = "both" as ExampleMode;
-  let count = 0;
-  const doubled = count * 2;
 
   return (
     <article class="border-[3px] border-ink bg-paper shadow-block" data-testid="counter-example">
@@ -27,37 +27,22 @@ const CounterExample = $component(function CounterExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={counterSource} lines={counterLines} filename="Counter.sol.tsx" />
+          <CodePanel code={counterSource} lines={counterLines} filename="CounterExample.tsx" />
         </div>
         <div
           hidden={mode === "code"}
+          data-example-preview="counter"
           class="grid min-h-80 place-items-center bg-cobalt p-8 text-white"
         >
-          <div class="text-center">
-            <p class="font-mono text-xs font-bold uppercase tracking-widest text-solar">
-              Reactive output
-            </p>
-            <output class="mt-4 block font-display text-7xl" aria-live="polite">
-              {count}
-            </output>
-            <p class="mt-2 font-mono text-sm">doubled / {doubled}</p>
-            <div class="mt-7 flex justify-center gap-3">
-              <Button label="−" variant="outline" disabled={count === 0} onClick={() => count--} />
-              <Button label="Add one" variant="solar" onClick={() => count++} />
-            </div>
-          </div>
+          <CounterExample />
         </div>
       </div>
     </article>
   );
 });
 
-const ListExample = $component(function ListExample() {
+const ListExampleCard = $component(function ListExampleCard() {
   let mode = "both" as ExampleMode;
-  let items = [
-    { id: 1, label: "Static template", ready: true },
-    { id: 2, label: "Dependency graph", ready: false },
-  ];
 
   return (
     <article class="border-[3px] border-ink bg-paper shadow-block" data-testid="list-example">
@@ -70,62 +55,22 @@ const ListExample = $component(function ListExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={listSource} lines={listLines} filename="SolarList.tsx" />
+          <CodePanel code={listSource} lines={listLines} filename="ListExample.tsx" />
         </div>
-        <div hidden={mode === "code"} class="min-h-80 bg-cream p-6 sm:p-8">
-          <ul class="grid gap-3" aria-label="Compiler assembly list">
-            {items.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  classNames={[
-                    "flex w-full items-center justify-between gap-4 border-[3px] border-ink p-4 text-left font-bold shadow-block-sm transition hover:-translate-y-0.5",
-                    { "bg-solar": item.ready, "bg-paper": !item.ready },
-                  ]}
-                  onClick={() => (item.ready = !item.ready)}
-                >
-                  <span>{item.label}</span>
-                  <span class="font-mono text-xs uppercase">{item.ready ? "Ready" : "Draft"}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div class="mt-5">
-            <Button
-              label="Add block"
-              variant="primary"
-              onClick={() =>
-                items.push({
-                  id: items.length + 1,
-                  label: `DOM operation ${items.length + 1}`,
-                  ready: false,
-                })
-              }
-            />
-          </div>
+        <div
+          hidden={mode === "code"}
+          data-example-preview="list"
+          class="grid min-h-80 place-items-center bg-cream p-6 sm:p-8"
+        >
+          <ListExample />
         </div>
       </div>
     </article>
   );
 });
 
-const emailSchema = v.object({
-  email: v.pipe(v.string(), v.trim(), v.email("Enter a valid email address.")),
-});
-
-const FormExample = $component(function FormExample() {
+const FormExampleCard = $component(function FormExampleCard() {
   let mode = "both" as ExampleMode;
-  let submitted = "";
-  const form = $form(
-    {
-      schema: v.parser(emailSchema),
-      defaultValues: { email: "" },
-      validationStrategy: "onSubmit",
-    },
-    (values) => {
-      submitted = values.email;
-    },
-  );
 
   return (
     <article class="border-[3px] border-ink bg-paper shadow-block" data-testid="form-example">
@@ -138,49 +83,14 @@ const FormExample = $component(function FormExample() {
       </header>
       <div classNames={["grid", { "lg:grid-cols-2": mode === "both" }]}>
         <div hidden={mode === "preview"} class="min-w-0">
-          <CodePanel code={formSource} lines={formLines} filename="Signup.tsx" />
+          <CodePanel code={formSource} lines={formLines} filename="FormExample.tsx" />
         </div>
-        <div hidden={mode === "code"} class="grid min-h-80 place-items-center bg-solar p-6 sm:p-8">
-          <form
-            $form={form}
-            class="w-full max-w-md border-[3px] border-ink bg-paper p-6 shadow-block"
-          >
-            <label for="landing-email" class="font-mono text-xs font-bold uppercase">
-              Email address
-            </label>
-            <input
-              id="landing-email"
-              name="email"
-              type="email"
-              $bind={form.values.email}
-              aria-invalid={Boolean(form.errors.email)}
-              aria-describedby="landing-email-error"
-              class="mt-2 w-full border-[3px] border-ink bg-cream px-4 py-3 outline-none focus:border-cobalt focus:ring-4 focus:ring-solar"
-              placeholder="you@example.com"
-            />
-            <p
-              id="landing-email-error"
-              class="mt-2 min-h-5 font-mono text-xs font-bold text-tomato"
-              role="alert"
-            >
-              {form.errors.email?.[0] ?? ""}
-            </p>
-            <div class="mt-4">
-              <Button
-                label="Validate"
-                type="submit"
-                variant="primary"
-                loading={form.isSubmitting}
-              />
-            </div>
-            <p
-              class="mt-4 min-h-6 font-mono text-xs font-bold text-cobalt"
-              role="status"
-              aria-live="polite"
-            >
-              {submitted ? `Accepted: ${submitted}` : "Only parsed output reaches submit."}
-            </p>
-          </form>
+        <div
+          hidden={mode === "code"}
+          data-example-preview="form"
+          class="grid min-h-80 place-items-center bg-solar p-6 sm:p-8"
+        >
+          <FormExample />
         </div>
       </div>
     </article>
@@ -386,9 +296,9 @@ const LandingPage = $component(function LandingPage() {
           </p>
         </div>
         <div class="mt-14 grid gap-12">
-          <CounterExample />
-          <ListExample />
-          <FormExample />
+          <CounterExampleCard />
+          <ListExampleCard />
+          <FormExampleCard />
         </div>
       </section>
 

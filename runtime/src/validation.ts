@@ -45,8 +45,24 @@ export function hasParser(value: unknown): boolean {
 function standardOutput<T>(
   result: { readonly value: T } | { readonly issues: readonly unknown[] },
 ): T {
-  if ("issues" in result) throw { issues: [...result.issues] };
-  return result.value;
+  if (!isObject(result) || Array.isArray(result)) {
+    throw new TypeError("Standard Schema returned an invalid result");
+  }
+  const issues = Object.getOwnPropertyDescriptor(result, "issues");
+  if (issues && !("value" in issues)) {
+    throw new TypeError("Standard Schema result fields must be data properties");
+  }
+  if (issues && issues.value !== undefined) {
+    if (!Array.isArray(issues.value)) {
+      throw new TypeError("Standard Schema returned invalid issues");
+    }
+    throw { issues: issues.value };
+  }
+  const value = Object.getOwnPropertyDescriptor(result, "value");
+  if (!value || !("value" in value)) {
+    throw new TypeError("Standard Schema result must contain a value data property");
+  }
+  return value.value as T;
 }
 
 export function parseValue<TInput, TOutput>(

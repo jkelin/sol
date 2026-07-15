@@ -83,6 +83,30 @@ function validateSchema(schema: unknown, label: string): void {
   }
 }
 
+function endpointConfigValues(
+  config: object,
+  allowed: readonly string[],
+  label: "RPC" | "HTTP route",
+): Readonly<Record<string, unknown>> {
+  const descriptors = Object.getOwnPropertyDescriptors(config);
+  const unexpected = Reflect.ownKeys(descriptors).find(
+    (key) => typeof key !== "string" || !allowed.includes(key),
+  );
+  if (unexpected !== undefined) {
+    throw new TypeError(`${label} config contains unknown property ${String(unexpected)}`);
+  }
+  const values = Object.create(null) as Record<string, unknown>;
+  for (const key of allowed) {
+    const descriptor = Object.hasOwn(descriptors, key) ? descriptors[key] : undefined;
+    if (!descriptor) continue;
+    if (!("value" in descriptor) || !descriptor.enumerable) {
+      throw new TypeError(`${label} config ${key} must be an enumerable data property`);
+    }
+    values[key] = descriptor.value;
+  }
+  return values;
+}
+
 function validateRpcName(name: unknown): asserts name is string {
   if (typeof name !== "string" || !/^[A-Za-z0-9_-]+$/.test(name)) {
     throw new TypeError("RPC name must be a non-empty URL-safe segment");
@@ -210,13 +234,13 @@ function rpcEndpoint<Input extends RpcArgs, Parsed extends RpcArgs, Data>(
       `$rpc${kind === "query" ? "Query" : "Mutation"}() config must be an object`,
     );
   }
-  validateSchema(config.schema, `$rpc${kind === "query" ? "Query" : "Mutation"}()`);
+  const values = endpointConfigValues(config, ["schema"], "RPC");
+  const schema = values.schema;
+  validateSchema(schema, `$rpc${kind === "query" ? "Query" : "Mutation"}()`);
   if (typeof handler !== "function") throw new TypeError("RPC handler must be a function");
-  const unexpected = Object.keys(config).find((key) => key !== "schema");
-  if (unexpected) throw new TypeError(`RPC config contains unknown property ${unexpected}`);
   const callable = async (...args: Input): Promise<Data> => {
     serializeJson(args, `RPC ${name} arguments`);
-    const parsed = await parse(config.schema, args);
+    const parsed = await parse(schema as Parser<Input, Parsed>, args);
     if (!Array.isArray(parsed)) throw new TypeError("RPC schema output must be an argument tuple");
     const result = handler(...(parsed as unknown as Parsed));
     if (!isPromiseLike(result)) throw new TypeError("RPC handler must return a promise-like value");
@@ -392,31 +416,32 @@ export function httpRouteServer<Input extends HttpRouteInput, Parsed>(
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     throw new TypeError("$httpRoute() config must be an object");
   }
-  if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(config.method)) {
+  const values = endpointConfigValues(config, ["method", "path", "schema", "body"], "HTTP route");
+  const method = values.method;
+  const path = values.path;
+  const schema = values.schema;
+  const body = values.body;
+  if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(method as string)) {
     throw new TypeError("$httpRoute() method is invalid");
   }
-  if (typeof config.path !== "string") throw new TypeError("$httpRoute() path must be a string");
-  if (config.path.startsWith(RPC_PREFIX)) {
+  if (typeof path !== "string") throw new TypeError("$httpRoute() path must be a string");
+  if (path.startsWith(RPC_PREFIX)) {
     throw new TypeError("$httpRoute() path uses the reserved /api/rpc namespace");
   }
-  validateSchema(config.schema, "$httpRoute()");
-  if (config.body !== undefined && config.body !== "auto" && config.body !== "bytes") {
+  validateSchema(schema, "$httpRoute()");
+  if (body !== undefined && body !== "auto" && body !== "bytes") {
     throw new TypeError('$httpRoute() body must be "auto" or "bytes"');
   }
   if (typeof handler !== "function") throw new TypeError("HTTP route handler must be a function");
-  const unexpected = Object.keys(config).find(
-    (key) => key !== "method" && key !== "path" && key !== "schema" && key !== "body",
-  );
-  if (unexpected) throw new TypeError(`HTTP route config contains unknown property ${unexpected}`);
   const definition: HttpEndpoint = {
     [ENDPOINT]: true,
     kind: "http",
-    method: config.method,
-    path: config.path,
-    body: config.body ?? "auto",
-    compiled: compileHttpPath(config.path),
+    method: method as HttpMethod,
+    path,
+    body: (body ?? "auto") as "auto" | "bytes",
+    compiled: compileHttpPath(path),
     async invoke(input, request) {
-      const parsed = await parse(config.schema, input as Input);
+      const parsed = await parse(schema as Parser<Input, Parsed>, input as Input);
       const response = await handler(parsed, request);
       if (!(response instanceof Response))
         throw new TypeError("HTTP route handler must return a Response");

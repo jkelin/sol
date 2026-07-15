@@ -31,6 +31,80 @@ describe("server declarations", () => {
     expect((query as unknown as { method: string }).method).toBe("POST");
   });
 
+  test("snapshots server endpoint configs and rejects accessors", async () => {
+    const rpcConfig = {
+      schema: (args: readonly [string]) => [args[0]!.toUpperCase()] as [string],
+    };
+    const query = rpcQueryServer("stable-config", rpcConfig, async (value) => value);
+    rpcConfig.schema = (args) => [args[0]!.toLowerCase()];
+    expect(await query("Stable")).toBe("STABLE");
+
+    const httpConfig: {
+      method: "POST";
+      path: "/stable-config";
+      schema: (input: HttpRouteInput) => HttpRouteInput;
+      body?: "auto" | "bytes";
+    } = {
+      method: "POST",
+      path: "/stable-config",
+      schema: (input) => ({ ...input, body: "original" }),
+    };
+    const route = httpRouteServer(httpConfig, async (input) =>
+      Response.json(input.body),
+    ) as unknown as ServerEndpoint;
+    httpConfig.schema = (input) => ({ ...input, body: "changed" });
+    httpConfig.body = "bytes";
+    const response = await dispatchServerEndpoint(
+      [route],
+      new Request("https://example.test/stable-config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
+    expect(await response!.json()).toBe("original");
+
+    let accessorReads = 0;
+    const accessorRpcConfig = Object.defineProperty({}, "schema", {
+      enumerable: true,
+      get() {
+        accessorReads += 1;
+        return (args: readonly []) => args;
+      },
+    });
+    expect(() =>
+      rpcQueryServer("accessor-config", accessorRpcConfig as never, async () => 1),
+    ).toThrow("data property");
+    const accessorHttpConfig = Object.defineProperties(
+      {},
+      {
+        method: { enumerable: true, get: () => (accessorReads++, "GET") },
+        path: { enumerable: true, get: () => (accessorReads++, "/accessor") },
+        schema: {
+          enumerable: true,
+          get: () => (accessorReads++, (input: HttpRouteInput) => input),
+        },
+      },
+    );
+    expect(() => httpRouteServer(accessorHttpConfig as never, async () => new Response())).toThrow(
+      "data property",
+    );
+    expect(accessorReads).toBe(0);
+
+    const inheritedRpcConfig = Object.create({ schema: (args: readonly []) => args });
+    expect(() => rpcQueryServer("inherited-config", inheritedRpcConfig, async () => 1)).toThrow(
+      "schema must be callable",
+    );
+    const inheritedHttpConfig = Object.create({
+      method: "GET",
+      path: "/inherited",
+      schema: (input: HttpRouteInput) => input,
+    });
+    expect(() => httpRouteServer(inheritedHttpConfig, async () => new Response())).toThrow(
+      "method is invalid",
+    );
+  });
+
   test("enforces JSON arguments and results during direct server invocation", async () => {
     let invoked = false;
     const query = rpcQueryServer(

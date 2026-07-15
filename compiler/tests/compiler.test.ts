@@ -2898,7 +2898,7 @@ test("endpoint projections retain dependency initialization and project route ha
            endpoint;
            return <main>{"ROUTE_COMPONENT_USING_ENDPOINT_SECRET"}</main>;
          });
-         export const consumer = $route({ path: "/consumer" }, EndpointConsumer);
+         export const consumer = $route({ path: "/consumer", schema }, EndpointConsumer);
          if (globalThis) { schema = makeSchema(); }
          configure(schema);
          console.log("UNRELATED_ENDPOINT_MODULE_EFFECT_SECRET");

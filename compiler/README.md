@@ -99,6 +99,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   needed bindings over the declarations and initialization effects required by server endpoints.
   It preserves declaration-level type syntax, replaces referenced same-file routes with metadata
   handles without expanding their page dependency graph, and excludes their page implementations.
+  Dependencies shared by a route config and an endpoint remain in the server projection even when
+  the route itself becomes a metadata handle.
   The two manifests share one cached project discovery pass until the project root changes or a
   route-file watcher event invalidates it. Failed file inspections are evicted so corrected files
   can be retried.

@@ -297,7 +297,32 @@ describe("forms", () => {
       { schema: () => Promise.reject(unexpected), defaultValues: { title: "" } },
       () => {},
     );
-    expect(broken.submit()).rejects.toBe(unexpected);
+    const objectPrototype = Object.prototype as { issues?: unknown };
+    Object.defineProperty(objectPrototype, "issues", { configurable: true, value: [] });
+    try {
+      expect(broken.submit()).rejects.toBe(unexpected);
+    } finally {
+      delete objectPrototype.issues;
+    }
+
+    let messageReads = 0;
+    const accessorFailure = {
+      issues: [
+        Object.defineProperty({}, "message", {
+          enumerable: true,
+          get() {
+            messageReads += 1;
+            return "hidden";
+          },
+        }),
+      ],
+    };
+    const accessorForm = ownedForm(
+      { schema: () => Promise.reject(accessorFailure), defaultValues: { title: "" } },
+      () => {},
+    );
+    expect(accessorForm.submit()).rejects.toBe(accessorFailure);
+    expect(messageReads).toBe(0);
   });
 
   test("tracks submission state and prevents duplicate submissions", async () => {
@@ -1536,6 +1561,64 @@ describe("compiled DOM runtime", () => {
     expect(await resolveRoute(detail, { id: "invalid", from: "index" })).toEqual({
       matched: false,
     });
+
+    const stable = route(
+      {
+        path: "/stable/:id?from=:from",
+        schema: {
+          "~standard": {
+            validate(input: unknown) {
+              const values = input as { id: string; from: string };
+              return { value: { id: Number(values.id), from: values.from } };
+            },
+          },
+        },
+      },
+      Empty,
+      {
+        ...detail.compiled,
+        pattern: "^/stable/([^/]+)$",
+      },
+    );
+    const objectPrototype = Object.prototype as { issues?: unknown };
+    Object.defineProperty(objectPrototype, "issues", { configurable: true, value: [] });
+    try {
+      expect(await resolveRoute(stable, { id: "42", from: "index" })).toEqual({
+        matched: true,
+        values: { id: 42, from: "index" },
+      });
+    } finally {
+      delete objectPrototype.issues;
+    }
+
+    let issueReads = 0;
+    const accessorResult = route(
+      {
+        path: "/accessor/:id",
+        schema: {
+          "~standard": {
+            validate() {
+              return Object.defineProperty({ value: { id: 1 } }, "issues", {
+                get() {
+                  issueReads += 1;
+                  return [];
+                },
+              }) as never;
+            },
+          },
+        },
+      },
+      Empty,
+      {
+        pattern: "^/accessor/([^/]+)$",
+        parameterNames: ["id"],
+        pathnameParameterNames: ["id"],
+        queryParameters: [],
+        specificity: [1, 0],
+      },
+    );
+    expect(() => resolveRoute(accessorResult, { id: "1" })).toThrow("data properties");
+    expect(issueReads).toBe(0);
   });
 
   test("treats schema issues as no match and preserves unexpected failures", async () => {
@@ -1571,7 +1654,13 @@ describe("compiled DOM runtime", () => {
     expect(await resolveRoute(invalid, { id: "bad" })).toEqual({
       matched: false,
     });
-    expect(() => resolveRoute(broken, { id: "bad" })).toThrow("parser failed");
+    const objectPrototype = Object.prototype as { issues?: unknown };
+    Object.defineProperty(objectPrototype, "issues", { configurable: true, value: [] });
+    try {
+      expect(() => resolveRoute(broken, { id: "bad" })).toThrow("parser failed");
+    } finally {
+      delete objectPrototype.issues;
+    }
   });
 
   test("decorates Link anchors and preserves cancelled or modified clicks", () => {

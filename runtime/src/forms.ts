@@ -56,17 +56,31 @@ function assertFormValues(value: unknown, detail: "defaultValues" | "reset value
 }
 
 export function validationFailure(error: unknown): ValidationFailure | undefined {
-  if (!isObject(error) || !("issues" in error)) return undefined;
-  const issues = (error as { issues?: unknown }).issues;
-  if (!Array.isArray(issues)) return undefined;
+  if (!isObject(error)) return undefined;
+  const issuesDescriptor = Object.getOwnPropertyDescriptor(error, "issues");
+  if (
+    !issuesDescriptor ||
+    !("value" in issuesDescriptor) ||
+    !Array.isArray(issuesDescriptor.value)
+  ) {
+    return undefined;
+  }
   const normalized: ValidationIssue[] = [];
-  for (const issue of issues) {
-    if (!isObject(issue) || typeof (issue as { message?: unknown }).message !== "string") {
+  for (const issue of issuesDescriptor.value) {
+    if (!isObject(issue)) return undefined;
+    const messageDescriptor = Object.getOwnPropertyDescriptor(issue, "message");
+    if (
+      !messageDescriptor ||
+      !("value" in messageDescriptor) ||
+      typeof messageDescriptor.value !== "string"
+    ) {
       return undefined;
     }
-    const path = (issue as { path?: unknown }).path;
+    const pathDescriptor = Object.getOwnPropertyDescriptor(issue, "path");
+    if (pathDescriptor && !("value" in pathDescriptor)) return undefined;
+    const path = pathDescriptor?.value;
     if (path !== undefined && !Array.isArray(path)) return undefined;
-    normalized.push({ message: (issue as { message: string }).message, path });
+    normalized.push({ message: messageDescriptor.value, path });
   }
   return { issues: normalized };
 }

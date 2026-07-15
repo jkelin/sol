@@ -221,6 +221,7 @@ function dependencyProjection(source: string, filename: string): string {
   const routes = declaredRoutes(source, filename, { ast, helpers, exportedNames });
   const roots = new Set<string>();
   const routeRoots = new Set<string>();
+  const routeDependencies = new Set<string>();
   const expressionPurity = new WeakMap<t.Expression, boolean>();
   traverse(ast, {
     Expression(path) {
@@ -261,7 +262,7 @@ function dependencyProjection(source: string, filename: string): string {
                 reference.node.end! <= path.node.init!.end!,
             )
           ) {
-            routeRoots.add(binding.identifier.name);
+            routeDependencies.add(binding.identifier.name);
           }
         }
       }
@@ -306,7 +307,8 @@ function dependencyProjection(source: string, filename: string): string {
     }
   };
   const routeOwned = new Set<string>();
-  addClosure(routeOwned, routeRoots);
+  addClosure(routeOwned, routeDependencies);
+  for (const name of routeRoots) routeOwned.add(name);
   const needed = new Set<string>();
   addClosure(needed, roots);
   const effects = new Set<t.Statement>();

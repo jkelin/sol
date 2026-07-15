@@ -1353,6 +1353,22 @@ describe("compiler", () => {
     }
 
     for (const element of [
+      '<select value="a"><option value="a">A</option><option value="b" selected>B</option></select>',
+      '<select $bind={text}><optgroup><option value="b" selected={active}>B</option></optgroup></select>',
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() {
+            let text = "a";
+            const active = true;
+            return ${element};
+          });`,
+          "CompetingSelected.tsx",
+        ),
+      ).toThrow("Controlled select cannot contain an option selected attribute");
+    }
+
+    for (const element of [
       '<textarea value="controlled">fallback</textarea>',
       '<textarea value="controlled">{fallback}</textarea>',
       "<textarea $bind={text}>fallback</textarea>",

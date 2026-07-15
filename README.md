@@ -80,7 +80,9 @@ Derived inference follows direct reads in the initializer. When a helper functio
 Use `$bind={state}` on inputs, textareas, and selects. The compiler binds `checked` for static
 checkbox/radio input types regardless of casing and `value` for other supported controls. A
 textarea controlled by `value` or `$bind` cannot also have children. Signal arrays and plain-object
-values are deep proxies, so nested assignments and mutating array methods are reactive. Dates,
+values are deep proxies, so nested assignments and mutating array methods are reactive. A select
+controlled by `value` or `$bind` cannot also contain an option with `selected`, including through an
+`optgroup`. Dates,
 collections, and class instances retain their original identity.
 
 Intrinsic HTML attribute identity is ASCII-case-insensitive, so differently cased duplicates are
@@ -248,7 +250,7 @@ Each `Head` block owns the nodes it inserts and removes only those nodes when it
 
 Scripts are recreated as executable DOM elements before insertion. Inline and external scripts therefore follow native browser execution rules: insertion executes them, later inline-text updates do not rerun them, and cleanup cannot reverse their side effects.
 
-During server rendering, pass `onHead` to collect the serialized managed head separately from the body markup. Insert that string into the document `<head>` and the returned body string into the application target before calling `hydrate()`. Hydration claims both trees in place, preserves script identity, and makes the claimed head nodes reactive and owned by their original blocks.
+During server rendering, pass `onHead` to collect the serialized managed head separately from the body markup. The callback runs only after the body and hydration payload serialize successfully. Insert that string into the document `<head>` and the returned body string into the application target before calling `hydrate()`. Hydration claims both trees in place, preserves script identity, and makes the claimed head nodes reactive and owned by their original blocks.
 
 ## Transitions
 

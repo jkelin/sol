@@ -94,6 +94,23 @@ function findIntrinsicAttribute(
   );
 }
 
+function findDescendantOptionSelected(
+  compiler: CompilerContext,
+  node: t.JSXElement,
+): t.JSXAttribute | undefined {
+  let selected: t.JSXAttribute | undefined;
+  t.traverseFast(node, (descendant) => {
+    if (
+      t.isJSXElement(descendant) &&
+      t.isJSXIdentifier(descendant.openingElement.name, { name: "option" })
+    ) {
+      selected = findIntrinsicAttribute(compiler, descendant, "selected");
+    }
+    return selected ? t.traverseFast.stop : undefined;
+  });
+  return selected;
+}
+
 function validateUniqueAttributes(
   compiler: CompilerContext,
   node: t.JSXElement,
@@ -634,6 +651,16 @@ export function compileIntrinsicElement(
       textareaValue ?? bindAttributes[0]!,
       "Textarea children conflict with value or $bind",
     );
+  }
+  if (tag === "select" && (textareaValue || bindProperty === "value")) {
+    const selected = findDescendantOptionSelected(compiler, node);
+    if (selected) {
+      codeFrame(
+        compiler,
+        selected,
+        "Controlled select cannot contain an option selected attribute",
+      );
+    }
   }
   const formAttribute = node.openingElement.attributes.find(
     (attribute) =>

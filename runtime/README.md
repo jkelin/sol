@@ -64,7 +64,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   response envelopes with canonical array-index validation, snapshotted endpoint configs, validated
   dispatch options, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
-  before asynchronous rendering.
+  before asynchronous rendering and publishing managed head markup only after payload serialization.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation from snapshotted destinations, route handles, descriptor-snapshotted route configs and
@@ -132,7 +132,7 @@ Public interfaces validate inputs before mutating runtime state. Keep that valid
 `application/json` hydration payload. The default timeout is 5,000ms. Each `Suspense` may provide a
 server-only `timeoutMs` override; a timeout renders its fallback, while root async timeouts reject.
 When a render contains `Head`, `onHead` is required and receives the separately serialized managed
-head markup after async work settles. Insert it into the response document's `<head>` before the body
+head markup after async work settles and the body hydration payload serializes successfully. Insert it into the response document's `<head>` before the body
 markup. Its private ownership markers let hydration claim the head and body trees together.
 An absolute HTTP(S) `url` resolves the request route before root rendering, making compiled routes
 and route handles request-aware without a browser global, including in shell and Head content.

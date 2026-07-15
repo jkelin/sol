@@ -1980,6 +1980,20 @@ test("server form bindings parse correctly and hydration validates instead of mu
   expect(mismatchedNote.value).toBe("server note");
 });
 
+test("rejects competing controlled select and option selection owners", async () => {
+  await expectRejection(
+    loadCompiled(`
+      export const App = $component(function App(props: { forceB: boolean }) {
+        return <select value="a">
+          <option value="a">A</option>
+          <optgroup><option value="b" selected={props.forceB}>B</option></optgroup>
+        </select>;
+      });
+    `),
+    "Controlled select cannot contain an option selected attribute",
+  );
+});
+
 test("hydrates dynamic textarea and select values as DOM properties", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App(props: { selected: string; note: string }) {
@@ -2316,6 +2330,22 @@ test("validates SSR and hydration public interfaces and payloads", async () => {
     renderToStringAsync(headModule.App as Component),
     "without an onHead callback",
   );
+
+  const lateFailureModule = await loadCompiled(`
+    import { Head } from "@soljs/sol";
+    export const App = $component(async function App() {
+      const value = await Promise.resolve(() => undefined);
+      return <><Head><title>Must not leak</title></Head><main>{String(value)}</main></>;
+    });
+  `);
+  const publishedHead: string[] = [];
+  await expectRejection(
+    renderToStringAsync(lateFailureModule.App as Component, undefined, {
+      onHead: (html) => publishedHead.push(html),
+    }),
+    "Cannot serialize async site",
+  );
+  expect(publishedHead).toEqual([]);
 
   const suspenseModule = await loadCompiled(`
     import { Suspense } from "@soljs/sol";

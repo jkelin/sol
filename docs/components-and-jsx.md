@@ -63,7 +63,7 @@ import { Head } from "@soljs/sol";
 
 Title, metadata, styles, script attributes, and raw text update reactively. Managed blocks precede static head content so titles take effect, and newer blocks precede older blocks. Each block removes only its own nodes when disposed and preserves entries authored in the HTML document or by other mounted blocks. Overlapping entries are not deduplicated.
 
-For SSR, provide `renderToStringAsync()` with an `onHead` callback and insert the collected string into the response document's `<head>`. Insert the returned body string into the application target. `hydrate()` then claims both trees in place, preserving the identity of server-rendered metadata, styles, and scripts while attaching reactive updates and ownership cleanup.
+For SSR, provide `renderToStringAsync()` with an `onHead` callback and insert the collected string into the response document's `<head>`. The callback runs only after the body and hydration payload serialize successfully. Insert the returned body string into the application target. `hydrate()` then claims both trees in place, preserving the identity of server-rendered metadata, styles, and scripts while attaching reactive updates and ownership cleanup.
 
 Scripts execute under native browser rules when inserted. Updating an inline script's text does not execute it again, and removing the element cannot undo effects caused by an earlier execution.
 

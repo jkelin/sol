@@ -147,7 +147,6 @@ export async function renderToStringAsync<Props extends object>(
     if (head && !onHead) {
       throw new Error("renderToStringAsync() rendered Head content without an onHead callback");
     }
-    (onHead as ((html: string) => void) | undefined)?.(head);
     session.templates.splice(0, session.templates.length, ...finalTemplateOrder(html + head));
     for (const entry of session.async) {
       if (entry.status === "pending") continue;
@@ -161,7 +160,9 @@ export async function renderToStringAsync<Props extends object>(
       }
     }
     const payload = serializeGraph(session.payload());
-    return `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
+    const result = `${html}<script type="application/json" data-sol-hydration>${payload}</script>`;
+    (onHead as ((html: string) => void) | undefined)?.(head);
+    return result;
   } finally {
     runDisposals([() => rendered?.dispose(), () => clearServerQueryCache(session)]);
   }

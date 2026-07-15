@@ -2395,6 +2395,29 @@ describe("compiler", () => {
       ).toThrow("destructuring is not reactive in v1");
     }
 
+    for (const loop of [
+      "for ({ value: source } of [{ value: 2 }]) {}",
+      "for ([source] of [[2]]) {}",
+      "for ({ ...source } of [{ value: 2 }]) {}",
+      "for ([source = 2] of [[]]) {}",
+      "for ({ value: source } in { value: 2 }) {}",
+      "for ([source] in { value: 2 }) {}",
+    ]) {
+      expect(() =>
+        compile(
+          `
+      import { $component } from "@soljs/sol";
+      const App = $component(function App() {
+        let source = 1;
+        ${loop}
+        return <p>{source}</p>;
+      });
+    `,
+          "Invalid.tsx",
+        ),
+      ).toThrow("destructuring is not reactive in v1");
+    }
+
     expect(() =>
       compile(
         `
@@ -2657,6 +2680,53 @@ describe("compiler", () => {
         "DerivedCollection.tsx",
       ),
     ).toThrow("must not call mutating collection methods");
+  });
+
+  test("rejects setup declarations whose semantics cannot be lowered reactively", () => {
+    for (const declaration of [
+      "console.log(value); var value = 1;",
+      "var value = 1; var value = 2;",
+      "using value = { [Symbol.dispose]() {} };",
+      "using value = function () {};",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { ${declaration} return <p>Value</p>; });`,
+          "UnsupportedDeclaration.tsx",
+        ),
+      ).toThrow("must use let or const");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(async function App() { await using value = async function () {}; return <p>Value</p>; });`,
+        "UnsupportedDeclaration.tsx",
+      ),
+    ).toThrow("must use let or const");
+  });
+
+  test("rejects delete operations on computed values", () => {
+    for (const statement of [
+      "delete value.x",
+      'delete value["x"]',
+      "delete value[`x`]",
+      "delete (value as { x?: number }).x",
+      "delete value?.x",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { const value = $computed(() => ({ x: 1 })); ${statement}; return <p>Value</p>; });`,
+          "ComputedDelete.tsx",
+        ),
+      ).toThrow("Computed component value value is readonly");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() { const value = $computed(() => ({ x: 1 })); function clear(value: { x?: number }) { delete value.x; } return <p>{value.x}</p>; });`,
+        "ShadowedDelete.tsx",
+      ),
+    ).not.toThrow();
   });
 
   test("rejects global mutation APIs on computed and derived values", () => {

@@ -94,9 +94,11 @@ dependencies; route handles referenced by endpoint code are projected again as m
   Keyed-list calls accept exactly one synchronous, non-generator inline
   callback with only item and optional index identifiers; async-boundary renderers follow the same
   synchronous, non-generator restriction.
-- `setup.ts` analyzes component setup, rejects unsupported reactive destructuring, readonly
-  mutations in dot or bracket syntax, mutating array or collection calls, and scope-aware global
-  Object/Reflect mutation APIs on computed, derived, and prop values, and rewrites local state,
+- `setup.ts` analyzes component setup, requires `let` or `const` declarations where reactive
+  lowering can preserve semantics, rejects unsupported reactive destructuring in assignments and
+  loop targets, readonly assignment, update, and delete mutations in dot or bracket syntax,
+  mutating array or collection calls, and scope-aware global Object/Reflect mutation APIs on
+  computed, derived, and prop values, and rewrites local state,
   derived values, props,
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned
   form/query/mutation helpers, and component

@@ -167,27 +167,39 @@ export function validateComputedWrites(
       codeFrame(compiler, expression, `Computed component value ${root} is readonly`);
     }
   };
+  const checkAssignmentTarget = (path: NodePath, target: t.Node): void => {
+    if (t.isExpression(target)) {
+      check(path, target);
+      return;
+    }
+    for (const member of assignmentMemberTargets(target)) check(path, member);
+    const reactiveBinding = Object.keys(t.getBindingIdentifiers(target)).find((name) => {
+      if (!bindings.has(name)) return false;
+      return path.scope.getBinding(name)?.scope.path.isProgram();
+    });
+    if (reactiveBinding) {
+      codeFrame(
+        compiler,
+        target,
+        "Component setup assignments must not destructure reactive bindings; destructuring is not reactive in v1",
+      );
+    }
+  };
   traverse(file, {
     AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
-      if (t.isExpression(path.node.left)) {
-        check(path, path.node.left);
-        return;
-      }
-      for (const target of assignmentMemberTargets(path.node.left)) check(path, target);
-      const reactiveBinding = Object.keys(t.getBindingIdentifiers(path.node.left)).find((name) => {
-        if (!bindings.has(name)) return false;
-        return path.scope.getBinding(name)?.scope.path.isProgram();
-      });
-      if (reactiveBinding) {
-        codeFrame(
-          compiler,
-          path.node.left,
-          "Component setup assignments must not destructure reactive bindings; destructuring is not reactive in v1",
-        );
-      }
+      checkAssignmentTarget(path, path.node.left);
+    },
+    ForOfStatement(path: NodePath<t.ForOfStatement>) {
+      if (!t.isVariableDeclaration(path.node.left)) checkAssignmentTarget(path, path.node.left);
+    },
+    ForInStatement(path: NodePath<t.ForInStatement>) {
+      if (!t.isVariableDeclaration(path.node.left)) checkAssignmentTarget(path, path.node.left);
     },
     UpdateExpression(path: NodePath<t.UpdateExpression>) {
       if (t.isExpression(path.node.argument)) check(path, path.node.argument);
+    },
+    UnaryExpression(path: NodePath<t.UnaryExpression>) {
+      if (path.node.operator === "delete") check(path, path.node.argument);
     },
     CallExpression(path: NodePath<t.CallExpression>) {
       const mutation = mutatingCall(path, path.node);
@@ -323,6 +335,13 @@ export function compileSetup(
   const componentBindingNames = new Set<string>();
   for (const statement of setup) {
     if (t.isVariableDeclaration(statement)) {
+      if (statement.kind !== "let" && statement.kind !== "const") {
+        codeFrame(
+          compiler,
+          statement,
+          "Component setup declarations must use let or const; var, using, and await using are not supported",
+        );
+      }
       for (const declaration of statement.declarations) {
         for (const name of Object.keys(t.getBindingIdentifiers(declaration.id))) {
           componentBindingNames.add(name);

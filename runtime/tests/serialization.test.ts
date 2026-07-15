@@ -95,9 +95,12 @@ describe("SSR graph serialization", () => {
     const symbolKey = { [Symbol("key")]: true };
     const array = [1] as unknown[] & { extra?: boolean };
     array.extra = true;
+    const numericCustom = [1];
+    Object.defineProperty(numericCustom, "4294967295", { enumerable: true, value: 2 });
     expect(() => serializeGraph(accessor)).toThrow("accessor");
     expect(() => serializeGraph(symbolKey)).toThrow("symbol-keyed");
     expect(() => serializeGraph(array)).toThrow("custom properties");
+    expect(() => serializeGraph(numericCustom)).toThrow("custom properties");
   });
 
   test("rejects plain-object descriptors that cannot round trip", () => {
@@ -109,6 +112,15 @@ describe("SSR graph serialization", () => {
       const value = Object.defineProperty({}, "field", descriptor);
       expect(() => serializeGraph(value)).toThrow("property descriptor");
     }
+  });
+
+  test("rejects array index descriptors that cannot round trip", () => {
+    const frozen = Object.freeze([1]);
+    const frozenEmpty = Object.freeze([]);
+    const hidden = Object.defineProperty([1], "0", { enumerable: false });
+    expect(() => serializeGraph(frozen)).toThrow("property descriptor");
+    expect(() => serializeGraph(frozenEmpty)).toThrow("property descriptor");
+    expect(() => serializeGraph(hidden)).toThrow("property descriptor");
   });
 
   test("rejects symbol keys on every supported built-in", () => {

@@ -70,16 +70,22 @@ describe("server declarations", () => {
     expect((accessorFailure as Error).message).toContain("accessor");
     expect(accessorCalls).toBe(0);
 
-    const custom = ["kept"] as unknown[];
-    Object.defineProperty(custom, "01", { enumerable: true, value: "dropped" });
-    const customQuery = rpcQueryServer(
-      "custom-result",
-      { schema: (args: readonly []) => args as [] },
-      async () => custom,
+    const customFailures = await Promise.all(
+      ["01", "4294967295"].map(async (key) => {
+        const custom = ["kept"] as unknown[];
+        Object.defineProperty(custom, key, { enumerable: true, value: "dropped" });
+        const customQuery = rpcQueryServer(
+          "custom-result",
+          { schema: (args: readonly []) => args as [] },
+          async () => custom,
+        );
+        return Promise.resolve(customQuery()).catch((error: unknown) => error);
+      }),
     );
-    const customFailure = await Promise.resolve(customQuery()).catch((error: unknown) => error);
-    expect(customFailure).toBeInstanceOf(TypeError);
-    expect((customFailure as Error).message).toContain("custom properties");
+    for (const customFailure of customFailures) {
+      expect(customFailure).toBeInstanceOf(TypeError);
+      expect((customFailure as Error).message).toContain("custom properties");
+    }
   });
 
   test("dispatches query and mutation POST requests with JSON values", async () => {

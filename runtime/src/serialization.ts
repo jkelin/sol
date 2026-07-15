@@ -36,6 +36,12 @@ function unsupported(value: unknown, detail: string): never {
   throw new TypeError(`Cannot serialize ${detail} (${type})`);
 }
 
+export function arrayIndex(key: string, length: number): number | undefined {
+  if (!/^(0|[1-9]\d*)$/.test(key)) return undefined;
+  const index = Number(key);
+  return index < length && index < 0xffffffff ? index : undefined;
+}
+
 function rejectAccessors(value: object): void {
   for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
     if (descriptor.get || descriptor.set) {
@@ -103,14 +109,19 @@ export function serializeGraph(value: unknown): string {
         return unsupported(candidate, "custom-prototype data");
       }
       const values: [number, EncodedValue][] = [];
-      for (let position = 0; position < candidate.length; position += 1) {
-        if (Object.prototype.hasOwnProperty.call(candidate, position)) {
-          values.push([position, encode(candidate[position])]);
+      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(candidate))) {
+        if (key === "length") {
+          if (!descriptor.writable || descriptor.enumerable || descriptor.configurable) {
+            unsupported(candidate, `non-default property descriptor ${JSON.stringify(key)}`);
+          }
+          continue;
         }
-      }
-      const extraKeys = Object.keys(candidate).filter((key) => !/^(0|[1-9]\d*)$/.test(key));
-      if (extraKeys.length > 0 || Object.getOwnPropertySymbols(candidate).length > 0) {
-        unsupported(candidate, "array with custom properties");
+        const position = arrayIndex(key, candidate.length);
+        if (position === undefined) unsupported(candidate, "array with custom properties");
+        if (!descriptor.enumerable || !descriptor.configurable || !descriptor.writable) {
+          unsupported(candidate, `non-default property descriptor ${JSON.stringify(key)}`);
+        }
+        values.push([position, encode(descriptor.value)]);
       }
       objects[index] = { type: "array", length: candidate.length, values };
     } else if (candidate instanceof Date) {

@@ -38,10 +38,11 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, then
   returns claimed blocks to the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries, template signatures, boundary state, and timeouts.
-- `serialization.ts` encodes and decodes safe cyclic hydration-data graphs.
+- `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
+  array entries without scanning unused indexes and preserving descriptor guarantees.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, JSON response
-  envelopes, and development-safe failures.
+  envelopes with canonical array-index validation, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, safe parsed-value validation, URL generation, and route handles.

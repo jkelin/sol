@@ -1,5 +1,6 @@
 import { isObject, isPromiseLike } from "./reactivity.ts";
 import { deployedPath, logicalPathname } from "./route-base.ts";
+import { arrayIndex } from "./serialization.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 
 const ENDPOINT = Symbol.for("sol.server.endpoint");
@@ -136,10 +137,11 @@ function serializeJson(value: unknown, label: string): string {
       throw new TypeError(`${label} must not contain symbol-keyed properties`);
     }
     if (Array.isArray(item)) {
-      for (let index = 0; index < item.length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(item, String(index));
-        if (!descriptor) {
-          throw new TypeError(`${label} must not contain sparse arrays`);
+      let indexedValues = 0;
+      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(item))) {
+        if (key === "length") continue;
+        if (arrayIndex(key, item.length) === undefined) {
+          throw new TypeError(`${label} arrays must not contain custom properties`);
         }
         if (!("value" in descriptor)) {
           throw new TypeError(`${label} must not contain accessor properties`);
@@ -148,13 +150,10 @@ function serializeJson(value: unknown, label: string): string {
           throw new TypeError(`${label} arrays must contain enumerable indexed values`);
         }
         visit(descriptor.value);
+        indexedValues += 1;
       }
-      if (
-        keys.some(
-          (key) => typeof key === "string" && key !== "length" && !/^(0|[1-9]\d*)$/.test(key),
-        )
-      ) {
-        throw new TypeError(`${label} arrays must not contain custom properties`);
+      if (indexedValues !== item.length) {
+        throw new TypeError(`${label} must not contain sparse arrays`);
       }
     } else {
       for (const key of Object.keys(item)) {

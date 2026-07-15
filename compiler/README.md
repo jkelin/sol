@@ -14,11 +14,12 @@ builds. Pass `{ devtools: false }` to disable the development panel, or `{ devto
 include it explicitly for another Vite command. The option boundary rejects non-boolean values.
 
 Tooling can call `compile(source, filename, options)` from `@sol/compiler` directly. It returns
-transformed code and a source map. `options.target` selects `"client"` or `"server"` endpoint
-lowering. `options.routeMode` selects a metadata-only `"handle"` projection or the full `"page"`
-implementation (the default). Handle projections retain the route path and matcher while omitting
-the schema and route-owned stylesheet imports; bundlers can consequently remove component,
-schema, and page-only dependency graphs. The Vite adapter resolves extensionless and aliased module
+transformed code and a source map. The filename must be a non-empty string, and options are
+snapshotted from exact own enumerable data properties. `options.target` selects `"client"` or
+`"server"` endpoint lowering. `options.routeMode` selects a metadata-only `"handle"` projection or
+the full `"page"` implementation (the default). Handle projections retain the route path and
+matcher while omitting the schema and route-owned stylesheet imports; bundlers can consequently
+remove component, schema, and page-only dependency graphs. The Vite adapter resolves extensionless and aliased module
 specifiers and rewrites named or default route-handle imports to a dedicated metadata projection,
 even when an import also names ordinary exports. Multiple public aliases of one route share one
 manifest entry and one projected handle, including declarations published with `export default
@@ -41,6 +42,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
 ## Source files
 
 - `index.ts` exposes the compiler's public interface.
+- `compile.ts` validates and snapshots the public compilation boundary, coordinates analysis and
+  lowering passes, and emits the transformed module.
 - `types.ts` defines the compilation result shared by callers and the implementation.
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures,
@@ -54,7 +57,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   namespace Sol import bindings and may be published by inline or later export declarations;
   identifier default exports are supported, type-only exports are ignored, and ambiguous mixed
   frontend/server effects receive a diagnostic instead of being deleted.
-- `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
+- `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering, using
+  one monotonic pass across source-ordered compiled JSX ranges.
 - `output.ts` applies edits, injects runtime imports and dual-lane signed templates,
   redacts stripped server ranges from client source content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames, owns source-marker insertion and canonical removal,

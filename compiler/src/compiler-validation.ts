@@ -72,30 +72,31 @@ export function validateCompiledModule(state: CompilationState): boolean {
     return false;
   }
 
+  let compiledRangeIndex = 0;
+  const validateJsx = (node: t.JSXElement | t.JSXFragment): void => {
+    const start = node.start!;
+    while (
+      compiledRangeIndex < compiledJsxRanges.length &&
+      compiledJsxRanges[compiledRangeIndex]!.end < start
+    ) {
+      compiledRangeIndex += 1;
+    }
+    const range = compiledJsxRanges[compiledRangeIndex];
+    const covered = range !== undefined && start >= range.start && node.end! <= range.end;
+    if (!covered) {
+      codeFrame(
+        compiler,
+        node,
+        "JSX survived compilation; wrap a named function with $component()",
+      );
+    }
+  };
   traverse(ast, {
     JSXElement(path: NodePath<t.JSXElement>) {
-      const covered = compiledJsxRanges.some(
-        (range) => path.node.start! >= range.start && path.node.end! <= range.end,
-      );
-      if (!covered) {
-        codeFrame(
-          compiler,
-          path.node,
-          "JSX survived compilation; wrap a named function with $component()",
-        );
-      }
+      validateJsx(path.node);
     },
     JSXFragment(path: NodePath<t.JSXFragment>) {
-      const covered = compiledJsxRanges.some(
-        (range) => path.node.start! >= range.start && path.node.end! <= range.end,
-      );
-      if (!covered) {
-        codeFrame(
-          compiler,
-          path.node,
-          "JSX survived compilation; wrap a named function with $component()",
-        );
-      }
+      validateJsx(path.node);
     },
   });
   return true;

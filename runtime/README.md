@@ -51,8 +51,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `ssr-session.ts` coordinates async replay entries, shared promise-like validation, template
   signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
-  array entries without scanning unused indexes, rejecting lossy built-in extensions, and
-  preserving descriptor guarantees and built-in Error prototypes.
+  array entries without scanning unused indexes, rejecting hidden lossy built-in extensions and
+  untagged non-finite payload numbers, and preserving descriptor guarantees and built-in Error
+  prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, prepared
   endpoint indexes, JSON response envelopes with canonical array-index validation, snapshotted

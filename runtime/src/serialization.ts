@@ -71,7 +71,7 @@ function ownDataEntries(value: object): [string, unknown][] {
 }
 
 function rejectCustomProperties(value: object, allowed: readonly string[] = []): void {
-  const custom = Object.keys(value).find((key) => !allowed.includes(key));
+  const custom = Object.getOwnPropertyNames(value).find((key) => !allowed.includes(key));
   if (custom) unsupported(value, `built-in with custom properties ${JSON.stringify(custom)}`);
 }
 
@@ -152,7 +152,7 @@ export function serializeGraph(value: unknown): string {
         return unsupported(candidate, "custom-prototype data");
       }
       rejectCustomProperties(candidate);
-      objects[index] = { type: "date", value: encode(candidate.getTime()) };
+      objects[index] = { type: "date", value: encode(Date.prototype.getTime.call(candidate)) };
     } else if (candidate instanceof RegExp) {
       if (Object.getPrototypeOf(candidate) !== RegExp.prototype) {
         return unsupported(candidate, "custom-prototype data");
@@ -188,7 +188,17 @@ export function serializeGraph(value: unknown): string {
     } else if (candidate instanceof Error) {
       const kind = builtInErrorKind(candidate);
       if (!kind) return unsupported(candidate, "custom-prototype data");
-      rejectCustomProperties(candidate, ["stack", "message", "cause", "name"]);
+      rejectCustomProperties(candidate, [
+        "stack",
+        "message",
+        "cause",
+        "name",
+        "line",
+        "column",
+        "sourceURL",
+        "originalLine",
+        "originalColumn",
+      ]);
       const cause = Object.getOwnPropertyDescriptor(candidate, "cause");
       objects[index] = {
         type: "error",
@@ -245,12 +255,11 @@ function validateKeys(
 }
 
 function validateEncodedValue(value: unknown, objectCount: number, path: string): void {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string" ||
-    typeof value === "number"
-  ) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) invalidPayload(`${path} must be a finite number`);
+    return;
+  }
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
     return;
   }
   const encoded = payloadRecord(value, path);

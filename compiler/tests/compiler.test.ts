@@ -96,9 +96,39 @@ describe("compiler", () => {
   });
 
   test("validates public compile projection options", () => {
+    for (const filename of ["", 123, {}, []]) {
+      expect(() => compile("", filename as never)).toThrow(
+        "compile() filename must be a non-empty string",
+      );
+    }
     expect(() => compile("", "page.sol.ts", null as never)).toThrow(
       "compile() options must be an object",
     );
+    expect(() => compile("", "page.sol.ts", Object.create({ target: "client" }) as never)).toThrow(
+      "compile() options must be a plain object",
+    );
+    expect(() => compile("", "page.sol.ts", { unknown: true } as never)).toThrow(
+      "compile() options contains unknown property unknown",
+    );
+    expect(() => compile("", "page.sol.ts", { [Symbol("unknown")]: true } as never)).toThrow(
+      "compile() options contains unknown property Symbol(unknown)",
+    );
+    const hidden = Object.defineProperty({}, "target", { value: "client" });
+    expect(() => compile("", "page.sol.ts", hidden)).toThrow(
+      "compile() options target must be an enumerable data property",
+    );
+    let reads = 0;
+    const accessor = Object.defineProperty({}, "target", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? undefined : "worker";
+      },
+    });
+    expect(() => compile("", "page.sol.ts", accessor)).toThrow(
+      "compile() options target must be an enumerable data property",
+    );
+    expect(reads).toBe(0);
     expect(() => compile("", "page.sol.ts", { target: "worker" as never })).toThrow(
       'compile() target must be "client" or "server"',
     );

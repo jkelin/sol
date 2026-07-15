@@ -181,6 +181,32 @@ describe("SSR graph serialization", () => {
     );
   });
 
+  test("rejects hidden custom built-in state without invoking overrides", () => {
+    let dateOverrideCalls = 0;
+    const date = new Date();
+    Object.defineProperty(date, "getTime", {
+      value() {
+        dateOverrideCalls += 1;
+        return 0;
+      },
+    });
+    const values: object[] = [
+      date,
+      /value/g,
+      new URL("https://example.com"),
+      new Map(),
+      new Set(),
+      new Error("failure"),
+    ];
+    for (const value of values.slice(1)) {
+      Object.defineProperty(value, "secret", { value: "lost" });
+    }
+    for (const value of values) {
+      expect(() => serializeGraph(value)).toThrow("custom properties");
+    }
+    expect(dateOverrideCalls).toBe(0);
+  });
+
   test("rejects non-enumerable accessors and subclassed built-ins", () => {
     const hiddenAccessor = {};
     Object.defineProperty(hiddenAccessor, "secret", { get: () => "hidden" });
@@ -219,6 +245,12 @@ describe("SSR graph serialization", () => {
     expect(() => deserializeGraph(JSON.stringify({ root: { $: "mystery" }, objects: [] }))).toThrow(
       "value tag",
     );
+    expect(() => deserializeGraph('{"root":1e400,"objects":[]}')).toThrow("finite number");
+    expect(() =>
+      deserializeGraph(
+        '{"root":{"$":"ref","v":0},"objects":[{"type":"object","values":[["value",-1e400]]}]}',
+      ),
+    ).toThrow("finite number");
   });
 
   test("validates every record field, including unreachable records", () => {

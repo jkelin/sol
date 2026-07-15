@@ -5,6 +5,7 @@ import {
   isObject,
   reactive,
   rethrowWithCleanups,
+  rethrowWithDisposals,
   runDisposals,
   runtimeEffect,
   type Signal,
@@ -453,7 +454,9 @@ export function when(
 ): void {
   const renderFrame = frameForRegion(frame, region);
   if (isServerRegion(region)) {
-    mountServerBlock((getCondition() ? consequent : alternate)(renderFrame), region);
+    const rendered = (getCondition() ? consequent : alternate)(renderFrame);
+    mountServerBlock(rendered, region);
+    cleanups.push(() => rendered.dispose());
     return;
   }
   let current: Block | undefined;
@@ -465,9 +468,30 @@ export function when(
     const nextCondition = Boolean(getCondition());
     if (nextCondition === currentCondition) return;
     const previousCondition = currentCondition;
+    const previous = current;
+    const revived = leaving.get(nextCondition);
+    let candidate: Block | undefined;
+    try {
+      candidate = revived ?? (nextCondition ? consequent : alternate)(renderFrame);
+      if (revived) candidate.move(region.end.parentNode!, region.end);
+      else candidate.mount(region.end.parentNode!, region.end);
+      if (initialized) candidate.enter();
+    } catch (error) {
+      if (revived) leaving.delete(nextCondition);
+      if (candidate) {
+        rethrowWithDisposals(
+          error,
+          [() => candidate!.dispose()],
+          "Conditional render and teardown both failed",
+        );
+      }
+      throw error;
+    }
+    if (revived) leaving.delete(nextCondition);
     currentCondition = nextCondition;
-    if (current && previousCondition !== undefined) {
-      const previous = current;
+    current = candidate;
+    initialized = true;
+    if (previous && previousCondition !== undefined) {
       let finished: Promise<void> | undefined;
       try {
         finished = previous.leave();
@@ -494,17 +518,6 @@ export function when(
         previous.dispose();
       }
     }
-    current = leaving.get(nextCondition);
-    if (current) {
-      leaving.delete(nextCondition);
-      current.move(region.end.parentNode!, region.end);
-      current.enter();
-    } else {
-      current = (nextCondition ? consequent : alternate)(renderFrame);
-      current.mount(region.end.parentNode!, region.end);
-      if (initialized) current.enter();
-    }
-    initialized = true;
     if (transitionFailure !== undefined) throw transitionFailure;
   });
   cleanups.push(stop, () => {
@@ -551,7 +564,9 @@ export function list<T>(
       keys.add(key);
       const item = $signal(itemValue);
       const position = $signal(index);
-      mountServerBlock(render(item, position, renderFrame), region);
+      const rendered = render(item, position, renderFrame);
+      mountServerBlock(rendered, region);
+      cleanups.push(() => rendered.dispose());
       index += 1;
     }
     return;
@@ -566,26 +581,79 @@ export function list<T>(
     const uniqueKeys = new Set(entries.map((entry) => entry.key));
     if (uniqueKeys.size !== entries.length) throw new Error("Keyed JSX lists require unique keys");
 
+    const previousRows = rows;
     const nextRows = new Map<unknown, ListRow<T>>();
-    const entering = new Set<unknown>();
-    batch(() => {
+    const createdRows: ListRow<T>[] = [];
+    const revivedKeys = new Set<unknown>();
+    const updates: Array<{ row: ListRow<T>; item: T; index: number }> = [];
+    try {
       for (const entry of entries) {
         let row = rows.get(entry.key) ?? leavingRows.get(entry.key);
         if (row) {
-          if (leavingRows.get(entry.key) === row) {
-            leavingRows.delete(entry.key);
-            entering.add(entry.key);
-          }
-          row.item.value = entry.item;
-          row.index.value = entry.index;
+          if (leavingRows.get(entry.key) === row) revivedKeys.add(entry.key);
+          updates.push({ row, item: entry.item, index: entry.index });
         } else {
           const item = $signal(entry.item);
           const index = $signal(entry.index);
           row = { key: entry.key, item, index, block: render(item, index, renderFrame) };
+          createdRows.push(row);
         }
         nextRows.set(entry.key, row);
       }
+    } catch (error) {
+      rethrowWithDisposals(
+        error,
+        createdRows.map((row) => () => row.block.dispose()),
+        "List render and teardown both failed",
+      );
+    }
+
+    const activeKeys = [...nextRows.keys()];
+    const projectedLeaving = new Set<unknown>();
+    for (const key of leavingRows.keys()) {
+      if (!revivedKeys.has(key)) projectedLeaving.add(key);
+    }
+    for (const key of rows.keys()) {
+      if (!nextRows.has(key)) projectedLeaving.add(key);
+    }
+    let activeIndex = 0;
+    const nextOrder = order.flatMap((key) => {
+      if (projectedLeaving.has(key)) return [key];
+      if (activeIndex >= activeKeys.length) return [];
+      const activeKey = activeKeys[activeIndex];
+      activeIndex += 1;
+      return [activeKey];
     });
+    nextOrder.push(...activeKeys.slice(activeIndex));
+    try {
+      for (const key of nextOrder) {
+        const row = nextRows.get(key) ?? leavingRows.get(key) ?? rows.get(key);
+        row?.block.mount(region.end.parentNode!, region.end);
+      }
+    } catch (error) {
+      rethrowWithDisposals(
+        error,
+        [
+          ...createdRows.map((row) => () => row.block.dispose()),
+          () => {
+            for (const key of order) {
+              const row = rows.get(key) ?? leavingRows.get(key);
+              row?.block.mount(region.end.parentNode!, region.end);
+            }
+          },
+        ],
+        "List mount and rollback both failed",
+      );
+    }
+
+    batch(() => {
+      for (const update of updates) {
+        update.row.item.value = update.item;
+        update.row.index.value = update.index;
+      }
+    });
+    for (const key of revivedKeys) leavingRows.delete(key);
+
     const removedKeys = new Set<unknown>();
     const transitionFailures: unknown[] = [];
     for (const [key, row] of rows) {
@@ -616,33 +684,30 @@ export function list<T>(
         row.block.dispose();
       });
     }
-    if (removedKeys.size > 0) {
-      order = order.filter((candidate) => !removedKeys.has(candidate));
-    }
-
-    const activeKeys = [...nextRows.keys()];
-    let activeIndex = 0;
-    order = order.flatMap((key) => {
-      if (leavingRows.has(key)) return [key];
-      if (activeIndex >= activeKeys.length) return [];
-      const activeKey = activeKeys[activeIndex];
-      activeIndex += 1;
-      return [activeKey];
-    });
-    order.push(...activeKeys.slice(activeIndex));
-
-    for (const key of order) {
-      const row = nextRows.get(key) ?? leavingRows.get(key);
-      row?.block.mount(region.end.parentNode!, region.end);
-    }
-    if (initialized) {
-      for (const key of entering) nextRows.get(key)!.block.enter();
+    order =
+      removedKeys.size > 0
+        ? nextOrder.filter((candidate) => !removedKeys.has(candidate))
+        : nextOrder;
+    rows = nextRows;
+    const wasInitialized = initialized;
+    initialized = true;
+    if (wasInitialized) {
+      for (const key of revivedKeys) {
+        try {
+          nextRows.get(key)!.block.enter();
+        } catch (error) {
+          transitionFailures.push(error);
+        }
+      }
       for (const [key, row] of nextRows) {
-        if (!rows.has(key) && !entering.has(key)) row.block.enter();
+        if (previousRows.has(key) || revivedKeys.has(key)) continue;
+        try {
+          row.block.enter();
+        } catch (error) {
+          transitionFailures.push(error);
+        }
       }
     }
-    rows = nextRows;
-    initialized = true;
     if (transitionFailures.length === 1) throw transitionFailures[0];
     if (transitionFailures.length > 1) {
       throw new AggregateError(transitionFailures, "List transitions and teardown failed", {

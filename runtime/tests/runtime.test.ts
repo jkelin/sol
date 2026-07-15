@@ -13,7 +13,8 @@ import {
   type Signal,
 } from "../src/reactivity.ts";
 import { createRef, type Ref } from "../src/refs.ts";
-import { mount, rootFrame } from "../src/rendering.ts";
+import { mount, rootFrame, type Block } from "../src/rendering.ts";
+import type { ServerRegion } from "../src/server-rendering.ts";
 import { renderToStringAsync } from "../src/ssr.ts";
 import { transition } from "../src/transitions.ts";
 import {
@@ -2190,6 +2191,104 @@ describe("compiled DOM runtime", () => {
     expect(branchReads).toBe(1);
   });
 
+  test("keeps and retries a conditional branch when its replacement fails", () => {
+    const condition = $signal(false);
+    const retry = $signal(0);
+    let attempts = 0;
+    const definition = template("<div><!--sol:s:0--><!--sol:e:0--></div>");
+    const Parent = component(() => {
+      const view = instantiate(definition);
+      const cleanups: (() => void)[] = [];
+      when(
+        view.regions[0]!,
+        () => {
+          void retry.value;
+          return condition.value;
+        },
+        () => {
+          attempts += 1;
+          throw new Error("replacement failed");
+        },
+        () => {
+          const fragment = document.createDocumentFragment();
+          fragment.append(document.createTextNode("old branch"));
+          return block(fragment);
+        },
+        cleanups,
+      );
+      return block(view.fragment, cleanups);
+    });
+    const target = document.createElement("main");
+    const dispose = mount(Parent, target);
+
+    expect(() => {
+      condition.value = true;
+    }).toThrow("replacement failed");
+    expect(target.textContent).toBe("old branch");
+    expect(attempts).toBe(1);
+    expect(() => {
+      retry.value += 1;
+    }).toThrow("replacement failed");
+    expect(target.textContent).toBe("old branch");
+    expect(attempts).toBe(2);
+    dispose();
+  });
+
+  test("registers server conditional and list blocks for disposal", () => {
+    const region: ServerRegion = { kind: "server-region", index: 0, blocks: [] };
+    const cleanups: Array<() => void> = [];
+    let disposed = 0;
+    const serverTestBlock = (): Block =>
+      ({
+        nodes: [],
+        mount() {},
+        move() {},
+        enter() {},
+        leave: () => undefined,
+        retire: () => undefined,
+        dispose() {
+          disposed += 1;
+        },
+        serverHtml: () => "",
+      }) as Block;
+
+    when(region, () => true, serverTestBlock, serverTestBlock, cleanups);
+    list(
+      region,
+      () => [1, 2],
+      (item) => item,
+      serverTestBlock,
+      cleanups,
+    );
+    expect(region.blocks).toHaveLength(3);
+    expect(cleanups).toHaveLength(3);
+    for (const cleanup of cleanups.toReversed()) cleanup();
+    expect(disposed).toBe(3);
+
+    const failedCleanups: Array<() => void> = [];
+    let failedRowDisposed = 0;
+    expect(() =>
+      list(
+        { kind: "server-region", index: 1, blocks: [] },
+        () => [1, 2],
+        (item) => item,
+        (item) => {
+          if (item.value === 2) throw new Error("row failed");
+          const rendered = serverTestBlock();
+          const dispose = rendered.dispose.bind(rendered);
+          rendered.dispose = () => {
+            failedRowDisposed += 1;
+            dispose();
+          };
+          return rendered;
+        },
+        failedCleanups,
+      ),
+    ).toThrow("row failed");
+    for (const cleanup of failedCleanups.toReversed()) cleanup();
+    expect(failedRowDisposed).toBe(1);
+  });
+
   test("disposes setup-owned computed effects", () => {
     const source = $signal(1);
     let derivations = 0;
@@ -2324,6 +2423,54 @@ describe("compiled DOM runtime", () => {
       "One",
     ]);
     expect(target.querySelectorAll("li")[1]).toBe(firstNode);
+  });
+
+  test("rolls back and disposes staged keyed rows after render or mount failures", () => {
+    for (const failure of ["render", "mount"] as const) {
+      const values = $signal([0]);
+      const disposals = new Map<number, number>();
+      const definition = template("<div><!--sol:s:0--><!--sol:e:0--></div>");
+      const List = component(() => {
+        const view = instantiate(definition);
+        const cleanups: Array<() => void> = [];
+        list(
+          view.regions[0]!,
+          () => values.value,
+          (item) => item,
+          (item) => {
+            const value = item.value;
+            if (value === 2 && failure === "render") throw new Error("row render failed");
+            const fragment = document.createDocumentFragment();
+            fragment.append(document.createTextNode(String(value)));
+            const lifecycle = blockLifecycle();
+            if (value === 2 && failure === "mount") {
+              lifecycle.refMounts.push(() => {
+                throw new Error("row mount failed");
+              });
+            }
+            return block(
+              fragment,
+              [() => disposals.set(value, (disposals.get(value) ?? 0) + 1)],
+              lifecycle,
+            );
+          },
+          cleanups,
+        );
+        return block(view.fragment, cleanups);
+      });
+      const target = document.createElement("main");
+      const dispose = mount(List, target);
+
+      expect(() => {
+        values.value = [1, 2];
+      }).toThrow(failure === "render" ? "row render failed" : "row mount failed");
+      expect(target.textContent).toBe("0");
+      expect(disposals.get(1)).toBe(1);
+      expect(disposals.get(0)).toBeUndefined();
+      dispose();
+      expect(disposals.get(0)).toBe(1);
+      expect(disposals.get(1)).toBe(1);
+    }
   });
 
   test("disposes effects owned by removed keyed rows", () => {

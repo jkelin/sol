@@ -117,7 +117,9 @@ dependencies; route handles referenced by endpoint code are projected again as m
   of receiving redundant signal wrappers, while their members remain valid binding roots. Authored
   `const` compiler-managed bindings reject direct assignment, compound assignment, updates, and loop
   target writes in setup and returned JSX callbacks while retaining writable object members;
-  computed bindings receive the same callback-aware readonly validation. Initializer free references are analyzed
+  computed bindings receive the same callback-aware readonly validation through nested destructuring
+  and loop targets. Direct prop members are likewise rejected throughout assignment patterns and loop
+  targets while nested prop-owned objects retain shallow mutability. Initializer free references are analyzed
   once for self, forward, and reactive classification, recognizing explicit reactive helpers and extracted context methods,
   capturing awaits through transparent TypeScript expressions with a linear reverse-call-graph
   analysis, rejecting `for await...of` loops whose iterator progress cannot be replayed during

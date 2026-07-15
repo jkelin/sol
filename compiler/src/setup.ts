@@ -182,13 +182,16 @@ export function validateComputedWrites(
       return;
     }
     for (const member of assignmentMemberTargets(target)) check(path, member);
-    const reactiveBinding = Object.keys(t.getBindingIdentifiers(target)).find((name) => {
-      if (!bindings.has(name)) return false;
-      return path.scope.getBinding(name)?.scope.path.isProgram();
-    });
+    const reactiveBindings = Object.keys(t.getBindingIdentifiers(target)).filter(
+      (name) => bindings.has(name) && path.scope.getBinding(name)?.scope.path.isProgram(),
+    );
+    const computedBinding = reactiveBindings.find((name) => bindings.get(name) === "computed");
+    if (computedBinding) {
+      codeFrame(compiler, target, `Computed component value ${computedBinding} is readonly`);
+    }
     const insideReturned =
       returnedStatement && path.findParent((candidate) => candidate.node === returnedStatement);
-    if (reactiveBinding && !insideReturned) {
+    if (reactiveBindings.length > 0 && !insideReturned) {
       codeFrame(
         compiler,
         target,
@@ -277,6 +280,16 @@ export function validatePropWrites(
       node,
       `Component props are readonly; ${propsName} members cannot be assigned directly`,
     );
+  const checkAssignmentTarget = (path: NodePath, target: t.Node): void => {
+    if (t.isExpression(target)) {
+      if (isDirectPropMember(path, target)) reject(target);
+      return;
+    }
+    const member = assignmentMemberTargets(target).find((candidate) =>
+      isDirectPropMember(path, candidate),
+    );
+    if (member) reject(member);
+  };
   const checkMutatingCall = (
     path: NodePath,
     call: t.CallExpression | t.OptionalCallExpression,
@@ -294,8 +307,13 @@ export function validatePropWrites(
 
   traverse(file, {
     AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
-      if (t.isExpression(path.node.left) && isDirectPropMember(path, path.node.left))
-        reject(path.node.left);
+      checkAssignmentTarget(path, path.node.left);
+    },
+    ForOfStatement(path: NodePath<t.ForOfStatement>) {
+      if (!t.isVariableDeclaration(path.node.left)) checkAssignmentTarget(path, path.node.left);
+    },
+    ForInStatement(path: NodePath<t.ForInStatement>) {
+      if (!t.isVariableDeclaration(path.node.left)) checkAssignmentTarget(path, path.node.left);
     },
     UpdateExpression(path: NodePath<t.UpdateExpression>) {
       if (t.isExpression(path.node.argument) && isDirectPropMember(path, path.node.argument)) {

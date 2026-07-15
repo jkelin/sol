@@ -1911,6 +1911,28 @@ describe("compiler", () => {
     expect(result.code).toContain("): typeof count");
     expect(result.code).toContain("count.value as number");
     expect(result.code).toContain("count.value satisfies number");
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const value = 1 as typeof later;
+          let later = 2;
+          return <p>{value}:{later}</p>;
+        });`,
+        "TypeOnlyForwardReference.tsx",
+      ),
+    ).not.toThrow();
+
+    const typeOnly = compile(
+      `const App = $component(function App() {
+        let count = 1;
+        const value = 1 as typeof count;
+        return <p>{count}:{value}</p>;
+      });`,
+      "TypeOnlyDependency.tsx",
+    );
+    expect(typeOnly.code).toContain("const value = 1 as typeof count");
+    expect(typeOnly.code).not.toContain("const value = __sol_computed");
   });
 
   test("rewrites complex reactive targets inside JSX callbacks", () => {
@@ -1954,6 +1976,73 @@ describe("compiler", () => {
         "CallbackComputedWrite.tsx",
       ),
     ).toThrow("Computed component value doubled is readonly");
+  });
+
+  test("validates computed destructuring targets inside JSX callbacks", () => {
+    for (const write of [
+      "({ doubled } = { doubled: 3 })",
+      "[doubled] = [3]",
+      "({ doubled = 3 } = {})",
+      "({ ...doubled } = { value: 3 })",
+      "[source, doubled] = [2, 3]",
+      "for ({ doubled } of [{ doubled: 3 }]) {}",
+      "for ({ doubled } in { value: 3 }) {}",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() {
+            let source = 1;
+            const doubled = source * 2;
+            return <button onClick={() => { ${write}; }}>{doubled}</button>;
+          });`,
+          "CallbackComputedTarget.tsx",
+        ),
+      ).toThrow("Computed component value doubled is readonly");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          let count = 1;
+          return <button onClick={() => {
+            ({ count = 2 } = {});
+            ({ ...count } = { value: 3 });
+            for ({ count } of [{ count: 4 }]) {}
+            for ({ count } in { value: 5 }) {}
+          }}>{count}</button>;
+        });`,
+        "CallbackSignalTargets.tsx",
+      ),
+    ).not.toThrow();
+  });
+
+  test("validates readonly prop members nested in assignment targets", () => {
+    for (const write of [
+      "({ value: props.value } = { value: 2 })",
+      "[props.value] = [2]",
+      "({ value: props.value = 2 } = {})",
+      "({ ...props.value } = { value: 2 })",
+      "for (props.value of [2]) {}",
+      "for (props.value in { value: 2 }) {}",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App(props: { value: number; child: { value: number } }) {
+            return <button onClick={() => { ${write}; }}>{props.value}</button>;
+          });`,
+          "ReadonlyPropTarget.tsx",
+        ),
+      ).toThrow("Component props are readonly");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App(props: { child: { value: number } }) {
+          return <button onClick={() => { [props.child.value] = [2]; }}>{props.child.value}</button>;
+        });`,
+        "WritableNestedPropTarget.tsx",
+      ),
+    ).not.toThrow();
   });
 
   test("captures shadowed Promise.all while retaining the native aggregate optimization", () => {

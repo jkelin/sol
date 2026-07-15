@@ -2055,6 +2055,27 @@ test("hydrates primitive conditional blocks without duplicating their nodes", as
   dispose();
 });
 
+test("empty hydrated text does not mutate server DOM before a later mismatch", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { title: string }) {
+      const label = "";
+      return <main><p id="empty-rollback">{label}</p><span title={props.title}></span></main>;
+    });
+  `);
+  const App = module.App as Component<{ title: string }>;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { title: "server" });
+  const paragraph = target.querySelector("#empty-rollback")!;
+  const before = [...paragraph.childNodes];
+
+  await expectRejection(
+    hydrate(App, target, { title: "client" }),
+    "dynamic attribute title differs",
+  );
+
+  expect([...paragraph.childNodes]).toEqual(before);
+});
+
 test("reorders and disposes hydrated keyed rows in place", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

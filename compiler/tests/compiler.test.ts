@@ -2621,6 +2621,30 @@ describe("compiler", () => {
     }
   });
 
+  test("rejects mutating collection methods on computed and derived values", () => {
+    for (const statement of [
+      'value.set("a", 1)',
+      'value["delete"]("a")',
+      "value[`clear`]()",
+      'value?.set("a", 1)',
+      'value.set?.("a", 1)',
+      'value.add("a")',
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { const value = $computed(() => new Map()); ${statement}; return <p>Map</p>; });`,
+          "ComputedCollection.tsx",
+        ),
+      ).toThrow("readonly");
+    }
+    expect(() =>
+      compile(
+        `const App = $component(function App() { let source = new Map(); const result = source.set("a", 1); return <p>{result.size}</p>; });`,
+        "DerivedCollection.tsx",
+      ),
+    ).toThrow("must not call mutating collection methods");
+  });
+
   test("protects compiler identifiers and component import classification", () => {
     expect(() =>
       compile(

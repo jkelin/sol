@@ -56,8 +56,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   UTF-16 pairs across UTF-8 transport, parser-aligned raw-text line endings and leading-textarea-LF
   serialization, first-match controlled-select option selection, and the raw-text closing-tag
   transform shared with hydration validation.
-- `hydration-rendering.ts` validates and claims server block, element, and region markers, then
-  returns claimed blocks to the normal transition and retirement lifecycle after commit.
+- `hydration-rendering.ts` validates and claims server block, element, and region markers, including
+  explicit empty-text claims that preserve rollback-safe server DOM, then returns claimed blocks to
+  the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries across chained completion generations, shared promise-like validation, template
   signatures, boundary state, timeouts, and first-failure wakeups for pending waiters.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
@@ -90,7 +91,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `specificity.ts` compares matcher specificity vectors before route and HTTP dispatchers apply
   their distinct deterministic tie-breaks.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
-  document-head mounting, reactive or one-shot text rendering, case-insensitive boolean attributes
+  document-head mounting, reactive or one-shot text rendering without materializing empty text
+  nodes during hydration, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, boolean-valued enumerated
   attribute tokens, unchanged-order keyed-list updates without DOM moves, consistent text-control
   stringification and shared U+0000 normalization for text and dynamic attributes across server

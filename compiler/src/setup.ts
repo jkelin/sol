@@ -23,7 +23,10 @@ import { codeFrame, mappedCode } from "./diagnostics.ts";
 import { compileBlockBody } from "./jsx.ts";
 
 const mutatingCollectionMethods = new Set([
+  "add",
+  "clear",
   "copyWithin",
+  "delete",
   "fill",
   "pop",
   "push",
@@ -31,6 +34,7 @@ const mutatingCollectionMethods = new Set([
   "shift",
   "sort",
   "splice",
+  "set",
   "unshift",
 ]);
 

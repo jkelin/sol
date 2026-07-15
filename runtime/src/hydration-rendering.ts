@@ -409,13 +409,13 @@ export function hydratedBlock(
   };
 }
 
-export function claimHydratedText(region: Region): Text | undefined {
+export function claimHydratedText(region: Region): Text | null | undefined {
   if (!isHydratedRegion(region)) return undefined;
   const nodes: Node[] = [];
   for (let node = region.start.nextSibling; node && node !== region.end; node = node.nextSibling) {
     nodes.push(node);
   }
-  if (nodes.length === 0) return undefined;
+  if (nodes.length === 0) return null;
   if (nodes.length !== 1 || nodes[0]!.nodeType !== Node.TEXT_NODE) {
     return mismatch("dynamic text region differs");
   }

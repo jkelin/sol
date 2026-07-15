@@ -109,20 +109,29 @@ export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[
     return;
   }
   const claimed = claimHydratedText(region);
-  const textNode = claimed ?? document.createTextNode("");
-  if (!claimed) region.end.parentNode?.insertBefore(textNode, region.end);
-  let hydrating = Boolean(claimed);
+  let textNode = claimed ?? undefined;
+  let hydrating = claimed !== undefined;
   cleanups.push(
     runtimeEffect(() => {
       const value = displayValue(getValue());
       if (hydrating) {
         hydrating = false;
-        if (textNode.data !== value) {
+        if ((textNode?.data ?? "") !== value) {
           throw new HydrationMismatchError("dynamic text differs");
         }
         return;
       }
-      textNode.data = value;
+      if (value === "") {
+        textNode?.remove();
+        textNode = undefined;
+        return;
+      }
+      if (!textNode) {
+        textNode = region.end.ownerDocument.createTextNode(value);
+        region.end.parentNode?.insertBefore(textNode, region.end);
+      } else {
+        textNode.data = value;
+      }
     }),
   );
 }
@@ -139,11 +148,18 @@ export function staticText(region: Region, value: unknown): void {
     return;
   }
   const claimed = claimHydratedText(region);
-  if (claimed) {
-    if (claimed.data !== displayed) throw new HydrationMismatchError("dynamic text differs");
+  if (claimed !== undefined) {
+    if ((claimed?.data ?? "") !== displayed) {
+      throw new HydrationMismatchError("dynamic text differs");
+    }
     return;
   }
-  region.end.parentNode?.insertBefore(document.createTextNode(displayed), region.end);
+  if (displayed !== "") {
+    region.end.parentNode?.insertBefore(
+      region.end.ownerDocument.createTextNode(displayed),
+      region.end,
+    );
+  }
 }
 
 export function rawText(

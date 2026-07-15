@@ -68,6 +68,7 @@ export interface CompilerContext {
   >;
   declarationHelperNamespaceImports: Set<t.Identifier>;
   requestHelpers: Map<string, "$query" | "$mutation" | "$form">;
+  requestControllerCalls: WeakSet<t.CallExpression>;
   runtimeHelpers: Set<RuntimeHelper>;
   runtimeHelperOwners: Map<RuntimeHelper, Set<t.VariableDeclarator>>;
   unownedRuntimeHelpers: Set<RuntimeHelper>;

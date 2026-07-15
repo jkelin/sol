@@ -1573,9 +1573,9 @@ describe("compiler", () => {
       "Form.tsx",
     );
 
-    expect(result.code).toContain('"submit", () => ((controller.value).submit)');
-    expect(result.code).toContain('"input", () => ((controller.value).handleInput)');
-    expect(result.code).toContain('"focusout", () => ((controller.value).handleBlur)');
+    expect(result.code).toContain('"submit", () => ((controller).submit)');
+    expect(result.code).toContain('"input", () => ((controller).handleInput)');
+    expect(result.code).toContain('"focusout", () => ((controller).handleBlur)');
     expect(result.code).not.toContain('$form="');
   });
 
@@ -2735,6 +2735,52 @@ describe("compiler", () => {
         "UnsupportedDeclaration.tsx",
       ),
     ).toThrow("must use let or const");
+  });
+
+  test("rejects reassignment of authored const component bindings", () => {
+    for (const write of [
+      "state = { n: 1 }",
+      "state ||= { n: 1 }",
+      "state++",
+      "for (state of [{ n: 1 }]) {}",
+      "for (state in { key: 1 }) {}",
+      "function update() { state = { n: 1 }; }",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { const state = { n: 0 }; ${write}; return <p>{state.n}</p>; });`,
+          "ConstWrite.tsx",
+        ),
+      ).toThrow("const binding state cannot be reassigned");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() { const state = { n: 0 }; state.n += 1; return <p>{state.n}</p>; });`,
+        "ConstMemberWrite.tsx",
+      ),
+    ).not.toThrow();
+  });
+
+  test("keeps constant request controllers out of redundant signals", () => {
+    const result = compile(
+      `import { $form, $mutation, $query } from "@soljs/sol";
+       const App = $component(function App() {
+         const form = $form({ schema: (value: { title: string }) => value, defaultValues: { title: "" } }, () => {});
+         const query = $query({ queryKey: "stable", query: async () => 1 });
+         const mutation = $mutation({ mutation: async () => 2 });
+         let replaceable = $query({ queryKey: "replaceable", query: async () => 3 });
+         return <p>{form.values.title}{query.data}{mutation.data}{replaceable.data}</p>;
+       });`,
+      "StableRequests.tsx",
+    );
+
+    expect(result.code).not.toMatch(/const (?:form|query|mutation) = __sol_signal\(/);
+    expect(result.code).toContain("query.data");
+    expect(result.code).toContain("mutation.data");
+    expect(result.code).toContain("form.values.title");
+    expect(result.code).toMatch(/const replaceable = __sol_signal\(__sol_query\(/);
+    expect(result.code).toContain("replaceable.value.data");
   });
 
   test("rejects delete operations on computed values", () => {

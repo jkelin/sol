@@ -155,6 +155,8 @@ export function compileBinding(
       codeFrame(compiler, expression, "$bind identifiers must be compiler-managed component state");
     if (kind === "computed")
       codeFrame(compiler, expression, "$bind cannot target a computed value");
+    if (kind === "controller")
+      codeFrame(compiler, expression, "$bind cannot replace a request controller");
     const reference = expressionCode(expression, scope);
     return {
       read: reference,

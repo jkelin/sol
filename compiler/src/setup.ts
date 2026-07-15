@@ -212,6 +212,38 @@ export function validateComputedWrites(
   });
 }
 
+function validateConstSignalWrites(
+  compiler: CompilerContext,
+  setup: t.Statement[],
+  names: ReadonlySet<string>,
+): void {
+  if (names.size === 0) return;
+  const file = t.file(t.program(setup.map((statement) => t.cloneNode(statement, true))));
+  const check = (path: NodePath, target: t.Node): void => {
+    const name = Object.keys(t.getBindingIdentifiers(target)).find(
+      (candidate) =>
+        names.has(candidate) && path.scope.getBinding(candidate)?.scope.path.isProgram(),
+    );
+    if (name) {
+      codeFrame(compiler, target, `Component setup const binding ${name} cannot be reassigned`);
+    }
+  };
+  traverse(file, {
+    AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
+      check(path, path.node.left);
+    },
+    UpdateExpression(path: NodePath<t.UpdateExpression>) {
+      check(path, path.node.argument);
+    },
+    ForOfStatement(path: NodePath<t.ForOfStatement>) {
+      if (!t.isVariableDeclaration(path.node.left)) check(path, path.node.left);
+    },
+    ForInStatement(path: NodePath<t.ForInStatement>) {
+      if (!t.isVariableDeclaration(path.node.left)) check(path, path.node.left);
+    },
+  });
+}
+
 export function validatePropWrites(
   compiler: CompilerContext,
   body: t.BlockStatement,
@@ -331,6 +363,7 @@ export function compileSetup(
     ReactiveKind | "function" | "stable"
   >();
   const stablePrimitiveNames = new Set<string>();
+  const constSignalNames = new Set<string>();
   const remainingDataNames = new Set<string>();
   const componentBindingNames = new Set<string>();
   for (const statement of setup) {
@@ -374,6 +407,21 @@ export function compileSetup(
       }
       if (t.isCallExpression(initializer) && compiler.refCreatorCalls.has(initializer)) {
         declarationKinds.set(declaration, "stable");
+        continue;
+      }
+      const unwrappedInitializer =
+        initializer && t.isExpression(initializer)
+          ? unwrapTransparentExpression(initializer)
+          : undefined;
+      if (
+        statement.kind === "const" &&
+        unwrappedInitializer &&
+        t.isCallExpression(unwrappedInitializer) &&
+        compiler.requestControllerCalls.has(unwrappedInitializer)
+      ) {
+        declarationKinds.set(declaration, "controller");
+        bindings.set(declaration.id.name, "controller");
+        constSignalNames.add(declaration.id.name);
         continue;
       }
       if (
@@ -421,6 +469,9 @@ export function compileSetup(
               : "signal";
       declarationKinds.set(declaration, kind);
       bindings.set(declaration.id.name, kind);
+      if (statement.kind === "const" && kind === "signal") {
+        constSignalNames.add(declaration.id.name);
+      }
       if (
         kind === "computed" &&
         initializer &&
@@ -431,9 +482,12 @@ export function compileSetup(
     }
   }
 
+  validateConstSignalWrites(compiler, setup, constSignalNames);
   validateComputedWrites(compiler, setup, bindings);
   const scope = new Map<string, string>();
-  for (const name of bindings.keys()) scope.set(name, `${name}.value`);
+  for (const [name, kind] of bindings) {
+    scope.set(name, kind === "controller" ? name : `${name}.value`);
+  }
   for (const name of stablePrimitiveNames) scope.set(name, name);
   const generated: string[] = [];
 
@@ -452,7 +506,7 @@ export function compileSetup(
         );
       }
       const kind = declarationKinds.get(declaration)!;
-      if (kind === "function" || kind === "stable") {
+      if (kind === "function" || kind === "stable" || kind === "controller") {
         generated.push(
           mappedCode(
             compiler,
@@ -606,6 +660,7 @@ function instrumentRequestSources(
       if (!t.isIdentifier(call.callee) || !helper || path.scope.hasBinding(call.callee.name)) {
         return;
       }
+      compiler.requestControllerCalls.add(call);
       if (helper === "$form") {
         useRuntimeHelper(compiler, "__sol_form");
         call.arguments.unshift(t.identifier("__sol_frame"));

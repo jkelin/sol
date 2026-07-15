@@ -50,8 +50,10 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures,
   including the constant-time template-signature index, value-sensitive element metadata, and
-  explicit ordinary and target-specific endpoint helper usage. Component-owned template and helper
-  records let client projection discard generated artifacts whose server-only owners were pruned.
+  explicit ordinary and target-specific endpoint helper usage. AST-identity records distinguish
+  compiler-instrumented request-controller calls from ordinary calls after lowering. Component-owned
+  template and helper records let client projection discard generated artifacts whose server-only
+  owners were pruned.
 - `module-analysis.ts` validates every lexical binding, including nested scopes, and classifies framework helpers, declarations, builtins,
   Head, Link, refs, and components by lexical binding identity.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
@@ -105,8 +107,11 @@ dependencies; route handles referenced by endpoint code are projected again as m
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned
   form/query/mutation helpers, and component
   factories while preserving `createRef()` objects and immutable primitive constants as
-  non-reactive values, analyzing each initializer's free references once for self, forward, and
-  reactive classification, recognizing explicit reactive helpers and extracted context methods,
+  non-reactive values. Constant form/query/mutation controllers remain direct stable objects instead
+  of receiving redundant signal wrappers, while their members remain valid binding roots. Authored
+  `const` compiler-managed bindings reject direct assignment, compound assignment, updates, and loop
+  target writes while retaining writable object members. Initializer free references are analyzed
+  once for self, forward, and reactive classification, recognizing explicit reactive helpers and extracted context methods,
   capturing awaits through transparent TypeScript expressions with a linear reverse-call-graph
   analysis, attaching authored locations to
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read

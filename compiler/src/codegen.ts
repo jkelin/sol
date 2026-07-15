@@ -152,7 +152,7 @@ export function keyCode(context: CompilerContext, attribute: t.JSXAttribute, sco
   return expressionCode(expressionAttribute(context, attribute), scope);
 }
 
-export type ReactiveKind = "signal" | "computed";
+export type ReactiveKind = "signal" | "computed" | "controller";
 
 export function isReservedCompilerName(name: string): boolean {
   return name.startsWith("__sol_");

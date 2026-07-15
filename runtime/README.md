@@ -106,7 +106,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   server rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API
   newline normalization, and failure-safe prepare/commit reconciliation for conditional and
-  keyed-list updates and Context Provider mounts.
+  keyed-list updates and Context Provider mounts. Provider data is cached in a frame-owned computed
+  snapshot, so multiple consumer operations share one evaluation until a reactive dependency changes.
 - `refs.ts` defines typed callback/object refs, `createRef()`, single-evaluation mount-phase ref
   validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive cross-realm element or

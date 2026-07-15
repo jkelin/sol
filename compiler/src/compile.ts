@@ -87,6 +87,7 @@ export function compile(
     declarationHelperCalls: new WeakMap(),
     declarationHelperNamespaceImports: new Set(),
     requestHelpers: new Map(),
+    requestControllerCalls: new WeakSet(),
     runtimeHelpers: new Set(),
     runtimeHelperOwners: new Map(),
     unownedRuntimeHelpers: new Set(),

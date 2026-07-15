@@ -2722,6 +2722,45 @@ describe("compiled DOM runtime", () => {
     expect(disposals).toBe(1);
   });
 
+  test("caches Context Provider data across consumer operations", () => {
+    const view = instantiate(template("<!--sol:s:0--><!--sol:e:0-->"));
+    const context = $context<{ label: string; count: number }>();
+    const source = $signal(1);
+    let evaluations = 0;
+    let provided!: { label: string; count: number };
+    const cleanups: Array<() => void> = [];
+
+    contextProvider(
+      view.regions[0]!,
+      context as Context<object>,
+      () => {
+        evaluations += 1;
+        return { label: `value-${source.value}`, count: source.value };
+      },
+      (frame) => {
+        provided = contextUse(context, frame, false) as { label: string; count: number };
+        return block(document.createDocumentFragment());
+      },
+      cleanups,
+      rootFrame(),
+    );
+
+    expect(evaluations).toBe(1);
+    expect(provided.label).toBe("value-1");
+    expect(provided.count).toBe(1);
+    expect("label" in provided).toBe(true);
+    expect(Object.keys(provided)).toEqual(["label", "count"]);
+    expect(evaluations).toBe(1);
+
+    source.value = 2;
+    expect(evaluations).toBe(2);
+    expect(provided.label).toBe("value-2");
+    expect(provided.count).toBe(2);
+    expect(Object.keys(provided)).toEqual(["label", "count"]);
+    expect(evaluations).toBe(2);
+    cleanups.toReversed().forEach((cleanup) => cleanup());
+  });
+
   test("ErrorBoundary renders its fallback with both the child error and teardown failure", () => {
     for (const mode of ["browser", "server"] as const) {
       const primary = new Error(`${mode} primary`);

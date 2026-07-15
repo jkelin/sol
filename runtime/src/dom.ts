@@ -2,6 +2,7 @@ import type { Component, Context } from "./components.ts";
 import {
   $signal,
   batch,
+  computedInFrame,
   isObject,
   reactive,
   rethrowWithCleanups,
@@ -1021,9 +1022,9 @@ export function contextProvider(
     }
     return data;
   };
-  readData();
+  const data = computedInFrame(readData, frame);
   const contexts = new Map(frame.contexts);
-  contexts.set(key, readData);
+  contexts.set(key, () => data.value);
   const childFrame: RenderFrame = { ...frame, contexts };
   const rendered = render(frameForRegion(childFrame, region));
   try {

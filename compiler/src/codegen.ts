@@ -149,15 +149,29 @@ export function validateReservedIdentifier(
   }
 }
 
-export function validateErasedFunctionArguments(
+export function validateErasedFunctionScope(
   compiler: CompilerContext,
   declaration: t.FunctionExpression,
+  preserveName = false,
 ): void {
   const cloned = t.cloneNode(declaration, true);
   const file = t.file(t.program([t.expressionStatement(cloned)]));
   traverse(file, {
     ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
-      if (!t.isIdentifier(path.node, { name: "arguments" })) return;
+      if (!t.isIdentifier(path.node)) return;
+      if (
+        !preserveName &&
+        cloned.id &&
+        path.node.name === cloned.id.name &&
+        path.scope.getBinding(path.node.name)?.identifier === cloned.id
+      ) {
+        codeFrame(
+          compiler,
+          path.node,
+          `Function name ${path.node.name} cannot be used because its binding is compiled away`,
+        );
+      }
+      if (path.node.name !== "arguments") return;
       let owner = path.getFunctionParent();
       while (owner?.isArrowFunctionExpression()) owner = owner.getFunctionParent();
       if (owner?.node === cloned) {

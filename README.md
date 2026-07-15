@@ -275,9 +275,10 @@ const List = $component(function List() {
 
 The runtime adds the phase classes temporarily and waits for the CSS animations or transitions they create. Leave animations keep their DOM mounted until every transitioned descendant finishes. Re-adding the same conditional branch or keyed-list key cancels its leave and reuses the existing DOM. Route pages use the same directive on their intrinsic root. Reduced-motion preferences and browsers without `Element.getAnimations()` fall back to immediate insertion and removal.
 
-Compiled list callbacks accept an item and an optional index identifier. Component, list, and async
-renderer function boundaries are lowered away, so references to their own `arguments` object are
-rejected instead of producing an unbound generated reference.
+Compiled list calls accept exactly one synchronous, non-generator inline callback with an item and
+an optional index identifier. Component, list, and async renderer function boundaries are lowered
+away, so references to a discarded callback name or to an erased function's own `arguments` object
+are rejected instead of producing unbound generated references.
 
 Enable compilation in Vite:
 

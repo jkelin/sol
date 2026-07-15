@@ -11,7 +11,7 @@ import {
   normalizeJsxText,
   region,
   staticAttributeValue,
-  validateErasedFunctionArguments,
+  validateErasedFunctionScope,
   type ReactiveKind,
 } from "./codegen.ts";
 import {
@@ -53,6 +53,16 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "reversed",
   "selected",
 ]);
+
+function validateSynchronousCallback(
+  compiler: CompilerContext,
+  expression: t.ArrowFunctionExpression | t.FunctionExpression,
+  subject: string,
+): void {
+  if (expression.async || (t.isFunctionExpression(expression) && expression.generator)) {
+    codeFrame(compiler, expression, `${subject} must be synchronous non-generator functions`);
+  }
+}
 
 function asciiLower(value: string): string {
   return value.replaceAll(/[A-Z]/g, (character) => character.toLowerCase());
@@ -234,7 +244,8 @@ export function renderFunctionFactory(
   if (!t.isArrowFunctionExpression(expression) && !t.isFunctionExpression(expression)) {
     codeFrame(compiler, expression, "Error and data renderers must be inline functions");
   }
-  if (t.isFunctionExpression(expression)) validateErasedFunctionArguments(compiler, expression);
+  validateSynchronousCallback(compiler, expression, "Error and data renderers");
+  if (t.isFunctionExpression(expression)) validateErasedFunctionScope(compiler, expression);
   if (expression.params.length !== 1 || !t.isIdentifier(expression.params[0])) {
     codeFrame(
       compiler,
@@ -879,10 +890,14 @@ export function mapDetails(
     !t.isExpression(expression.callee.object)
   )
     return undefined;
+  if (expression.arguments.length !== 1) {
+    codeFrame(compiler, expression, "JSX .map() accepts exactly one inline callback argument");
+  }
   const callback = expression.arguments[0];
   if (!t.isArrowFunctionExpression(callback) && !t.isFunctionExpression(callback)) {
     codeFrame(compiler, expression, "JSX .map() requires an inline function");
   }
+  validateSynchronousCallback(compiler, callback, "JSX .map() callbacks");
   if (callback.params.length > 2) {
     codeFrame(
       compiler,
@@ -890,7 +905,7 @@ export function mapDetails(
       "JSX .map() callbacks accept only item and index parameters",
     );
   }
-  if (t.isFunctionExpression(callback)) validateErasedFunctionArguments(compiler, callback);
+  if (t.isFunctionExpression(callback)) validateErasedFunctionScope(compiler, callback);
   const [itemParameter, indexParameter] = callback.params;
   if (!t.isIdentifier(itemParameter) || (indexParameter && !t.isIdentifier(indexParameter))) {
     codeFrame(compiler, callback, "JSX .map() parameters must be identifiers");

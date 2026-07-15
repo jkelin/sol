@@ -879,6 +879,98 @@ describe("compiler", () => {
     ).toThrow("JSX .map() callbacks accept only item and index parameters");
   });
 
+  test("rejects extra JSX map call arguments", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map(item => <li key={item}>{item}</li>, recordSideEffect())}</ul>;
+        });`,
+        "MapArguments.tsx",
+      ),
+    ).toThrow("JSX .map() accepts exactly one inline callback argument");
+  });
+
+  test("rejects named JSX map callback self-references", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map(function render(item) {
+            return <li key={item}>{render.name}</li>;
+          })}</ul>;
+        });`,
+        "NamedMap.tsx",
+      ),
+    ).toThrow("Function name render cannot be used because its binding is compiled away");
+  });
+
+  test("rejects named renderer self-references", () => {
+    expect(() =>
+      compile(
+        `import { Await } from "@soljs/sol";
+        const App = $component(function App() {
+          return <Await $promise={Promise.resolve(1)}>{function render(value) {
+            return <p>{render.name}:{value}</p>;
+          }}</Await>;
+        });`,
+        "NamedRenderer.tsx",
+      ),
+    ).toThrow("Function name render cannot be used because its binding is compiled away");
+  });
+
+  test("rejects async JSX map callbacks", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map(async item => <li key={item}>{item}</li>)}</ul>;
+        });`,
+        "AsyncMap.tsx",
+      ),
+    ).toThrow("JSX .map() callbacks must be synchronous non-generator functions");
+  });
+
+  test("rejects generator JSX map callbacks", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map(function* (item) {
+            return <li key={item}>{item}</li>;
+          })}</ul>;
+        });`,
+        "GeneratorMap.tsx",
+      ),
+    ).toThrow("JSX .map() callbacks must be synchronous non-generator functions");
+  });
+
+  test("rejects async data renderers", () => {
+    expect(() =>
+      compile(
+        `import { Await } from "@soljs/sol";
+        const App = $component(function App() {
+          return <Await $promise={Promise.resolve(1)}>{async value => <p>{value}</p>}</Await>;
+        });`,
+        "AsyncRenderer.tsx",
+      ),
+    ).toThrow("Error and data renderers must be synchronous non-generator functions");
+  });
+
+  test("rejects generator data renderers", () => {
+    expect(() =>
+      compile(
+        `import { Await } from "@soljs/sol";
+        const App = $component(function App() {
+          return <Await $promise={Promise.resolve(1)}>{function* (value) {
+            return <p>{value}</p>;
+          }}</Await>;
+        });`,
+        "GeneratorRenderer.tsx",
+      ),
+    ).toThrow("Error and data renderers must be synchronous non-generator functions");
+  });
+
   test("rejects arguments references from compiled-away component scopes", () => {
     expect(() =>
       compile(

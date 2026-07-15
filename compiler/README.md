@@ -71,14 +71,16 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `http-path.ts` validates and canonicalizes literal HTTP endpoint paths for emitted definitions and
   manifest collision checks.
 - `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
-  reusable Babel-to-code helpers, including validation for `arguments` references owned by erased
-  function boundaries.
+  reusable Babel-to-code helpers, including validation for `arguments` and named self-references
+  owned by erased function boundaries.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
   conditionals, and child expressions into source-marker-independent, signature-indexed interned
   templates and reactive or one-shot runtime operations, including single-owner form bindings,
   ASCII-case-insensitive unique DOM attribute targets and private-marker reservation, unique
   case-sensitive component properties, property-backed text-control values, and runtime-validated
-  Link navigation options. Keyed-list callbacks accept only item and optional index identifiers.
+  Link navigation options. Keyed-list calls accept exactly one synchronous, non-generator inline
+  callback with only item and optional index identifiers; async-boundary renderers follow the same
+  synchronous, non-generator restriction.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly
   mutations in dot or bracket syntax, and rewrites local state, derived values, props,
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned

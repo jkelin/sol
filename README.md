@@ -36,7 +36,7 @@ in `server/`. Use `bun run build:example:inspect` for a client-only readable bui
 
 ## Build and publish packages
 
-`bun run build:packages` compiles `@soljs/sol`, `@soljs/compiler`, and `@soljs/solkit` into each package's `dist/` directory with JavaScript, declarations, declaration maps, and source maps. `bun run publish:packages` uses `bun publish` to publish those three public packages to npm in dependency order. Each generated package runs its build through Bun's `prepublishOnly` lifecycle before packing, so publishing cannot skip compilation.
+`bun run build:packages` compiles `@soljs/sol`, `@soljs/compiler`, and `@soljs/solkit` into each package's `dist/` directory with JavaScript, declarations, declaration maps, and source maps. The root `prepublishOnly` lifecycle runs that complete build before `bun run publish:packages` uses `bun publish` to publish the three generated packages to npm in dependency order. Each generated package also rebuilds its source package through its own `prepublishOnly` lifecycle before packing, so publishing cannot start with missing or stale output.
 
 The **Publish npm packages** GitHub Actions workflow can only be dispatched from `master` by `jkelin`. Choose its patch or minor input to run the corresponding publish job. Both jobs verify the repository, derive one synchronized version from npm, and publish with Bun. Add a granular npm automation token with publish access as the `NPM_TOKEN` repository secret; the workflow passes it to Bun as `NPM_CONFIG_TOKEN` only for the publish step.
 

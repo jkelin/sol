@@ -17,6 +17,7 @@
     "build:example:inspect": "bun run --cwd example build:inspect",
     "build:web": "bun run --cwd web build",
     "build:packages": "bun run clean:packages && bun run --cwd runtime build && bun run --cwd compiler build && bun run --cwd solkit build",
+    "prepublishOnly": "bun run build:packages",
     "clean:packages": "bun -e \"import { rm } from 'node:fs/promises'; await Promise.all(['runtime/dist', 'compiler/dist', 'solkit/dist'].map(path => rm(path, { recursive: true, force: true })))\"",
     "start:example": "bun run --cwd example start",
     "start:web": "bun run --cwd web start",
@@ -31,7 +32,7 @@
     "test": "bun run --cwd runtime test && bun run --cwd compiler test && bun run --cwd solkit test && bun run --cwd web test",
     "test:web": "bun run --cwd web test",
     "test:e2e": "bun run build && bun run --cwd example test:e2e && bun run --cwd web test:e2e",
-    "publish:packages": "bun publish --cwd runtime/dist && bun publish --cwd compiler/dist && bun publish --cwd solkit/dist",
+    "publish:packages": "bun run prepublishOnly && bun publish --cwd runtime/dist && bun publish --cwd compiler/dist && bun publish --cwd solkit/dist",
     "verify": "bun run format && bun run lint:fix && bun run lint:types && bun run test",
     "verify:ci": "bun run format:check && bun run lint && bun run test"
   },

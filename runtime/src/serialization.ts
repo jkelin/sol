@@ -334,15 +334,21 @@ function validateEncodedObject(value: unknown, objectCount: number, index: numbe
       return;
     }
     case "object":
-    case "null-object":
+    case "null-object": {
       validateKeys(object, ["type", "values"], path);
+      const keys = new Set<string>();
       for (const [tupleIndex, tuple] of payloadTuples(object.values, `${path}.values`).entries()) {
         if (typeof tuple[0] !== "string") {
           invalidPayload(`${path}.values[${tupleIndex}] has a non-string key`);
         }
+        if (keys.has(tuple[0])) {
+          invalidPayload(`${path}.values[${tupleIndex}] has duplicate object key ${tuple[0]}`);
+        }
+        keys.add(tuple[0]);
         validateEncodedValue(tuple[1], objectCount, `${path}.values[${tupleIndex}][1]`);
       }
       return;
+    }
     case "date":
       validateKeys(object, ["type", "value"], path);
       if (!Object.prototype.hasOwnProperty.call(object, "value")) {

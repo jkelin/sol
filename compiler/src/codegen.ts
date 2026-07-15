@@ -156,6 +156,11 @@ export function validateErasedFunctionScope(
 ): void {
   const cloned = t.cloneNode(declaration, true);
   const file = t.file(t.program([t.expressionStatement(cloned)]));
+  const belongsToErasedFunction = (path: NodePath): boolean => {
+    let owner = path.getFunctionParent();
+    while (owner?.isArrowFunctionExpression()) owner = owner.getFunctionParent();
+    return owner?.node === cloned;
+  };
   traverse(file, {
     ReferencedIdentifier(path: NodePath<t.Identifier | t.JSXIdentifier>) {
       if (!t.isIdentifier(path.node)) return;
@@ -172,13 +177,24 @@ export function validateErasedFunctionScope(
         );
       }
       if (path.node.name !== "arguments") return;
-      let owner = path.getFunctionParent();
-      while (owner?.isArrowFunctionExpression()) owner = owner.getFunctionParent();
-      if (owner?.node === cloned) {
+      if (belongsToErasedFunction(path)) {
         codeFrame(
           compiler,
           path.node,
           "arguments cannot be used because its function scope is compiled away",
+        );
+      }
+    },
+    MetaProperty(path: NodePath<t.MetaProperty>) {
+      if (
+        t.isIdentifier(path.node.meta, { name: "new" }) &&
+        t.isIdentifier(path.node.property, { name: "target" }) &&
+        belongsToErasedFunction(path)
+      ) {
+        codeFrame(
+          compiler,
+          path.node,
+          "new.target cannot be used because its function scope is compiled away",
         );
       }
     },

@@ -1012,6 +1012,56 @@ describe("compiler", () => {
     ).not.toThrow();
   });
 
+  test("rejects new.target references from compiled-away component scopes", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const target = new.target;
+          return <p>{String(target)}</p>;
+        });`,
+        "ComponentNewTarget.tsx",
+      ),
+    ).toThrow("new.target cannot be used because its function scope is compiled away");
+
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          function target() { return new.target; }
+          return <p>{String(target())}</p>;
+        });`,
+        "NestedNewTarget.tsx",
+      ),
+    ).not.toThrow();
+  });
+
+  test("rejects new.target references from compiled-away map callback scopes", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          const items = [1];
+          return <ul>{items.map(function (item) {
+            return <li key={item}>{String(new.target)}</li>;
+          })}</ul>;
+        });`,
+        "MapNewTarget.tsx",
+      ),
+    ).toThrow("new.target cannot be used because its function scope is compiled away");
+  });
+
+  test("rejects new.target references from compiled-away renderer scopes", () => {
+    expect(() =>
+      compile(
+        `import { Await } from "@soljs/sol";
+        const App = $component(function App() {
+          return <Await $promise={Promise.resolve(1)}>{function (value) {
+            return <p>{String(new.target)}:{value}</p>;
+          }}</Await>;
+        });`,
+        "RendererNewTarget.tsx",
+      ),
+    ).toThrow("new.target cannot be used because its function scope is compiled away");
+  });
+
   test("rejects arguments references from compiled-away renderer scopes", () => {
     expect(() =>
       compile(

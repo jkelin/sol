@@ -279,8 +279,8 @@ The runtime adds the phase classes temporarily and waits for the CSS animations 
 
 Compiled list calls accept exactly one synchronous, non-generator inline callback with an item and
 an optional index identifier. Component, list, and async renderer function boundaries are lowered
-away, so references to a discarded callback name or to an erased function's own `arguments` object
-are rejected instead of producing unbound generated references.
+away, so references to a discarded callback name, an erased function's own `arguments` object, or
+its `new.target` meta-property are rejected instead of producing invalid generated references.
 
 Enable compilation in Vite:
 
@@ -410,7 +410,8 @@ when it exceeds the render timeout.
 
 Captured async data supports primitives, sparse and cyclic graphs, shared references, bigint,
 special numbers, Date, RegExp, URL, Map, Set, Error, and plain or null-prototype objects. Functions,
-symbols, DOM nodes, accessors, typed buffers, and custom-prototype instances are rejected. Awaited
+symbols, DOM nodes, accessors, typed buffers, custom-prototype instances, and non-canonical payloads
+such as duplicate object keys are rejected. Awaited
 expressions in compiled components, awaited local helper chains, and lazy `<Await $promise={...}>`
 expressions are captured at module-qualified sites. Initial `$query()` promises participate in the
 same request-isolated capture and replay, preventing a duplicate browser fetch after server data has

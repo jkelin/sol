@@ -56,8 +56,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   signatures, boundary state, and timeouts.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes, rejecting hidden lossy built-in extensions and
-  untagged non-finite payload numbers, and preserving descriptor guarantees and built-in Error
-  prototypes.
+  untagged non-finite payload numbers plus duplicate object keys, while preserving descriptor
+  guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, prepared
   endpoint indexes, JSON response envelopes with canonical array-index validation, snapshotted
@@ -171,8 +171,8 @@ must be configured before application navigation begins.
 
 The graph serializer preserves `undefined`, sparse arrays, special numbers, bigint, Date, RegExp,
 URL, Map, Set, Error, cycles, aliases, and plain or null-prototype objects. It rejects executable or
-host-specific values and plain-object properties with non-default descriptors, and the embedded JSON
-escapes script-closing characters.
+host-specific values, plain-object properties with non-default descriptors, and non-canonical
+payloads containing duplicate object keys; the embedded JSON escapes script-closing characters.
 
 ## Document head
 

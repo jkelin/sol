@@ -6,6 +6,25 @@ function encodedGraph(object: unknown, root: unknown = null): string {
 }
 
 describe("SSR graph serialization", () => {
+  for (const type of ["object", "null-object"] as const) {
+    test(`rejects duplicate ${type} keys`, () => {
+      expect(() =>
+        deserializeGraph(
+          encodedGraph(
+            {
+              type,
+              values: [
+                ["role", "user"],
+                ["role", "admin"],
+              ],
+            },
+            { $: "ref", v: 0 },
+          ),
+        ),
+      ).toThrow("duplicate object key role");
+    });
+  }
+
   test("round trips cycles, aliases, sparse arrays, and null prototypes", () => {
     const shared = { label: "shared" };
     const sparse: unknown[] = [];

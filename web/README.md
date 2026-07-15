@@ -2,6 +2,8 @@
 
 The `web` workspace is the Sunblock-styled public website and documentation application for Sol. It documents the compiler, reactivity, forms, cached queries and mutations, server RPC and HTTP declarations, routing, async composition, and transitions. It is built with Sol, Solkit multipage static rendering, Vite, Tailwind CSS v4, and a build-time Markdown compiler.
 
+The production site is published at [soljs.dev](https://soljs.dev) through GitHub Pages.
+
 ## Commands
 
 ```bash

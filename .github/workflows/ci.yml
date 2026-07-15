@@ -78,7 +78,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build website
         env:
-          BASE_URL: /sol/
+          BASE_URL: /
         run: bun run build:web
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6

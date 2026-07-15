@@ -2,6 +2,8 @@
 
 An experimental JSX framework that compiles components into static HTML templates and fine-grained DOM operations. Component setup runs once per mounted instance; reactive changes patch only the DOM that depends on them.
 
+Website and documentation: [soljs.dev](https://soljs.dev)
+
 ## Install
 
 ```bash

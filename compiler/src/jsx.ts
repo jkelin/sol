@@ -24,6 +24,7 @@ import { codeFrame, mappedCode, unmappedCode } from "./diagnostics.ts";
 import { escapeAttribute, escapeText, VOID_ELEMENTS } from "./html.ts";
 
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea", "title"]);
+const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
 const BOOLEAN_ATTRIBUTES = new Set([
   "allowFullScreen",
   "async",
@@ -522,6 +523,36 @@ export function compileIntrinsicElement(
     inputTypeAttribute && t.isJSXAttribute(inputTypeAttribute)
       ? staticAttributeValue(compiler, inputTypeAttribute)
       : undefined;
+  const bindAttributes = node.openingElement.attributes.filter(
+    (attribute): attribute is t.JSXAttribute =>
+      t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "$bind" }),
+  );
+  if (bindAttributes.length > 1) {
+    codeFrame(compiler, bindAttributes[1]!, "Use only one $bind attribute on an element");
+  }
+  let bindProperty: "value" | "checked" | undefined;
+  if (bindAttributes.length === 1) {
+    const bindAttribute = bindAttributes[0]!;
+    if (!["input", "textarea", "select"].includes(tag)) {
+      codeFrame(
+        compiler,
+        bindAttribute,
+        "$bind is only valid on input, textarea, and select elements",
+      );
+    }
+    if (tag === "input" && inputTypeAttribute && inputType === undefined) {
+      codeFrame(compiler, inputTypeAttribute, "$bind requires a static input type");
+    }
+    bindProperty =
+      tag === "input" && (inputType === "checkbox" || inputType === "radio") ? "checked" : "value";
+    const competingAttribute = node.openingElement.attributes.find(
+      (attribute) =>
+        t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: bindProperty }),
+    );
+    if (competingAttribute) {
+      codeFrame(compiler, competingAttribute, `$bind already controls ${bindProperty}`);
+    }
+  }
   const classAttributes = node.openingElement.attributes.filter(
     (attribute) =>
       t.isJSXAttribute(attribute) &&
@@ -581,20 +612,7 @@ export function compileIntrinsicElement(
       continue;
     }
     if (sourceName === "$bind") {
-      if (!["input", "textarea", "select"].includes(tag)) {
-        codeFrame(
-          compiler,
-          attribute,
-          "$bind is only valid on input, textarea, and select elements",
-        );
-      }
-      if (tag === "input" && inputTypeAttribute && inputType === undefined) {
-        codeFrame(compiler, inputTypeAttribute, "$bind requires a static input type");
-      }
-      const property: "value" | "checked" =
-        tag === "input" && (inputType === "checkbox" || inputType === "radio")
-          ? "checked"
-          : "value";
+      const property = bindProperty!;
       if (property === "value") propertyValueElement = true;
       const binding = compileBinding(
         compiler,
@@ -662,7 +680,12 @@ export function compileIntrinsicElement(
     const name = isClass ? "class" : sourceName === "htmlFor" ? "for" : sourceName;
     const staticValue = staticAttributeValue(compiler, attribute);
     const stringBoolean = name.startsWith("aria-") || name.startsWith("data-");
-    if (name === "value" && (tag === "textarea" || tag === "select")) {
+    if (
+      name === "value" &&
+      (tag === "textarea" ||
+        tag === "select" ||
+        (TEXT_VALUE_ELEMENTS.has(tag) && typeof staticValue === "boolean"))
+    ) {
       const value =
         staticValue !== undefined
           ? JSON.stringify(staticValue)

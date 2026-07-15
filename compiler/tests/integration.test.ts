@@ -140,6 +140,14 @@ async function expectRejection(promise: PromiseLike<unknown>, message: string): 
   expect(String(failure)).toContain(message);
 }
 
+function expectBooleanValueParity(target: ParentNode): void {
+  expect(target.querySelector<HTMLInputElement>("#literal-false")!.value).toBe("false");
+  expect(target.querySelector<HTMLInputElement>("#literal-true")!.value).toBe("true");
+  expect(target.querySelector<HTMLInputElement>("#dynamic-value")!.value).toBe("false");
+  expect(target.querySelector("#literal-class")!.className).toBe("0");
+  expect(target.querySelector("#dynamic-class")!.className).toBe("0");
+}
+
 test("compiled components update fine-grained DOM without rerunning setup", async () => {
   const module = await loadCompiled(`
     const Child = $component(function Child(props: { item: { id: number; label: string } }) {
@@ -2007,6 +2015,43 @@ test("mounts and hydrates static textarea and select values as DOM properties", 
   expect(target.querySelector<HTMLSelectElement>("#static-select")!.value).toBe("second");
   expect(target.querySelector<HTMLTextAreaElement>("#static-note")!.value).toBe("server note");
   disposeHydration();
+});
+
+test("keeps boolean input values and numeric zero classes consistent across rendering modes", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { value: boolean; classValue: number }) {
+      return <main>
+        <input id="literal-false" value={false} />
+        <input id="literal-true" value={true} />
+        <input id="dynamic-value" value={props.value} />
+        <p id="literal-class" class={0}>Literal</p>
+        <p id="dynamic-class" class={props.classValue}>Dynamic</p>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ value: boolean; classValue: number }>;
+  const props = { value: false, classValue: 0 };
+
+  const mounted = document.createElement("div");
+  const disposeMount = mount(App, mounted, props);
+  expectBooleanValueParity(mounted);
+  disposeMount();
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, props);
+  expectBooleanValueParity(target);
+  const disposeHydration = await hydrate(App, target, props);
+  expectBooleanValueParity(target);
+  disposeHydration();
+
+  target.innerHTML = await renderToStringAsync(App, props);
+  const serverInput = target.querySelector<HTMLInputElement>("#dynamic-value")!;
+  await expectRejection(
+    hydrate(App, target, { value: true, classValue: 0 }),
+    "dynamic attribute value differs",
+  );
+  expect(target.querySelector("#dynamic-value")).toBe(serverInput);
+  expect(serverInput.value).toBe("false");
 });
 
 test("hydration rejects a Link destination mismatch without rewriting href", async () => {

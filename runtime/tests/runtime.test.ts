@@ -848,11 +848,12 @@ describe("reactivity", () => {
     expect(
       normalizeClass([
         "todo-row",
-        [null, false, "ledger-line"],
+        [null, false, "ledger-line", 0],
         { "todo-row--completed": true, hidden: 0 },
         2,
       ]),
-    ).toBe("todo-row ledger-line todo-row--completed 2");
+    ).toBe("todo-row ledger-line 0 todo-row--completed 2");
+    expect(normalizeClass(0)).toBe("0");
   });
 
   test("tracks primitives, computed values, and batches writes", () => {

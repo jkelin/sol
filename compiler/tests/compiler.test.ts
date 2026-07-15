@@ -1072,6 +1072,43 @@ describe("compiler", () => {
     expect(result.code).toContain('"propertyValueElements":[0,1]');
   });
 
+  test("rejects duplicate bindings and attributes that compete with their DOM property", () => {
+    expect(() =>
+      compile(
+        `const App = $component(function App() {
+          let first = "";
+          let second = "";
+          return <input $bind={first} $bind={second} />;
+        });`,
+        "DuplicateBinding.tsx",
+      ),
+    ).toThrow("Use only one $bind attribute");
+
+    for (const element of [
+      '<input value="other" $bind={text} />',
+      '<textarea $bind={text} value="other"></textarea>',
+      '<select value="other" $bind={text}></select>',
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { let text = ""; return ${element}; });`,
+          "CompetingValue.tsx",
+        ),
+      ).toThrow("$bind already controls value");
+    }
+    for (const element of [
+      '<input type="checkbox" checked $bind={checked} />',
+      '<input $bind={checked} checked type="radio" />',
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { let checked = false; return ${element}; });`,
+          "CompetingChecked.tsx",
+        ),
+      ).toThrow("$bind already controls checked");
+    }
+  });
+
   test("connects form controllers through the $form element property", () => {
     const result = compile(
       `

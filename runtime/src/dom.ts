@@ -56,7 +56,7 @@ export type ClassValue =
 export function normalizeClass(value: ClassValue): string {
   const classes: string[] = [];
   const append = (part: ClassValue): void => {
-    if (!part) return;
+    if (part == null || typeof part === "boolean" || part === "") return;
     if (typeof part === "string" || typeof part === "number") {
       classes.push(String(part));
       return;
@@ -258,8 +258,12 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "selected",
 ]);
 
+const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
+
 function setServerValue(element: ServerElement, name: string, value: unknown): void {
-  if (name.startsWith("aria-") || name.startsWith("data-")) {
+  if (name === "value" && TEXT_VALUE_ELEMENTS.has(element.tag)) {
+    setServerAttribute(element, name, String(value ?? ""));
+  } else if (name.startsWith("aria-") || name.startsWith("data-")) {
     setServerAttribute(element, name, value == null ? undefined : String(value));
   } else if (BOOLEAN_ATTRIBUTES.has(name)) {
     setServerAttribute(element, name, value ? true : undefined);
@@ -302,9 +306,15 @@ export function attribute(
       if (hydrating) {
         hydrating = false;
         const formValue =
-          property === "value" && (element.tagName === "TEXTAREA" || element.tagName === "SELECT");
+          property === "value" && TEXT_VALUE_ELEMENTS.has(element.tagName.toLowerCase());
         const actual = formValue
-          ? (element as HTMLTextAreaElement | HTMLSelectElement).value
+          ? (
+              element as
+                | HTMLInputElement
+                | HTMLTextAreaElement
+                | HTMLSelectElement
+                | HTMLOptionElement
+            ).value
           : element.getAttribute(property);
         const expected = formValue
           ? value == null

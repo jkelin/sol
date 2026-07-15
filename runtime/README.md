@@ -72,8 +72,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `specificity.ts` compares matcher specificity vectors before route and HTTP dispatchers apply
   their distinct deterministic tie-breaks.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
-  document-head mounting, reactive or one-shot text rendering, server child-block ownership, and
-  prepare/commit reconciliation for conditional and keyed-list updates.
+  document-head mounting, reactive or one-shot text rendering, consistent text-control and class
+  normalization, server child-block ownership, and prepare/commit reconciliation for conditional
+  and keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.

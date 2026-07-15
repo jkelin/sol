@@ -78,9 +78,10 @@ dependencies; route handles referenced by endpoint code are projected again as m
   templates and reactive or one-shot runtime operations, including single-owner form bindings,
   ASCII-case-insensitive unique DOM attribute targets and private-marker reservation, unique
   case-sensitive component properties, truthy-presence boolean expressions, property-backed
-  text-control values, and runtime-validated Link navigation options. Keyed-list calls accept
-  exactly one synchronous, non-generator inline callback with only item and optional index
-  identifiers; async-boundary renderers follow the same synchronous, non-generator restriction.
+  text-control values, lower-initial camel-case SVG intrinsic names, and runtime-validated Link
+  navigation options. Keyed-list calls accept exactly one synchronous, non-generator inline
+  callback with only item and optional index identifiers; async-boundary renderers follow the same
+  synchronous, non-generator restriction.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly
   mutations in dot or bracket syntax, and rewrites local state, derived values, props,
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned

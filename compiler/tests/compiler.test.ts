@@ -254,6 +254,23 @@ describe("compiler", () => {
     expect(result.code).toContain('"disableRemotePlayback", () => (0)');
   });
 
+  test("compiles lower-initial camel-case SVG intrinsic elements", () => {
+    const result = compile(
+      `export const App = $component(function App() {
+        return <svg>
+          <defs><linearGradient id="fade"></linearGradient></defs>
+          <text><textPath href="#curve">Label</textPath></text>
+          <foreignObject><div>HTML</div></foreignObject>
+        </svg>;
+      });`,
+      "svg-elements.tsx",
+    );
+
+    expect(result.code).toContain("<linearGradient");
+    expect(result.code).toContain("<textPath");
+    expect(result.code).toContain("<foreignObject>");
+  });
+
   test("interns identical compiled templates", () => {
     const result = compile(
       `import { $component } from "@soljs/sol";

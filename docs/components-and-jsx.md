@@ -28,7 +28,8 @@ HTML attribute identity is ASCII-case-insensitive. The compiler rejects differen
 duplicates and reserves `data-sol-e` and `data-sol-hydration` in every casing for hydration
 metadata. Standard boolean attribute expressions use truthy presence semantics consistently across
 mounting, SSR, and hydration, while a quoted boolean attribute remains authored presence.
-Component prop names remain case-sensitive.
+Lower-initial camel-case SVG elements such as `linearGradient`, `textPath`, and `foreignObject`
+retain their native names and namespaces. Component prop names remain case-sensitive.
 
 ## Conditional classes
 

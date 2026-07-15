@@ -573,7 +573,7 @@ export function compileIntrinsicElement(
   injectedOperations: ReadonlyArray<(element: number) => string> = [],
 ): void {
   const tag = jsxName(compiler, node.openingElement.name);
-  if (!/^[a-z][a-z0-9-]*$/.test(tag))
+  if (!/^[a-z][A-Za-z0-9-]*$/.test(tag))
     codeFrame(compiler, node, "Dynamic JSX tags are not supported in v1");
   const attributes: string[] = [];
   const deferredOperations: ((element: number) => string)[] = [];

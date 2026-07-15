@@ -368,8 +368,10 @@ function compileHttpPath(path: string): CompiledHttpPath {
         return "([^/]+)";
       }
       let decoded: string;
+      let canonical: string;
       try {
         decoded = decodeURIComponent(segment);
+        canonical = canonicalHttpSegment(segment);
       } catch {
         throw new TypeError("HTTP route path contains malformed percent encoding");
       }
@@ -377,13 +379,27 @@ function compileHttpPath(path: string): CompiledHttpPath {
         throw new TypeError("HTTP route path cannot contain dot segments");
       }
       specificity.push(1);
-      const canonical = new URL(`/sol/${segment}`, "http://sol.invalid").pathname
-        .slice("/sol/".length)
-        .replaceAll(/%[0-9a-f]{2}/gi, (escape) => escape.toUpperCase());
       return canonical.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
     })
     .join("/");
   return { pattern: new RegExp(`^${pattern}$`), parameterNames: names, specificity };
+}
+
+function canonicalHttpSegment(segment: string): string {
+  return encodeURIComponent(decodeURIComponent(segment).normalize("NFC"));
+}
+
+function canonicalHttpRequestPath(pathname: string): string | undefined {
+  if (pathname === "/") return pathname;
+  try {
+    return `/${pathname
+      .slice(1)
+      .split("/")
+      .map((segment) => canonicalHttpSegment(segment))
+      .join("/")}`;
+  } catch {
+    return undefined;
+  }
 }
 
 export function httpRouteServer<Input extends HttpRouteInput, Parsed>(
@@ -672,8 +688,9 @@ export async function dispatchServerEndpoint(
 ): Promise<Response | undefined> {
   const { development, maxBodyBytes } = dispatchOptions(options);
   const url = new URL(request.url);
-  const pathname = logicalPathname(url.pathname);
-  if (pathname === undefined) return undefined;
+  const logicalPath = logicalPathname(url.pathname);
+  if (logicalPath === undefined) return undefined;
+  const pathname = canonicalHttpRequestPath(logicalPath) ?? logicalPath;
   const prepared = prepareEndpoints(endpoints);
   const rpcPath = prepared.rpc.get(pathname) ?? [];
   const rpc = rpcPath.find((endpoint) => endpoint.method === request.method);

@@ -59,9 +59,10 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   untagged non-finite payload numbers plus duplicate object keys, while preserving descriptor
   guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
-  and HTTP paths, HTTP route decoding, schema validation, JSON POST endpoint matching, prepared
-  endpoint indexes, JSON response envelopes with canonical array-index validation, snapshotted
-  endpoint configs, validated dispatch options, and development-safe failures.
+  and HTTP paths, canonical request-segment matching that preserves encoded slashes, HTTP route
+  decoding, schema validation, JSON POST endpoint matching, prepared endpoint indexes, JSON
+  response envelopes with canonical array-index validation, snapshotted endpoint configs, validated
+  dispatch options, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
   before asynchronous rendering.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.

@@ -767,6 +767,53 @@ describe("server declarations", () => {
       ).toThrow();
   });
 
+  test("matches canonical-equivalent HTTP request path encodings", async () => {
+    const route = httpRouteServer(
+      { method: "GET", path: "/a!", schema: (input: HttpRouteInput) => input },
+      async () => new Response("matched"),
+    ) as unknown as ServerEndpoint;
+
+    const bodies = await Promise.all(
+      ["/a!", "/a%21", "/%61!"].map(async (path) => {
+        const response = await dispatchServerEndpoint(
+          [route],
+          new Request(`https://example.test${path}`),
+        );
+        return response?.text();
+      }),
+    );
+    expect(bodies).toEqual(["matched", "matched", "matched"]);
+
+    configureRouteBase("/sol/");
+    try {
+      const response = await dispatchServerEndpoint(
+        [route],
+        new Request("https://example.test/sol/%61%21"),
+      );
+      expect(await response?.text()).toBe("matched");
+    } finally {
+      configureRouteBase("/");
+    }
+  });
+
+  test("preserves encoded slashes and safely rejects malformed HTTP request paths", async () => {
+    const route = httpRouteServer(
+      { method: "GET", path: "/files/:name", schema: (input: HttpRouteInput) => input },
+      async (input) => new Response(input.params.name),
+    ) as unknown as ServerEndpoint;
+
+    const encodedSlash = await dispatchServerEndpoint(
+      [route],
+      new Request("https://example.test/files/a%2fb"),
+    );
+    expect(await encodedSlash?.text()).toBe("a/b");
+    const malformed = await dispatchServerEndpoint(
+      [route],
+      new Request("https://example.test/files/%zz"),
+    );
+    expect(malformed?.status).toBe(400);
+  });
+
   test("includes RPC failure details only in development", async () => {
     const endpoint = rpcQueryServer(
       "explode",

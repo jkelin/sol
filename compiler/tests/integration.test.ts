@@ -163,6 +163,17 @@ function expectFalseyBooleanAbsence(target: ParentNode): void {
   expect(media.hasAttribute("disableremoteplayback")).toBe(false);
 }
 
+function expectSvgNamespaces(target: ParentNode): void {
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  expect(target.querySelector("linearGradient")?.namespaceURI).toBe(svgNamespace);
+  expect(target.querySelector("linearGradient")?.localName).toBe("linearGradient");
+  expect(target.querySelector("textPath")?.namespaceURI).toBe(svgNamespace);
+  expect(target.querySelector("textPath")?.localName).toBe("textPath");
+  expect(target.querySelector("foreignObject")?.namespaceURI).toBe(svgNamespace);
+  expect(target.querySelector("foreignObject")?.localName).toBe("foreignObject");
+  expect(target.querySelector("#html-child")?.textContent).toBe("HTML");
+}
+
 test("compiled components update fine-grained DOM without rerunning setup", async () => {
   const module = await loadCompiled(`
     const Child = $component(function Child(props: { item: { id: number; label: string } }) {
@@ -2133,6 +2144,31 @@ test("omits falsey mixed-case and media boolean attributes in every rendering mo
   expectFalseyBooleanAbsence(target);
   const disposeHydration = await hydrate(App, target);
   expectFalseyBooleanAbsence(target);
+  disposeHydration();
+});
+
+test("mounts and hydrates camel-case SVG intrinsics in their native namespaces", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      return <svg id="graphic">
+        <defs><linearGradient id="fade"></linearGradient></defs>
+        <text><textPath href="#curve">Label</textPath></text>
+        <foreignObject><div id="html-child">HTML</div></foreignObject>
+      </svg>;
+    });
+  `);
+  const App = module.App as Component;
+
+  const mounted = document.createElement("div");
+  const disposeMount = mount(App, mounted);
+  expectSvgNamespaces(mounted);
+  disposeMount();
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  expectSvgNamespaces(target);
+  const disposeHydration = await hydrate(App, target);
+  expectSvgNamespaces(target);
   disposeHydration();
 });
 

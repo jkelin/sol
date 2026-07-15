@@ -87,7 +87,8 @@ Intrinsic HTML attribute identity is ASCII-case-insensitive, so differently case
 rejected and form-control semantics match the browser. `data-sol-e` and `data-sol-hydration` are
 reserved for compiler and SSR metadata in every casing. Standard boolean attributes use truthy
 presence semantics for expression values in every rendering mode; quoted values remain authored
-presence attributes. Component prop names remain case-sensitive.
+presence attributes. Lower-initial camel-case SVG names such as `linearGradient`, `textPath`, and
+`foreignObject` retain their native spelling. Component prop names remain case-sensitive.
 
 ## Refs and portals
 
@@ -455,7 +456,9 @@ body parsing accepts JSON and text, while `body: "bytes"` supplies an `ArrayBuff
 also receives the still-readable original `Request` and must return a `Response`. Endpoint bodies
 are limited to 1 MiB by default; Solkit's `maxBodyBytes` option changes the limit. Static path
 segments are URL-canonicalized, while query, fragment, backslash, control, dot-segment, and authored
-percent-escape syntax is rejected.
+percent-escape syntax is rejected. Dispatch canonicalizes valid request segment encodings before
+matching, so equivalent escaped and decoded URL spellings select the same endpoint without decoding
+encoded slashes into path separators.
 
 ## Routing
 

@@ -510,7 +510,7 @@ function rawTextValues(
       } else if (t.isBooleanLiteral(child.expression) || t.isNullLiteral(child.expression)) {
         // Boolean and null children display as empty strings.
       } else if (t.isBigIntLiteral(child.expression)) {
-        staticValue += child.expression.value;
+        staticValue += String(BigInt(child.expression.value.replaceAll("_", "")));
       } else if (
         t.isUnaryExpression(child.expression) &&
         (child.expression.operator === "+" || child.expression.operator === "-") &&

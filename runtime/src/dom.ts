@@ -281,8 +281,9 @@ function isWritableProperty(element: Element, property: string): boolean {
 
 const TEXT_VALUE_ELEMENTS = new Set(["input", "textarea", "select", "option"]);
 
-function textControlString(value: unknown): string {
-  return normalizeHtmlString(String(value ?? ""));
+function textControlString(value: unknown, tag?: string): string {
+  const normalized = normalizeHtmlString(String(value ?? ""));
+  return tag === "textarea" ? normalized.replaceAll(/\r\n?/g, "\n") : normalized;
 }
 
 function attributeString(value: unknown): string {
@@ -290,7 +291,7 @@ function attributeString(value: unknown): string {
 }
 
 function textControlValue(tag: string, name: string, value: unknown): unknown {
-  return name === "value" && TEXT_VALUE_ELEMENTS.has(tag) ? textControlString(value) : value;
+  return name === "value" && TEXT_VALUE_ELEMENTS.has(tag) ? textControlString(value, tag) : value;
 }
 
 function setDomValue(element: Element, name: string, value: unknown): void {
@@ -329,7 +330,7 @@ function setDomValue(element: Element, name: string, value: unknown): void {
 
 function setServerValue(element: ServerElement, name: string, value: unknown): void {
   if (name === "value" && TEXT_VALUE_ELEMENTS.has(element.tag)) {
-    setServerAttribute(element, name, textControlString(value));
+    setServerAttribute(element, name, textControlString(value, element.tag));
   } else if (name.startsWith("aria-") || name.startsWith("data-")) {
     setServerAttribute(element, name, value == null ? undefined : attributeString(value));
   } else if (isBooleanAttribute(name)) {
@@ -384,7 +385,7 @@ export function attribute(
             ).value
           : element.getAttribute(property);
         const expected = formValue
-          ? textControlString(value)
+          ? textControlString(value, element.tagName.toLowerCase())
           : serializedAttribute(property, value);
         if (actual !== expected) {
           throw new HydrationMismatchError(`dynamic attribute ${property} differs`);
@@ -496,7 +497,10 @@ export function bindValue(
   let hydrating = element.hasAttribute("data-sol-e");
   const stopEffect = runtimeEffect(() => {
     const next = getValue();
-    const expected = property === "checked" ? Boolean(next) : textControlString(next);
+    const expected =
+      property === "checked"
+        ? Boolean(next)
+        : textControlString(next, element.tagName.toLowerCase());
     const actual = property === "checked" ? (element as HTMLInputElement).checked : element.value;
     if (hydrating) {
       hydrating = false;

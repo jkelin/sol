@@ -92,6 +92,14 @@ describe("SSR graph serialization", () => {
     expect(restored.error.cause).toEqual({ code: 42 });
   });
 
+  test("rejects RegExp lastIndex states its decoder cannot restore", () => {
+    for (const value of ["2", 2n, undefined, {}]) {
+      const expression = /value/g;
+      (expression as unknown as { lastIndex: unknown }).lastIndex = value;
+      expect(() => serializeGraph(expression)).toThrow("lastIndex that is not a number");
+    }
+  });
+
   test("preserves every supported built-in Error prototype and custom name", () => {
     const constructors = [
       Error,

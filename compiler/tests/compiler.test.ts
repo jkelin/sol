@@ -1976,6 +1976,7 @@ describe("compiler", () => {
           <style>{".ready { color: green; }"}</style>
           <script>{"globalThis.ready = true;"}</script>
           <title>{42}{true}{null}{-0}</title>
+          <title>{10n}{0x10n}{0b101n}{0o17n}{1_000n}</title>
           <textarea>{"\\nLeading line"}</textarea>
           <style>{"a\\r\\nb\\rc"}</style>
         </main>;
@@ -1987,6 +1988,7 @@ describe("compiler", () => {
     expect(result.code).toContain("<title>Static &amp; title</title>");
     expect(result.code).toContain("<textarea>Static textarea</textarea>");
     expect(result.code).toContain("<title>420</title>");
+    expect(result.code).toContain("<title>10165151000</title>");
     expect(result.code).toContain("<textarea>\n\nLeading line</textarea>");
     expect(result.code).toContain("<style>a\nb\nc</style>");
 

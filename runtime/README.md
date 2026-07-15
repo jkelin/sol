@@ -61,8 +61,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   signatures, boundary state, timeouts, and first-failure wakeups for pending waiters.
 - `serialization.ts` encodes and decodes safe cyclic hydration-data graphs, enumerating sparse
   array entries without scanning unused indexes, rejecting hidden lossy built-in extensions and
-  untagged non-finite payload numbers plus duplicate object keys, while preserving descriptor
-  guarantees and built-in Error prototypes.
+  untagged non-finite payload numbers, nonnumeric RegExp state, and duplicate object keys, while
+  preserving descriptor guarantees and built-in Error prototypes.
 - `server-functions.ts` implements named RPC clients and server definitions, deployment-based RPC
   and HTTP paths, canonical request-segment matching that preserves encoded slashes, HTTP route
   decoding, schema validation, JSON POST endpoint matching, prepared endpoint indexes, JSON
@@ -70,7 +70,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   dispatch options, strict UTF-8 JSON decoding, and development-safe failures.
 - `ssr.ts` validates and implements `renderToStringAsync()`, snapshotting option data descriptors
   before asynchronous rendering, publishing managed head markup only after payload serialization,
-  and preserving the primary failure when request teardown also fails.
+  preserving directly recorded template order without reparsing final markup, and preserving the
+  primary failure when request teardown also fails.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
   generation from snapshotted destinations, route handles, descriptor-snapshotted route configs and
@@ -87,8 +88,9 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   with canonical writable-property lookup and truthy-presence fallbacks, consistent text-control
   stringification and shared U+0000 normalization for text and dynamic attributes across server
   rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
-  server-safe raw-text hydration comparison, server child-block ownership,
-  and failure-safe prepare/commit reconciliation for conditional and keyed-list updates.
+  server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API
+  newline normalization, and failure-safe prepare/commit reconciliation for conditional and
+  keyed-list updates.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.

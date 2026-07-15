@@ -86,7 +86,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   text-control values, lower-initial camel-case SVG intrinsic names, and runtime-validated Link
   navigation options. Deterministic string, template, numeric, boolean, null, and bigint raw-text
   literals fold directly into parser-correct templates when they contain no matching closing-tag
-  token; reactive and hazardous content retains the safe runtime path.
+  token; bigint radices and separators canonicalize to their decimal runtime display. Reactive and
+  hazardous content retains the safe runtime path.
   Keyed-list calls accept exactly one synchronous, non-generator inline
   callback with only item and optional index identifiers; async-boundary renderers follow the same
   synchronous, non-generator restriction.

@@ -158,6 +158,9 @@ export function serializeGraph(value: unknown): string {
         return unsupported(candidate, "custom-prototype data");
       }
       rejectCustomProperties(candidate, ["lastIndex"]);
+      if (typeof candidate.lastIndex !== "number") {
+        return unsupported(candidate, "RegExp lastIndex that is not a number");
+      }
       objects[index] = {
         type: "regexp",
         source: candidate.source,

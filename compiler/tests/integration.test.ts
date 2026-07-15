@@ -2429,6 +2429,40 @@ test("omits falsey mixed-case and media boolean attributes in every rendering mo
   disposeHydration();
 });
 
+test("preserves false boolean-valued enumerated attributes in every rendering mode", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { enabled: boolean }) {
+      return <main contentEditable={true}>
+        <div id="static-enumerated" contentEditable={false} draggable={false} spellCheck={false} translate={false}>Static</div>
+        <div id="dynamic-enumerated" contentEditable={props.enabled} draggable={props.enabled} spellCheck={props.enabled} translate={props.enabled}>Dynamic</div>
+      </main>;
+    });
+  `);
+  const App = module.App as Component<{ enabled: boolean }>;
+  const enumeratedIds = ["static-enumerated", "dynamic-enumerated"];
+  const expectFalseTokens = (root: ParentNode): void => {
+    for (const id of enumeratedIds) {
+      const element = root.querySelector(`#${id}`)!;
+      expect(element.getAttribute("contenteditable")).toBe("false");
+      expect(element.getAttribute("draggable")).toBe("false");
+      expect(element.getAttribute("spellcheck")).toBe("false");
+      expect(element.getAttribute("translate")).toBe("no");
+    }
+  };
+
+  const mounted = document.createElement("div");
+  const disposeMount = mount(App, mounted, { enabled: false });
+  expectFalseTokens(mounted);
+  disposeMount();
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { enabled: false });
+  expectFalseTokens(target);
+  const disposeHydration = await hydrate(App, target, { enabled: false });
+  expectFalseTokens(target);
+  disposeHydration();
+});
+
 test("mounts and hydrates camel-case SVG intrinsics in their native namespaces", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

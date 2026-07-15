@@ -83,7 +83,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   templates and reactive or one-shot runtime operations, including single-owner form bindings,
   ASCII-case-insensitive unique DOM attribute targets and private-marker reservation, unique
   case-sensitive component properties, truthy-presence boolean expressions, property-backed
-  text-control values, lower-initial camel-case SVG intrinsic names, and runtime-validated Link
+  text-control values with controlled file inputs rejected, canonical boolean-valued enumerated
+  attribute tokens, lower-initial camel-case SVG intrinsic names, and runtime-validated Link
   navigation options. Deterministic string, template, numeric, boolean, null, and bigint children
   fold directly into ordinary or parser-correct raw-text templates when safe and contain no matching closing-tag
   token; bigint radices and separators canonicalize to their decimal runtime display. Reactive and

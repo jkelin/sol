@@ -56,6 +56,16 @@ const BOOLEAN_ATTRIBUTES = new Set([
   "reversed",
   "selected",
 ]);
+const ENUMERATED_BOOLEAN_ATTRIBUTES = new Map<string, readonly [string, string]>([
+  ["contenteditable", ["true", "false"]],
+  ["draggable", ["true", "false"]],
+  ["spellcheck", ["true", "false"]],
+  ["translate", ["yes", "no"]],
+]);
+
+function enumeratedBooleanToken(name: string, value: boolean): string | undefined {
+  return ENUMERATED_BOOLEAN_ATTRIBUTES.get(name)?.[value ? 0 : 1];
+}
 
 function validateSynchronousCallback(
   compiler: CompilerContext,
@@ -691,15 +701,26 @@ export function compileIntrinsicElement(
     !rawText.staticValue.toLowerCase().includes(`</${tag.toLowerCase()}`)
       ? rawText.staticValue
       : undefined;
-  const textareaValue = findIntrinsicAttribute(compiler, node, "value");
-  if (tag === "textarea" && rawValues.length > 0 && (textareaValue || bindProperty === "value")) {
+  const valueAttribute = findIntrinsicAttribute(compiler, node, "value");
+  if (
+    tag === "input" &&
+    normalizedInputType === "file" &&
+    (valueAttribute || bindProperty === "value")
+  ) {
     codeFrame(
       compiler,
-      textareaValue ?? bindAttributes[0]!,
+      valueAttribute ?? bindAttributes[0]!,
+      "File input value cannot be controlled",
+    );
+  }
+  if (tag === "textarea" && rawValues.length > 0 && (valueAttribute || bindProperty === "value")) {
+    codeFrame(
+      compiler,
+      valueAttribute ?? bindAttributes[0]!,
       "Textarea children conflict with value or $bind",
     );
   }
-  if (tag === "select" && (textareaValue || bindProperty === "value")) {
+  if (tag === "select" && (valueAttribute || bindProperty === "value")) {
     const selected = findDescendantOptionSelected(compiler, node);
     if (selected) {
       codeFrame(
@@ -829,6 +850,10 @@ export function compileIntrinsicElement(
         : sourceName;
     const staticValue = staticAttributeValue(compiler, attribute);
     const stringBoolean = targetName.startsWith("aria-") || targetName.startsWith("data-");
+    const enumeratedBoolean =
+      typeof staticValue === "boolean"
+        ? enumeratedBooleanToken(targetName, staticValue)
+        : undefined;
     const expressionStringBoolean =
       BOOLEAN_ATTRIBUTES.has(targetName) &&
       t.isJSXExpressionContainer(attribute.value) &&
@@ -854,6 +879,8 @@ export function compileIntrinsicElement(
       );
     } else if (typeof staticValue === "boolean" && stringBoolean) {
       attributes.push(`${name}="${String(staticValue)}"`);
+    } else if (enumeratedBoolean !== undefined) {
+      attributes.push(`${name}="${enumeratedBoolean}"`);
     } else if (staticValue === true) attributes.push(name);
     else if (typeof staticValue === "string" && !expressionStringBoolean)
       attributes.push(`${name}="${escapeAttribute(staticValue)}"`);

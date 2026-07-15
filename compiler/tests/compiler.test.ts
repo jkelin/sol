@@ -1508,6 +1508,20 @@ describe("compiler", () => {
     }
   });
 
+  test("rejects controlled file input values", () => {
+    for (const input of [
+      '<input type="file" value={value} />',
+      '<input type="FILE" $bind={value} />',
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() { let value = "fake"; return ${input}; });`,
+          "FileInput.tsx",
+        ),
+      ).toThrow("File input value cannot be controlled");
+    }
+  });
+
   test("connects form controllers through the $form element property", () => {
     const result = compile(
       `

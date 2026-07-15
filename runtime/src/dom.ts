@@ -257,6 +257,18 @@ function isBooleanAttribute(name: string): boolean {
   return booleanProperty(name) !== undefined;
 }
 
+const ENUMERATED_BOOLEAN_ATTRIBUTES = new Map<string, readonly [string, string]>([
+  ["contenteditable", ["true", "false"]],
+  ["draggable", ["true", "false"]],
+  ["spellcheck", ["true", "false"]],
+  ["translate", ["yes", "no"]],
+]);
+
+function enumeratedBooleanToken(name: string, value: unknown): string | undefined {
+  if (typeof value !== "boolean") return undefined;
+  return ENUMERATED_BOOLEAN_ATTRIBUTES.get(name.toLowerCase())?.[value ? 0 : 1];
+}
+
 function isWritableProperty(element: Element, property: string): boolean {
   let properties = writableProperties.get(element);
   if (!properties) {
@@ -313,6 +325,15 @@ function setDomValue(element: Element, name: string, value: unknown): void {
     }
     return;
   }
+  const enumeratedBoolean = enumeratedBooleanToken(name, value);
+  if (enumeratedBoolean !== undefined) {
+    if (property in element && isWritableProperty(element, property)) {
+      (element as unknown as Record<string, unknown>)[property] = value;
+    } else {
+      element.setAttribute(name, enumeratedBoolean);
+    }
+    return;
+  }
   const normalized = textControlValue(
     element.tagName.toLowerCase(),
     name,
@@ -329,12 +350,15 @@ function setDomValue(element: Element, name: string, value: unknown): void {
 }
 
 function setServerValue(element: ServerElement, name: string, value: unknown): void {
+  const enumeratedBoolean = enumeratedBooleanToken(name, value);
   if (name === "value" && TEXT_VALUE_ELEMENTS.has(element.tag)) {
     setServerAttribute(element, name, textControlString(value, element.tag));
   } else if (name.startsWith("aria-") || name.startsWith("data-")) {
     setServerAttribute(element, name, value == null ? undefined : attributeString(value));
   } else if (isBooleanAttribute(name)) {
     setServerAttribute(element, name, value ? true : undefined);
+  } else if (enumeratedBoolean !== undefined) {
+    setServerAttribute(element, name, enumeratedBoolean);
   } else if (value == null || value === false) {
     setServerAttribute(element, name, undefined);
   } else {
@@ -347,6 +371,8 @@ function serializedAttribute(name: string, value: unknown): string | null {
     return value == null ? null : attributeString(value);
   }
   if (isBooleanAttribute(name)) return value ? "" : null;
+  const enumeratedBoolean = enumeratedBooleanToken(name, value);
+  if (enumeratedBoolean !== undefined) return enumeratedBoolean;
   if (value == null || value === false) return null;
   return value === true ? "" : attributeString(value);
 }
@@ -732,13 +758,20 @@ export function list<T>(
         }
       },
     ];
-    try {
-      for (const key of nextOrder) {
-        const row = nextRows.get(key) ?? leavingRows.get(key) ?? rows.get(key);
-        row?.block.mount(region.end.parentNode!, region.end);
+    const orderUnchanged =
+      createdRows.length === 0 &&
+      revivedKeys.size === 0 &&
+      nextOrder.length === order.length &&
+      nextOrder.every((key, index) => sameKey(key, order[index]));
+    if (!orderUnchanged) {
+      try {
+        for (const key of nextOrder) {
+          const row = nextRows.get(key) ?? leavingRows.get(key) ?? rows.get(key);
+          row?.block.mount(region.end.parentNode!, region.end);
+        }
+      } catch (error) {
+        rethrowWithDisposals(error, rollbackMounts, "List mount and rollback both failed");
       }
-    } catch (error) {
-      rethrowWithDisposals(error, rollbackMounts, "List mount and rollback both failed");
     }
 
     const previousUpdates = updates.map((update) => ({

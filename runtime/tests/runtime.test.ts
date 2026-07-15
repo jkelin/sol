@@ -3004,6 +3004,53 @@ describe("compiled DOM runtime", () => {
     expect(target.querySelectorAll("li")[1]).toBe(firstNode);
   });
 
+  test("updates keyed rows without moving blocks when key order is unchanged", () => {
+    const values = $signal([
+      { id: 1, label: "One" },
+      { id: 2, label: "Two" },
+    ]);
+    const definition = template("<ol><!--sol:s:0--><!--sol:e:0--></ol>");
+    const rowDefinition = template("<li><!--sol:s:0--><!--sol:e:0--></li>");
+    const List = component(() => {
+      const view = instantiate(definition);
+      const cleanups: Array<() => void> = [];
+      list(
+        view.regions[0]!,
+        () => values.value,
+        (item) => item.id,
+        (item) => {
+          const row = instantiate(rowDefinition);
+          const rowCleanups: Array<() => void> = [];
+          text(row.regions[0]!, () => item.value.label, rowCleanups);
+          return block(row.fragment, rowCleanups);
+        },
+        cleanups,
+      );
+      return block(view.fragment, cleanups);
+    });
+    const target = document.createElement("main");
+    const dispose = mount(List, target);
+    const listElement = target.querySelector("ol")!;
+    const insertBefore = listElement.insertBefore.bind(listElement);
+    let moves = 0;
+    listElement.insertBefore = ((node: Node, reference: Node | null) => {
+      moves += 1;
+      return insertBefore(node, reference);
+    }) as typeof listElement.insertBefore;
+
+    values.value = [
+      { id: 1, label: "First" },
+      { id: 2, label: "Second" },
+    ];
+
+    expect(moves).toBe(0);
+    expect([...target.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+      "First",
+      "Second",
+    ]);
+    dispose();
+  });
+
   test("rolls back and disposes staged keyed rows after render or mount failures", () => {
     for (const failure of ["render", "mount"] as const) {
       const values = $signal([0]);

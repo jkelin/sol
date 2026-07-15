@@ -88,7 +88,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   their distinct deterministic tie-breaks.
 - `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
   document-head mounting, reactive or one-shot text rendering, case-insensitive boolean attributes
-  with canonical writable-property lookup and truthy-presence fallbacks, consistent text-control
+  with canonical writable-property lookup and truthy-presence fallbacks, boolean-valued enumerated
+  attribute tokens, unchanged-order keyed-list updates without DOM moves, consistent text-control
   stringification and shared U+0000 normalization for text and dynamic attributes across server
   rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API

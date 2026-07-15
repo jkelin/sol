@@ -1,36 +1,38 @@
 import { expect, test } from "@playwright/test";
-import { spawn, type ChildProcess } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
+import { preview, type PreviewServer } from "vite";
 
-let server: ChildProcess | undefined;
+let server: PreviewServer | undefined;
+let serverUrl = "";
+
+function applicationUrl(path = "/"): string {
+  if (!serverUrl) throw new Error("The website preview server has not started");
+  return new URL(path, serverUrl).href;
+}
 
 async function waitForHydration(page: import("@playwright/test").Page): Promise<void> {
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
 }
 
 test.beforeAll(async () => {
-  server = spawn("bun", ["run", "start", "--", "--host", "127.0.0.1", "--port", "4174"], {
-    env: process.env,
-    stdio: "inherit",
+  server = await preview({
+    logLevel: "silent",
+    preview: { host: "127.0.0.1", port: 0 },
   });
-  await expect
-    .poll(async () =>
-      fetch("http://127.0.0.1:4174/").then(
-        (response) => response.status,
-        () => 0,
-      ),
-    )
-    .toBe(200);
+  const resolvedUrl = server.resolvedUrls?.local[0];
+  if (!resolvedUrl) throw new Error("Vite did not expose its local preview URL");
+  serverUrl = resolvedUrl;
 });
 
 test.afterAll(async () => {
   if (!server) return;
-  if (server.exitCode === null) server.kill("SIGKILL");
-  if (server.exitCode === null) await new Promise<void>((resolve) => server?.once("exit", resolve));
+  await new Promise<void>((resolve, reject) => {
+    server!.httpServer.close((error) => (error ? reject(error) : resolve()));
+  });
 });
 
 test("serves prerendered HTML for nested routes", async () => {
-  const response = await fetch("http://127.0.0.1:4174/docs/routing/");
+  const response = await fetch(applicationUrl("/docs/routing/"));
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).toContain("text/html");
   const html = await response.text();
@@ -71,7 +73,7 @@ test("emits isolated landing and documentation route chunks", async () => {
 test("runs landing examples and preserves preview state across view modes", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
+  await page.goto(applicationUrl());
   await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "Build in sunlight." })).toBeVisible();
 
@@ -132,7 +134,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewportSize({ width: 1632, height: 1000 });
-  await page.goto("/docs/");
+  await page.goto(applicationUrl("/docs/"));
   await waitForHydration(page);
   await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible();
   const sidebar = page.getByRole("complementary", {
@@ -170,7 +172,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   };
   await visitDocumentationPage(0);
 
-  await page.goto("/docs/components-and-jsx/");
+  await page.goto(applicationUrl("/docs/components-and-jsx/"));
   await waitForHydration(page);
   const portalExample = page.locator('[data-live-example="PortalDemo"]');
   const localToggle = portalExample.getByRole("button", { name: "Toggle local portal" });
@@ -226,7 +228,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
   await expect(example.getByText("Block 3", { exact: true })).toBeVisible();
 
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: "http://127.0.0.1:4174",
+    origin: new URL(serverUrl).origin,
   });
   await example.getByRole("button", { name: "Copy code" }).click();
   await expect(example.getByRole("status")).toHaveText("Code copied to clipboard");
@@ -244,7 +246,7 @@ test("navigates Markdown documentation and operates embedded examples", async ({
 test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto(applicationUrl());
   await waitForHydration(page);
   const heroLayout = await page.evaluate(() => {
     const headline = document.querySelector<HTMLElement>("#hero-title span.relative")!;
@@ -297,7 +299,7 @@ test("keeps the site keyboard-usable, reduced-motion safe, and overflow-free", a
   expect(wideHeroLayout).toEqual({ headlineClearsWritableBlock: true, cardsContained: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/docs/");
+  await page.goto(applicationUrl("/docs/"));
   await waitForHydration(page);
   const browse = page.getByRole("button", { name: "Browse pages" });
   await browse.click();

@@ -3,13 +3,17 @@ import { expect, test } from "@playwright/test";
 import { createServer, type ViteDevServer } from "vite";
 
 let server: ViteDevServer;
+let origin: string;
 
 test.beforeAll(async () => {
   server = await createServer({
     configFile: "vite.config.ts",
-    server: { host: "127.0.0.1", port: 4175, strictPort: true },
+    server: { host: "127.0.0.1", port: 0, strictPort: true },
   });
   await server.listen();
+  const localUrl = server.resolvedUrls?.local[0];
+  if (!localUrl) throw new Error("Vite did not expose a local development URL");
+  origin = localUrl.replace(/\/$/, "");
 });
 
 test.afterAll(async () => {
@@ -40,34 +44,32 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   expect(clientArtifacts).not.toContain("Cache one request across observers");
   expect(clientArtifacts).not.toContain("SOL_BACKEND_SCHEMA_VALIDATOR_DO_NOT_SHIP");
   expect(clientArtifacts).not.toContain("SOL_BACKEND_SECRET_DO_NOT_SHIP");
-  const response = await fetch("http://127.0.0.1:4175/blog/1?from=dev");
+  const response = await fetch(`${origin}/blog/1?from=dev`);
   const document = await response.text();
   expect(response.status).toBe(200);
   expect(document).toContain("The compiler keeps the map");
   expect(document).toContain("data-sol-hydration");
   expect(document).toContain('rel="stylesheet" href="/src/styles.css" data-solkit-dev-style');
   expect(document).toContain('rel="stylesheet" href="/src/Shell.css" data-solkit-dev-style');
-  const childStyles = await fetch("http://127.0.0.1:4175/src/Shell.css", {
+  const childStyles = await fetch(`${origin}/src/Shell.css`, {
     headers: { accept: "text/css" },
   }).then((result) => result.text());
   expect(childStyles).toContain("--solkit-child-style: loaded");
 
-  const asyncDocument = await fetch("http://127.0.0.1:4175/async-context").then((result) =>
-    result.text(),
-  );
+  const asyncDocument = await fetch(`${origin}/async-context`).then((result) => result.text());
   expect(asyncDocument).toContain("Timed work is still pending.");
   expect(asyncDocument).not.toContain("Global portal mounted");
-  const rootDocument = await fetch("http://127.0.0.1:4175/").then((result) => result.text());
+  const rootDocument = await fetch(origin).then((result) => result.text());
   expect(rootDocument).toContain('<title data-sol-e="0">Margin — 2 tasks left</title>');
   expect(rootDocument).toContain("2 unfinished notes in the Sol compiler example.");
 
-  await page.goto("http://127.0.0.1:4175/blog/1?from=dev");
+  await page.goto(`${origin}/blog/1?from=dev`);
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page.locator(`link[data-solkit-dev-style]`)).toHaveCount(0);
   await expect(page.getByTestId("route-query-source")).toHaveText("Opened from dev");
   expect(errors).toEqual([]);
 
-  await page.goto("http://127.0.0.1:4175/queries");
+  await page.goto(`${origin}/queries`);
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page.getByTestId("query-loading")).toBeHidden();
   await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
@@ -75,7 +77,7 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   await expect(page.getByRole("heading", { name: "Page 2" })).toBeVisible();
   await page.getByTestId("query-mutate").click();
   await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
-  const noteResponse = await fetch("http://127.0.0.1:4175/api/notes/1");
+  const noteResponse = await fetch(`${origin}/api/notes/1`);
   expect(noteResponse.status).toBe(200);
   expect(await noteResponse.json()).toMatchObject({ id: 1 });
   const requestNames = await page.evaluate(() =>
@@ -85,7 +87,7 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   expect(requestNames).toContain("create-note");
   expect(errors).toEqual([]);
 
-  await page.goto("http://127.0.0.1:4175/async-context");
+  await page.goto(`${origin}/async-context`);
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page.getByTestId("async-results")).toBeVisible();
   await page.waitForFunction(
@@ -108,7 +110,7 @@ test("Vite development middleware renders and hydrates full-stack features", asy
   await expect(page).toHaveTitle("Margin — compiled notes");
   expect(errors).toEqual([]);
 
-  await page.goto("http://127.0.0.1:4175/");
+  await page.goto(origin);
   await expect(page.locator("html")).toHaveAttribute("data-solkit-hydrated", "true");
   await expect(page).toHaveTitle("Margin — 2 tasks left");
   await page.getByRole("link", { name: "New entry", exact: true }).click();

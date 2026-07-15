@@ -81,7 +81,7 @@
       "name": "@soljs/solkit",
       "version": "0.1.0",
       "bin": {
-        "solkit": "./dist/cli.js",
+        "solkit": "./src/cli.ts",
       },
       "dependencies": {
         "@soljs/sol": "0.1.0",

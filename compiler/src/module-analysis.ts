@@ -29,8 +29,7 @@ export function analyzeModule({ ast, compiler }: CompilationState): void {
         }
       }
       const isFrameworkHelperModule =
-        statement.source.value === "@soljs/sol" ||
-        statement.source.value.startsWith("@soljs/sol/");
+        statement.source.value === "@soljs/sol" || statement.source.value.startsWith("@soljs/sol/");
       if (statement.importKind !== "type" && !isFrameworkHelperModule) {
         for (const specifier of statement.specifiers) {
           if (t.isImportSpecifier(specifier) && specifier.importKind === "type") continue;

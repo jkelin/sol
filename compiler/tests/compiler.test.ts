@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { SourceMapConsumer } from "source-map-js";
 import {
   build,
+  normalizePath,
   type IndexHtmlTransformResult,
   type ResolvedConfig,
   type ViteDevServer,
@@ -2321,7 +2322,7 @@ test("the Vite plugin enables devtools only for development by default", () => {
       tag: "script",
       attrs: {
         type: "module",
-        src: "/@sol/devtools",
+        src: "/@soljs/sol/devtools",
         "data-sol-devtools": "",
       },
       injectTo: "head-prepend",
@@ -2558,7 +2559,9 @@ test("preserves queried and type-only imports from route modules", async () => {
       }),
     );
     for (const { query, source, result } of queried) {
-      expect(result?.code ?? source).toContain(`${routeFile}?${query}`);
+      expect(result?.code ?? source).toContain(
+        JSON.stringify(`${routeFile}?${query}`).slice(1, -1),
+      );
       expect(result?.code ?? source).not.toContain("sol-route-handles");
     }
 
@@ -2575,7 +2578,9 @@ test("preserves queried and type-only imports from route modules", async () => {
     expect(typeResult?.code).toContain(`import type DefaultPage from ${JSON.stringify(routeFile)}`);
     expect(typeResult?.code).toContain(`import type { page as NamedPage }`);
     expect(typeResult?.code).toContain(`type page as Page`);
-    expect(typeResult?.code).toContain(`${routeFile}?sol-route-handles`);
+    expect(typeResult?.code).toContain(
+      JSON.stringify(`${routeFile}?sol-route-handles`).slice(1, -1),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2659,7 +2664,7 @@ test("discovers and projects string-named route exports", async () => {
       join(root, "consumer.ts"),
       { ssr: false },
     );
-    expect(imported.code).toContain(`${routeFile}?sol-route-handles`);
+    expect(imported.code).toContain(JSON.stringify(`${routeFile}?sol-route-handles`).slice(1, -1));
     const reexported = await transform.handler
       .call(
         context,
@@ -2720,9 +2725,12 @@ console.log(page, App);`,
       .flatMap((item) => ("output" in item ? item.output : []))
       .find((item) => item.type === "chunk" && item.isEntry);
     const entryCode = entry?.type === "chunk" ? entry.code : "";
-    const metadataOffset = entryCode.indexOf(join(root, "entry.tsx"));
+    const entryFile = normalizePath(join(root, "entry.tsx"));
+    const metadataOffset = entryCode.indexOf(entryFile);
     expect(metadataOffset).toBeGreaterThanOrEqual(0);
-    expect(entryCode.slice(metadataOffset, metadataOffset + 100)).toMatch(/line:\s*5/);
+    expect(entryCode.slice(metadataOffset, metadataOffset + entryFile.length + 100)).toMatch(
+      /line:\s*5/,
+    );
     expect(warnings).toEqual([]);
     expect(entry?.type === "chunk" ? entry.map?.sourcesContent : []).toContain(
       `import {

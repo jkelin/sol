@@ -513,6 +513,7 @@ export function compileIntrinsicElement(
     codeFrame(compiler, node, "Dynamic JSX tags are not supported in v1");
   const attributes: string[] = [];
   const deferredOperations: ((element: number) => string)[] = [];
+  let propertyValueElement = false;
   const inputTypeAttribute = node.openingElement.attributes.find(
     (attribute) =>
       t.isJSXAttribute(attribute) && t.isJSXIdentifier(attribute.name, { name: "type" }),
@@ -594,6 +595,7 @@ export function compileIntrinsicElement(
         tag === "input" && (inputType === "checkbox" || inputType === "radio")
           ? "checked"
           : "value";
+      if (property === "value") propertyValueElement = true;
       const binding = compileBinding(
         compiler,
         expressionAttribute(compiler, attribute),
@@ -674,6 +676,7 @@ export function compileIntrinsicElement(
     } else if (staticValue === false) continue;
     else {
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
+      if (name === "value") propertyValueElement = true;
       deferredOperations.push((element) =>
         mappedCode(
           compiler,
@@ -687,6 +690,7 @@ export function compileIntrinsicElement(
   if (RAW_TEXT_ELEMENTS.has(tag)) {
     const values = rawTextValues(compiler, node, tag, scope);
     if (values.length > 0) {
+      propertyValueElement = true;
       deferredOperations.push(
         (element) =>
           `__sol_raw_text(__sol_view.elements[${element}], () => [${values.join(", ")}], __sol_cleanups);`,
@@ -698,6 +702,7 @@ export function compileIntrinsicElement(
   if (deferredOperations.length > 0) {
     const index = elementId(context, node.openingElement);
     context.elementTags[index] = tag;
+    if (propertyValueElement) context.propertyValueElements.add(index);
     attributes.push(`data-sol-e="${index}"`);
     context.operations.push(...deferredOperations.map((operation) => operation(index)));
   }
@@ -977,6 +982,7 @@ export function compileBlockBody(
     html: [],
     operations: [],
     elementTags: [],
+    propertyValueElements: new Set(),
     nextElement: 0,
     nextRegion: 0,
     elementIds: new WeakMap(),
@@ -987,6 +993,9 @@ export function compileBlockBody(
     elementTags: context.elementTags,
     regionCount: context.nextRegion,
     operations: context.operations,
+    propertyValueElements: [...context.propertyValueElements].toSorted(
+      (left, right) => left - right,
+    ),
   };
   const templateSignature = JSON.stringify([
     compiledTemplate.html,

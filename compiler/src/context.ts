@@ -25,6 +25,7 @@ export interface TemplateContext {
   html: string[];
   operations: string[];
   elementTags: string[];
+  propertyValueElements: Set<number>;
   nextElement: number;
   nextRegion: number;
   elementIds: WeakMap<t.JSXOpeningElement, number>;
@@ -35,6 +36,7 @@ export interface CompiledTemplate {
   elementTags: string[];
   regionCount: number;
   operations: string[];
+  propertyValueElements: number[];
 }
 
 export interface CompilerContext {

@@ -1,4 +1,3 @@
-import { parse } from "@babel/parser";
 import MagicString from "magic-string";
 import type { CompilationState } from "./context.ts";
 import { generatedSourceMap, unmappedCode } from "./diagnostics.ts";
@@ -15,7 +14,7 @@ export function emitCompilation(state: CompilationState): CompileResult {
       const metadata = {
         elements: template.elementTags,
         regionCount: template.regionCount,
-        propertyValueElements: propertyValueElements(compiler, template.operations),
+        propertyValueElements: template.propertyValueElements,
       };
       const signature = templateSignature(compiler, template.html, template.operations);
       return `const __sol_template_${index} = ${compiler.routeMode === "handle" ? "/*#__PURE__*/ " : ""}__sol_template(\`${escapeTemplate(template.html)}\`, ${JSON.stringify(signature)}, ${JSON.stringify(metadata)});`;
@@ -37,11 +36,6 @@ export function emitCompilation(state: CompilationState): CompileResult {
   );
   const transformed = marked.replaceAll(markerPattern, "");
 
-  parse(transformed, {
-    sourceType: "module",
-    sourceFilename: compiler.filename,
-    plugins: ["typescript"],
-  });
   return {
     code: transformed,
     map: generatedSourceMap(transformedSource, marked, compiler, redactClientServerSource(state)),
@@ -71,24 +65,6 @@ function identityHash(value: string, prefix: string): string {
     second = Math.imul(second, 33) ^ code;
   }
   return `${prefix}${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
-}
-
-function propertyValueElements(
-  compiler: CompilationState["compiler"],
-  operations: readonly string[],
-): number[] {
-  const indexes = new Set<number>();
-  for (const operation of operations) {
-    const code = unmappedCode(compiler, operation);
-    const target = /__sol_view\.elements\[(\d+)\]/.exec(code);
-    if (!target) continue;
-    const kind = /__sol_([a-z_]+)\(/.exec(code)?.[1];
-    const name = /__sol_view\.elements\[\d+\],\s*"([^"]+)"/.exec(code)?.[1];
-    if (kind === "raw_text" || ((kind === "attribute" || kind === "bind") && name === "value")) {
-      indexes.add(Number(target[1]));
-    }
-  }
-  return [...indexes].toSorted((left, right) => left - right);
 }
 
 function operationIdentity(compiler: CompilationState["compiler"], operation: string): string {

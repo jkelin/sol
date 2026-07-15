@@ -19,8 +19,9 @@ lowering. `options.routeMode` selects a metadata-only `"handle"` projection or t
 implementation (the default). Handle projections retain the route path and matcher while omitting
 the schema and route-owned stylesheet imports; bundlers can consequently remove component,
 schema, and page-only dependency graphs. The Vite adapter resolves extensionless and aliased module
-specifiers and rewrites named route-handle imports to a dedicated metadata projection, even when an
-import also names ordinary exports. Aliased route declarations retain their public export name. The ordinary side
+specifiers and rewrites named or default route-handle imports to a dedicated metadata projection,
+even when an import also names ordinary exports. Multiple public aliases of one route share one
+manifest entry and one projected handle. The ordinary side
 of a mixed import retains the route module's full JavaScript, stylesheet, and side-effect semantics.
 Namespace imports and direct re-exports of route modules are rejected because they cannot preserve
 the lazy implementation boundary; use named imports and an explicit local export instead.
@@ -37,7 +38,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `types.ts` defines the compilation result shared by callers and the implementation.
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures,
-  including the constant-time template-signature index.
+  including the constant-time template-signature index and value-sensitive element metadata.
 - `module-analysis.ts` validates every lexical binding, including nested scopes, and classifies framework helpers, declarations, builtins,
   Head, Link, refs, and components by lexical binding identity.
 - `declarations.ts` validates and lowers top-level component, route, RPC, and HTTP declarations,
@@ -47,7 +48,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
   namespace Sol import bindings and may be published by inline or later export declarations;
   ambiguous mixed frontend/server effects receive a diagnostic instead of being deleted.
 - `compiler-validation.ts` rejects misplaced compiler calls and JSX that survives lowering.
-- `output.ts` applies edits, injects runtime imports and dual-lane signed templates, validates generated syntax,
+- `output.ts` applies edits, injects runtime imports and dual-lane signed templates,
   redacts stripped server ranges from client source content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames, owns source-marker insertion and canonical removal,
   and preserves source-map origins while accepting the client-safe source content emitted by
@@ -69,16 +70,21 @@ dependencies; route handles referenced by endpoint code are projected again as m
   non-reactive values, recognizing explicit reactive helpers and extracted context methods,
   capturing awaits through transparent TypeScript expressions, attaching authored locations to
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read
-  instrumentation.
+  instrumentation; constructor results retain the conservative frame-aware fallback because a
+  constructor may return a route-backed object.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
-- `runtime-import.ts` resolves referenced compiler-runtime identifiers from generated syntax and emits one minimal import; output adds
+- `runtime-import.ts` validates generated syntax with a lightweight identifier walk, resolves
+  referenced compiler-runtime identifiers, and emits one minimal import; output adds
   a target-specific endpoint import only for modules containing server declarations.
 - `compile.ts` validates input, creates compilation state, and sequences analysis, declaration lowering, final validation, and emission.
 - `vite.ts` discovers `.sol.ts` and `.sol.tsx` modules, provides lazy route-file and server-endpoint
   manifests, infers literal static paths, emits both RPC declaration kinds as
   `POST /api/rpc/:name`, rejects matcher collisions, invalidates both manifests during development,
   injects the opt-out development devtools entry, and compiles metadata-only route handles
-  separately from page implementations before Vite's JSX transform.
+  separately from page implementations before Vite's JSX transform. Every projection emits a
+  source map. Route-import maps compose with compiler maps to retain authored locations and source
+  content, while generated handle and endpoint projections expose only their projected source so
+  lazy or server-only implementation text cannot leak into eager maps.
 
 ## How it works
 

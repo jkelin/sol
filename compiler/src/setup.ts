@@ -975,7 +975,6 @@ function instrumentAwaitExpressions(
     if (
       t.isObjectExpression(candidate) ||
       t.isArrayExpression(candidate) ||
-      t.isNewExpression(candidate) ||
       t.isFunctionExpression(candidate) ||
       t.isArrowFunctionExpression(candidate)
     ) {
@@ -990,7 +989,6 @@ function instrumentAwaitExpressions(
       if (
         t.isObjectExpression(value) ||
         t.isArrayExpression(value) ||
-        t.isNewExpression(value) ||
         t.isFunctionExpression(value) ||
         t.isArrowFunctionExpression(value)
       ) {

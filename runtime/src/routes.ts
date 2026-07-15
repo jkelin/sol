@@ -560,6 +560,32 @@ export function routeHandle<
   return createRouteDefinition(config, undefined, compiled);
 }
 
+function sameValues<Value>(
+  leftValues: readonly Value[],
+  rightValues: readonly Value[],
+  matches: (leftValue: Value, rightValue: Value) => boolean = Object.is,
+): boolean {
+  return (
+    leftValues.length === rightValues.length &&
+    leftValues.every((value, index) => matches(value, rightValues[index]!))
+  );
+}
+
+function compiledRoutesMatch(left: CompiledRoutePattern, right: CompiledRoutePattern): boolean {
+  return (
+    left.pattern === right.pattern &&
+    sameValues(left.parameterNames, right.parameterNames) &&
+    sameValues(left.pathnameParameterNames, right.pathnameParameterNames) &&
+    sameValues(
+      left.queryParameters,
+      right.queryParameters,
+      (leftParameter, rightParameter) =>
+        leftParameter.key === rightParameter.key && leftParameter.name === rightParameter.name,
+    ) &&
+    sameValues(left.specificity, right.specificity)
+  );
+}
+
 export function lazyRoute(
   path: string,
   compiled: CompiledRoutePattern,
@@ -577,18 +603,26 @@ export function lazyRoute(
     config,
     compiled: validatedCompiled,
     load() {
-      loaded ??= Promise.resolve(loader()).then((definition) => {
-        if (!isRouteDefinition(definition)) {
-          throw new TypeError(`Lazy route module did not export a compiled route for ${path}`);
+      if (!loaded) {
+        let loading: Promise<unknown>;
+        try {
+          loading = Promise.resolve(loader());
+        } catch (error) {
+          loading = Promise.reject(error);
         }
-        if (
-          definition.config.path !== path ||
-          definition.compiled.pattern !== validatedCompiled.pattern
-        ) {
-          throw new TypeError(`Lazy route module metadata does not match ${path}`);
-        }
-        return definition;
-      });
+        loaded = loading.then((definition) => {
+          if (!isRouteDefinition(definition)) {
+            throw new TypeError(`Lazy route module did not export a compiled route for ${path}`);
+          }
+          if (
+            definition.config.path !== path ||
+            !compiledRoutesMatch(definition.compiled, validatedCompiled)
+          ) {
+            throw new TypeError(`Lazy route module metadata does not match ${path}`);
+          }
+          return definition;
+        });
+      }
       return loaded;
     },
   });

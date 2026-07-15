@@ -5,7 +5,8 @@ import type { Scope } from "@babel/traverse";
 import * as t from "@babel/types";
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
 import { normalizePath } from "vite";
-import MagicString from "magic-string";
+import MagicString, { type SourceMap } from "magic-string";
+import { type RawSourceMap, SourceMapConsumer, SourceMapGenerator } from "source-map-js";
 import { generate, traverse } from "./ast.ts";
 import { compile } from "./compile.ts";
 import { canonicalHttpRoutePath } from "./http-path.ts";
@@ -66,11 +67,13 @@ async function routeManifest(files: readonly string[], root: string): Promise<st
   const routes = declarations.flatMap((items, fileIndex) =>
     items.map((declaration) => {
       const name = `__sol_route_${routeIndex++}`;
+      const loadExportName =
+        declaration.exportNames.find((exportName) => exportName !== "default") ?? "default";
       return {
         name,
         assetKey: normalizePath(relative(root, files[fileIndex]!)),
         declaration,
-        code: `const ${name} = __sol_lazy_route(${JSON.stringify(declaration.path)}, ${JSON.stringify(declaration.compiled)}, () => __sol_load_route_module_${fileIndex}().then(module => module[${JSON.stringify(declaration.exportName)}]));`,
+        code: `const ${name} = __sol_lazy_route(${JSON.stringify(declaration.path)}, ${JSON.stringify(declaration.compiled)}, () => __sol_load_route_module_${fileIndex}().then(module => module[${JSON.stringify(loadExportName)}]));`,
       };
     }),
   );
@@ -100,8 +103,64 @@ export default __sol_modules.flatMap(module => Object.values(module).filter(__so
 
 function routeHandleProjection(source: string, filename: string): string {
   const routes = declaredRoutes(source, filename);
+  const declarations = routes.map(
+    (route, index) =>
+      `const __sol_projected_route_${index} = __sol_route_handle({ path: ${JSON.stringify(route.path)} }, ${JSON.stringify(route.compiled)});`,
+  );
+  const exports = routes.flatMap((route, index) =>
+    route.exportNames.map((exportName) =>
+      exportName === "default"
+        ? `export default __sol_projected_route_${index};`
+        : `export { __sol_projected_route_${index} as ${exportName} };`,
+    ),
+  );
   return `import { routeHandle as __sol_route_handle } from "sol/compiler-runtime";
-${routes.map((route) => `export const ${route.exportName} = __sol_route_handle({ path: ${JSON.stringify(route.path)} }, ${JSON.stringify(route.compiled)});`).join("\n")}`;
+${declarations.join("\n")}
+${exports.join("\n")}`;
+}
+
+interface Projection {
+  readonly code: string;
+  readonly map: SourceMap | string;
+}
+
+function sourceMapJson(map: SourceMap | string): RawSourceMap {
+  return JSON.parse(typeof map === "string" ? map : map.toString()) as RawSourceMap;
+}
+
+function replacementProjection(source: string, code: string, filename: string): Projection {
+  const transformed = new MagicString(source);
+  if (code !== source) transformed.overwrite(0, source.length, code);
+  const map = transformed.generateMap({
+    hires: true,
+    source: filename,
+    includeContent: true,
+  });
+  if (code !== source) {
+    const generatedContent = sourceMapJson(map);
+    generatedContent.sourcesContent = generatedContent.sources.map(() => code);
+    return { code, map: JSON.stringify(generatedContent) };
+  }
+  return {
+    code,
+    map,
+  };
+}
+
+function composeSourceMaps(
+  generated: SourceMap | string,
+  previous: SourceMap | string,
+  filename: string,
+  sourceContent?: string,
+): string {
+  const generatedConsumer = new SourceMapConsumer(sourceMapJson(generated));
+  const previousConsumer = new SourceMapConsumer(sourceMapJson(previous));
+  const combined = SourceMapGenerator.fromSourceMap(generatedConsumer);
+  combined.applySourceMap(previousConsumer, filename);
+  if (sourceContent !== undefined) {
+    for (const source of previousConsumer.sources) combined.setSourceContent(source, sourceContent);
+  }
+  return combined.toString();
 }
 
 function expressionIsPure(expression: t.Expression): boolean {
@@ -328,10 +387,11 @@ async function routeImportSource(
 }
 
 async function projectRouteImports(
-  source: string,
+  input: Projection,
   importer: string,
   resolveImport?: (specifier: string, importer: string) => Promise<string | undefined>,
-): Promise<string> {
+): Promise<Projection> {
+  const { code: source } = input;
   const ast = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] });
   const edits = new MagicString(source);
   const candidates = ast.program.body.flatMap((statement) => {
@@ -355,7 +415,7 @@ async function projectRouteImports(
     const { statement, resolved } = projection;
     const { target, source: targetSource } = resolved;
     const routeNames = new Set(
-      declaredRoutes(targetSource, target).map((route) => route.exportName),
+      declaredRoutes(targetSource, target).flatMap((route) => route.exportNames),
     );
     if (t.isExportNamedDeclaration(statement)) {
       const exportsRoute = statement.specifiers.some(
@@ -379,9 +439,10 @@ async function projectRouteImports(
     }
     const handles = statement.specifiers.filter(
       (specifier) =>
-        t.isImportSpecifier(specifier) &&
-        t.isIdentifier(specifier.imported) &&
-        routeNames.has(specifier.imported.name),
+        (t.isImportDefaultSpecifier(specifier) && routeNames.has("default")) ||
+        (t.isImportSpecifier(specifier) &&
+          t.isIdentifier(specifier.imported) &&
+          routeNames.has(specifier.imported.name)),
     );
     if (!handles.length) continue;
     const ordinary = statement.specifiers.filter((specifier) => !handles.includes(specifier));
@@ -398,13 +459,15 @@ async function projectRouteImports(
         ),
       );
     }
-    edits.overwrite(
-      statement.start!,
-      statement.end!,
-      imports.map((item) => generate(item).code).join("\n"),
-    );
+    const original = source.slice(statement.start!, statement.end!);
+    const replacement = imports.map((item) => generate(item).code).join(" ");
+    const preservedLines = "\n".repeat(original.split("\n").length - 1);
+    edits.overwrite(statement.start!, statement.end!, `${replacement}${preservedLines}`);
   }
-  return edits.toString();
+  const code = edits.toString();
+  if (code === source) return input;
+  const map = edits.generateMap({ hires: true, source: importer, includeContent: true });
+  return { code, map: composeSourceMaps(map, input.map, importer) };
 }
 
 type DeclarationHelper = "$route" | "$rpcQuery" | "$rpcMutation" | "$httpRoute";
@@ -493,7 +556,8 @@ function manifestExportedNames(ast: t.File): Map<string, string[]> {
 }
 
 interface DeclaredRoute {
-  readonly exportName: string;
+  readonly localName: string;
+  readonly exportNames: readonly string[];
   readonly path: string;
   readonly compiled: ParsedRoutePath;
 }
@@ -526,13 +590,12 @@ function declaredRoutes(source: string, filename: string): DeclaredRoute[] {
           t.isIdentifier(property.key, { name: "path" }),
       );
       if (path && t.isObjectProperty(path) && t.isStringLiteral(path.value)) {
-        for (const exportName of exportedNames.get(variable.id.name) ?? []) {
-          routes.push({
-            exportName,
-            path: path.value.value,
-            compiled: compileRoutePath(path.value.value),
-          });
-        }
+        routes.push({
+          localName: variable.id.name,
+          exportNames: exportedNames.get(variable.id.name) ?? [],
+          path: path.value.value,
+          compiled: compileRoutePath(path.value.value),
+        });
       }
     }
   }
@@ -724,23 +787,40 @@ export function sol(options: SolPluginOptions = {}): Plugin {
           return resolved?.id.split("?", 1)[0];
         };
         if (id.includes("?sol-route-handles")) {
-          return await projectRouteImports(
+          const handles = replacementProjection(
+            source,
             routeHandleProjection(source, filename),
             filename,
-            resolveImport,
           );
+          return await projectRouteImports(handles, filename, resolveImport);
         }
-        const projection = id.includes("?sol-endpoints")
-          ? endpointProjection(source, filename)
-          : source;
+        const projection = replacementProjection(
+          source,
+          id.includes("?sol-endpoints") ? endpointProjection(source, filename) : source,
+          filename,
+        );
         const projected = await projectRouteImports(projection, filename, resolveImport);
         if (!componentFile.test(id) && !solFile.test(id)) {
-          return projected === source ? null : projected;
+          return projected.code === source ? null : projected;
         }
-        return compile(projected, filename, {
+        const compiled = compile(projected.code, filename, {
           target: transformOptions?.ssr ? "server" : "client",
           routeMode: "page",
         });
+        const compiledSourceContent = compiled.map
+          ? sourceMapJson(compiled.map).sourcesContent?.[0]
+          : undefined;
+        return compiled.map
+          ? {
+              code: compiled.code,
+              map: composeSourceMaps(
+                compiled.map,
+                projected.map,
+                filename,
+                compiledSourceContent === projected.code ? undefined : compiledSourceContent,
+              ),
+            }
+          : projected;
       },
     },
   };

@@ -1188,6 +1188,26 @@ describe("compiled DOM runtime", () => {
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(TypeError);
     expect((failure as Error).message).toContain("did not export");
+
+    const mismatched = route({ path: "/lazy" }, Empty, {
+      ...definition.compiled,
+      parameterNames: ["id"],
+    });
+    const metadataFailure = await lazyRoute("/lazy", definition.compiled, async () => mismatched)
+      .load()
+      .catch((error: unknown) => error);
+    expect(metadataFailure).toBeInstanceOf(TypeError);
+    expect((metadataFailure as Error).message).toContain("metadata does not match");
+
+    const loaderError = new Error("sync loader failure");
+    const syncFailure = lazyRoute("/lazy", definition.compiled, () => {
+      throw loaderError;
+    });
+    let loadPromise: Promise<unknown> | undefined;
+    expect(() => {
+      loadPromise = syncFailure.load();
+    }).not.toThrow();
+    expect(await loadPromise!.catch((error: unknown) => error)).toBe(loaderError);
   });
 
   test("provides typed route params, navigation, and active state", () => {

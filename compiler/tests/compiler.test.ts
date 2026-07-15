@@ -244,8 +244,8 @@ describe("compiler", () => {
   test("does not import runtime helpers mentioned only in authored text", () => {
     const result = compile(
       `import { $component } from "sol";
-       const diagnostic = "__sol_portal";
-       export const App = $component(function App() { return <p>{diagnostic}</p>; });`,
+       const diagnostic = { __sol_portal: "__sol_portal" };
+       export const App = $component(function App() { return <p>{diagnostic.__sol_portal}</p>; });`,
       "text.tsx",
     );
     expect(result.code).not.toContain("portal as __sol_portal");
@@ -1153,6 +1153,21 @@ describe("compiler", () => {
 
     expect(result.code).not.toContain("routeObject as __sol_route_object");
     expect(result.code).not.toContain("routeRead as __sol_route_read");
+  });
+
+  test("keeps constructor-returned route objects frame-bound", () => {
+    const result = compile(
+      `import { $component } from "sol";
+       import { detail } from "./detail.sol.tsx";
+       export const App = $component(async function App() {
+         await Promise.resolve();
+         const view = new Proxy(detail, {});
+         return <p>{view.params.id}</p>;
+       });`,
+      "constructor-route.tsx",
+    );
+
+    expect(result.code).toContain('__sol_route_read(view.value, "params", __sol_frame).id');
   });
 
   test("instruments optional and computed context reads", () => {
@@ -2221,6 +2236,44 @@ test("the route manifest creates one lazy loader per route file and infers liter
   }
 });
 
+test("deduplicates route aliases and projects default route handles", async () => {
+  const root = await mkdtemp(join(import.meta.dir, "route-aliases-"));
+  try {
+    await writeFile(
+      join(root, "page.sol.tsx"),
+      `import { $route } from "sol";
+       import { Page } from "./Page";
+       const internal = $route({ path: "/page" }, Page);
+       export { internal as page, internal as default };`,
+    );
+    await writeFile(
+      join(root, "entry.ts"),
+      `import defaultPage, { page } from "./page.sol.tsx"; console.log(defaultPage, page);`,
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const manifest = await (plugin.load as (id: string) => Promise<string>)("\0virtual:sol/routes");
+    expect(manifest.match(/__sol_lazy_route\(/g)).toHaveLength(1);
+    expect(manifest).toContain('module["page"]');
+
+    const result = await build({
+      root,
+      logLevel: "silent",
+      plugins: [sol()],
+      build: { write: false, rollupOptions: { input: join(root, "entry.ts") } },
+    });
+    const entry = (Array.isArray(result) ? result : [result])
+      .flatMap((item) => ("output" in item ? item.output : []))
+      .find((item) => item.type === "chunk" && item.isEntry);
+    expect(entry?.type === "chunk" ? entry.code : "").not.toContain("export const default");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("projects extensionless route imports and rejects unsafe namespace and re-export forms", async () => {
   const root = await mkdtemp(join(import.meta.dir, "route-import-forms-"));
   try {
@@ -2233,20 +2286,52 @@ test("projects extensionless route imports and rejects unsafe namespace and re-e
          console.log("EXTENSIONLESS_PAGE_SECRET");
          export const page = $route({ path: "/page" }, Page);`,
       ),
-      writeFile(join(root, "entry.ts"), `import { page } from "./page.sol"; console.log(page);`),
+      writeFile(
+        join(root, "entry.tsx"),
+        `import {
+  page,
+} from "./page.sol";
+import { $component } from "sol";
+export const App = $component(function App() { return <p>Ready</p>; });
+console.log(page, App);`,
+      ),
     ]);
+    const warnings: string[] = [];
     const buildEntry = (input: string) =>
       build({
         root,
         logLevel: "silent",
         plugins: [sol()],
-        build: { write: false, rollupOptions: { input } },
+        build: {
+          minify: false,
+          sourcemap: true,
+          write: false,
+          rollupOptions: {
+            input,
+            onLog(_level, log, handler) {
+              if (log.code === "SOURCEMAP_BROKEN") warnings.push(log.message);
+              else handler("warn", log);
+            },
+          },
+        },
       });
-    const result = await buildEntry(join(root, "entry.ts"));
+    const result = await buildEntry(join(root, "entry.tsx"));
     const entry = (Array.isArray(result) ? result : [result])
       .flatMap((item) => ("output" in item ? item.output : []))
       .find((item) => item.type === "chunk" && item.isEntry);
-    expect(entry?.type === "chunk" ? entry.code : "").not.toContain("EXTENSIONLESS_PAGE_SECRET");
+    const entryCode = entry?.type === "chunk" ? entry.code : "";
+    const metadataOffset = entryCode.indexOf(join(root, "entry.tsx"));
+    expect(metadataOffset).toBeGreaterThanOrEqual(0);
+    expect(entryCode.slice(metadataOffset, metadataOffset + 100)).toMatch(/line:\s*5/);
+    expect(warnings).toEqual([]);
+    expect(entry?.type === "chunk" ? entry.map?.sourcesContent : []).toContain(
+      `import {
+  page,
+} from "./page.sol";
+import { $component } from "sol";
+export const App = $component(function App() { return <p>Ready</p>; });
+console.log(page, App);`,
+    );
 
     await writeFile(
       join(root, "namespace.ts"),

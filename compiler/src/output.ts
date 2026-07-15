@@ -22,6 +22,9 @@ export function emitCompilation(state: CompilationState): CompileResult {
         elements: template.elementTags,
         regionCount: template.regionCount,
         propertyValueElements: template.propertyValueElements,
+        ...(Object.keys(template.dynamicAttributes).length > 0
+          ? { dynamicAttributes: template.dynamicAttributes }
+          : {}),
       };
       const signature = templateSignature(compiler, template.html, template.operations);
       return [

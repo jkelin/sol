@@ -49,7 +49,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
 - `types.ts` defines the compilation result shared by callers and the implementation.
 - `ast.ts` normalizes Babel's module interop and exposes the generator and traversal helpers.
 - `context.ts` defines the internal compilation context, edit, scope, and template data structures,
-  including the constant-time template-signature index, value-sensitive element metadata, and
+  including the constant-time template-signature index, value-sensitive element metadata,
+  per-element dynamic-attribute ownership, and
   explicit ordinary and target-specific endpoint helper usage. AST-identity records distinguish
   compiler-instrumented request-controller calls from ordinary calls after lowering. Component-owned
   template and helper records let client projection discard generated artifacts whose server-only
@@ -69,7 +70,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   one monotonic pass across source-ordered compiled JSX ranges.
 - `output.ts` applies edits, injects runtime imports and dual-lane signed templates, omits generated
   templates and helpers with no retained owner,
-  redacts stripped server ranges from client source content, and creates the final source map.
+  emits hydration attribute-ownership metadata, redacts stripped server ranges from client source
+  content, and creates the final source map.
 - `diagnostics.ts` creates authored code frames, owns source-marker insertion and canonical removal,
   and preserves source-map origins while accepting the client-safe source content emitted by
   `output.ts`.
@@ -113,7 +115,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   target writes while retaining writable object members. Initializer free references are analyzed
   once for self, forward, and reactive classification, recognizing explicit reactive helpers and extracted context methods,
   capturing awaits through transparent TypeScript expressions with a linear reverse-call-graph
-  analysis, attaching authored locations to
+  analysis, rejecting `for await...of` loops whose iterator progress cannot be replayed during
+  hydration, attaching authored locations to
   query/mutation diagnostics, and excluding provably ordinary local objects from async route-read
   instrumentation; constructor results retain the conservative frame-aware fallback because a
   constructor may return a route-backed object.
@@ -150,7 +153,7 @@ dependencies; route handles referenced by endpoint code are projected again as m
 
 `compile()` accepts a client or server target; the Vite adapter chooses it from the active environment.
 
-Compilation parses the source with Babel, then `compile.ts` passes shared state through binding-aware module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Constant primitive children and safe boolean and numeric intrinsic literals are folded into template HTML; boolean-target expression strings remain operations so falsey values do not become presence attributes. Static templates omit cleanup and lifecycle scaffolding. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. Context-compatible `use()` calls are routed through the runtime's non-observable context registry so direct, imported, aliased, and prop-supplied contexts receive the render frame across async continuations while ordinary methods retain their authored behavior. Await expressions are wrapped in lazy, module-qualified replay sites, including promise initializers later consumed by an await and awaits in lexically resolved local helper chains. Await ancestry stops at function boundaries, and helper capture is propagated per invocation, so an awaited call is replayable even when another call to the same helper is fire-and-forget. Redundant aggregate capture is omitted when `Promise.all` inputs already own replay sites. `Await` receives its own site, and Suspense forwards its validated server timeout. Generated component factories carry component names and authored file/line metadata for development introspection. Generated templates carry deterministic signatures plus the element tags, region count, and value-sensitive element indexes needed by SSR and hydration; full operation identities remain compiler-private signature inputs. They receive the active render frame so the same compiled operations can target a cloned DOM, server strings, or hydration claims. The output phase applies edits with `magic-string`, injects only referenced runtime helpers and signed templates, removes source-absent private mapping sentinels in one pass, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
+Compilation parses the source with Babel, then `compile.ts` passes shared state through binding-aware module analysis, declaration lowering, surviving-syntax validation, and output emission. Component setup declarations are rewritten into signals or computed values, while JSX is lowered into static template HTML and narrowly scoped runtime operations. Constant primitive children and safe boolean and numeric intrinsic literals are folded into template HTML; boolean-target expression strings remain operations so falsey values do not become presence attributes. Static templates omit cleanup and lifecycle scaffolding. Intrinsic refs become mount-phase operations; Portal and GlobalPortal become owned remote block factories. Context-compatible `use()` calls are routed through the runtime's non-observable context registry so direct, imported, aliased, and prop-supplied contexts receive the render frame across async continuations while ordinary methods retain their authored behavior. Await expressions are wrapped in lazy, module-qualified replay sites, including promise initializers later consumed by an await and awaits in lexically resolved local helper chains. Await ancestry stops at function boundaries, and helper capture is propagated per invocation, so an awaited call is replayable even when another call to the same helper is fire-and-forget. Redundant aggregate capture is omitted when `Promise.all` inputs already own replay sites. `Await` receives its own site, and Suspense forwards its validated server timeout. Generated component factories carry component names and authored file/line metadata for development introspection. Generated templates carry deterministic signatures plus the element tags, region count, value-sensitive element indexes, and dynamic-attribute names needed by SSR and exact hydration claims; full operation identities remain compiler-private signature inputs. They receive the active render frame so the same compiled operations can target a cloned DOM, server strings, or hydration claims. The output phase applies edits with `magic-string`, injects only referenced runtime helpers and signed templates, removes source-absent private mapping sentinels in one pass, and preserves authored locations in the source map. The Vite adapter adds route discovery and feeds matching TSX files through that same `compile` interface.
 
 Reactive helpers and declaration macros are recognized by lexical binding identity, imported aliases
 included; identical compiled templates are interned within a module. Compiler diagnostics are part

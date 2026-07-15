@@ -41,7 +41,7 @@ export interface Router {
   readonly pathname: string;
   readonly search: string;
   readonly hash: string;
-  readonly searchParams: URLSearchParams;
+  readonly searchParams: Omit<URLSearchParams, "append" | "delete" | "set" | "sort">;
   readonly params: Readonly<Record<string, string | number | undefined>>;
   readonly query: Readonly<Record<string, string | number | undefined>>;
   readonly route: RouteConfig | null;
@@ -384,7 +384,7 @@ export const router: Router = registerRouter(
       return currentState().hash;
     },
     get searchParams() {
-      return currentState().searchParams;
+      return new URLSearchParams(currentState().searchParams);
     },
     get params() {
       return currentState().values ?? EMPTY_ROUTE_VALUES;

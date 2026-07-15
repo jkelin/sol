@@ -329,6 +329,26 @@ test("loads the initial browser route before routerReady resolves", () => {
   expect(initialLoadCalls).toBe(1);
 });
 
+test("does not expose mutable router search parameter state", () => {
+  router.navigate("/?first=one&second=two");
+  const expectedSearch = router.search;
+  const expectedUrl = window.location.href;
+
+  for (const mutate of [
+    (params: URLSearchParams) => params.set("first", "changed"),
+    (params: URLSearchParams) => params.append("third", "three"),
+    (params: URLSearchParams) => params.delete("second"),
+    (params: URLSearchParams) => params.sort(),
+  ]) {
+    mutate(router.searchParams as URLSearchParams);
+    expect(router.search).toBe(expectedSearch);
+    expect(window.location.href).toBe(expectedUrl);
+    expect(router.searchParams.toString()).toBe("first=one&second=two");
+  }
+
+  router.navigate("/");
+});
+
 test("route transitions overlap, freeze outgoing state, and clean rapid navigation", () => {
   expect((devtools.router.routes as Array<{ path: string }>).map((entry) => entry.path)).toEqual([
     "/async/:id",

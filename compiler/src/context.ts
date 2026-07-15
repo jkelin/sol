@@ -27,6 +27,7 @@ export interface TemplateContext {
   operations: string[];
   elementTags: string[];
   propertyValueElements: Set<number>;
+  dynamicAttributes: Map<number, Set<string>>;
   nextElement: number;
   nextRegion: number;
   elementIds: WeakMap<t.JSXOpeningElement, number>;
@@ -38,6 +39,7 @@ export interface CompiledTemplate {
   regionCount: number;
   operations: string[];
   propertyValueElements: number[];
+  dynamicAttributes: Record<number, string[]>;
 }
 
 export interface CompilerContext {

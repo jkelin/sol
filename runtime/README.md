@@ -48,7 +48,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   Link handles, including integrity-safe context proxies, opaque branded-value method receivers,
   and frame-explicit direct or extracted context reads used by async compiled setup.
 - `rendering.ts` implements templates, shared component-props validation, block and setup lifecycle,
-  compiled component factories,
+  compiled component factories and dynamic-attribute ownership metadata,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   shared single-value and concatenate-then-normalize display conversion, asynchronous retirement
   settlement that globally surfaces late teardown failures without re-entering disposed owners,
@@ -60,6 +60,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   serialization, first-match controlled-select option selection, and the raw-text closing-tag
   transform shared with hydration validation.
 - `hydration-rendering.ts` validates and claims server block, element, and region markers, including
+  exact static and compiler-owned dynamic attribute names, controlled-select option state, and
   explicit empty-text claims that preserve rollback-safe server DOM, then returns claimed blocks to
   the normal transition and retirement lifecycle after commit.
 - `ssr-session.ts` coordinates async replay entries across chained completion generations, shared
@@ -101,7 +102,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   nodes during hydration, case-insensitive boolean attributes
   with canonical writable-property lookup and truthy-presence fallbacks, boolean-valued enumerated
   attribute tokens, unchanged-order keyed-list updates without DOM moves, consistent text-control
-  stringification, browser-normalized constrained-control hydration, reflected-attribute
+  stringification, array-indexed keyed-list snapshots that preserve sparse `map()` semantics and
+  ignore overridden array iterators, browser-normalized constrained-control hydration, reflected-attribute
   null/boolean parity, and shared U+0000 normalization for text and dynamic attributes across
   server rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API
@@ -121,7 +123,7 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
 - `router.ts` loads matched route-file chunks before schema resolution, connects definitions to
   browser history or static document navigation, request URLs, SSR route rendering, initial
   asynchronous route readiness, deployment-base translation, trailing-slash directory URL
-  normalization, shared empty route values, snapshotted navigation options, request-frame reads,
+  normalization, shared empty route values, defensive public search-parameter views, snapshotted navigation options, request-frame reads,
   ErrorBoundary-owned browser and asynchronous retirement failure cleanup, and hydration of the active route.
 - `compiler-runtime.ts` is the narrow interface used by compiler-generated DOM operations.
 - `jsx-runtime.ts` defines Sol JSX types and the missing-compiler diagnostics.

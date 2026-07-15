@@ -579,6 +579,7 @@ export function compileFunction(
   if (declaration.generator)
     codeFrame(compiler, declaration, "Components must not be generator functions");
   validateErasedFunctionScope(compiler, declaration, true);
+  validateReplayableAsyncIteration(compiler, declaration);
   instrumentRequestSources(compiler, declaration);
   instrumentAwaitExpressions(compiler, declaration);
   if (declaration.params.length > 1)
@@ -1250,6 +1251,19 @@ function instrumentAwaitExpressions(
         ]),
       );
       outer.skip();
+    },
+  });
+}
+
+function validateReplayableAsyncIteration(
+  compiler: CompilerContext,
+  declaration: t.FunctionExpression,
+): void {
+  traverse(t.file(t.program([t.expressionStatement(declaration)])), {
+    ForOfStatement(path: NodePath<t.ForOfStatement>) {
+      if (path.node.await) {
+        codeFrame(compiler, path.node, "for await...of is not replayable in components");
+      }
     },
   });
 }

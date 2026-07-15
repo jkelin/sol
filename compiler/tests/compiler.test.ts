@@ -1937,6 +1937,20 @@ describe("compiler", () => {
     );
   });
 
+  test("rejects for-await loops that cannot be replayed during hydration", () => {
+    expect(() =>
+      compile(
+        `
+        const App = $component(async function App() {
+          for await (const value of source()) void value;
+          return <p>Done</p>;
+        });
+      `,
+        "ForAwait.tsx",
+      ),
+    ).toThrow("for await...of is not replayable in components");
+  });
+
   test("propagates async capture through long helper call chains", () => {
     const helperCount = 200;
     const helpers = Array.from({ length: helperCount }, (_, index) =>

@@ -738,6 +738,20 @@ function sameKey(left: unknown, right: unknown): boolean {
   );
 }
 
+function* listEntries<T>(items: Iterable<T>): IterableIterator<{ item: T; index: number }> {
+  if (Array.isArray(items)) {
+    for (let index = 0; index < items.length; index += 1) {
+      if (index in items) yield { item: items[index] as T, index };
+    }
+    return;
+  }
+  let index = 0;
+  for (const item of items) {
+    yield { item, index };
+    index += 1;
+  }
+}
+
 export function list<T>(
   region: Region,
   getItems: () => Iterable<T>,
@@ -749,8 +763,7 @@ export function list<T>(
   const renderFrame = frameForRegion(frame, region);
   if (isServerRegion(region)) {
     const keys = new Set<unknown>();
-    let index = 0;
-    for (const itemValue of getItems()) {
+    for (const { item: itemValue, index } of listEntries(getItems())) {
       const key = getKey(itemValue, index);
       if (keys.has(key)) throw new Error("Keyed JSX lists require unique keys");
       keys.add(key);
@@ -759,7 +772,6 @@ export function list<T>(
       const rendered = render(item, position, renderFrame);
       mountServerBlock(rendered, region);
       cleanups.push(() => rendered.dispose());
-      index += 1;
     }
     return;
   }
@@ -768,8 +780,11 @@ export function list<T>(
   let order: unknown[] = [];
   let initialized = false;
   const stop = runtimeEffect(() => {
-    const items = [...getItems()];
-    const entries = items.map((item, index) => ({ item, index, key: getKey(item, index) }));
+    const entries = Array.from(listEntries(getItems()), ({ item, index }) => ({
+      item,
+      index,
+      key: getKey(item, index),
+    }));
     const uniqueKeys = new Set(entries.map((entry) => entry.key));
     if (uniqueKeys.size !== entries.length) throw new Error("Keyed JSX lists require unique keys");
 

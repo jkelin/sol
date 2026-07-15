@@ -97,6 +97,7 @@ export interface TemplateMetadata {
   readonly elements: readonly string[];
   readonly regionCount: number;
   readonly propertyValueElements: readonly number[];
+  readonly dynamicAttributes?: Readonly<Record<number, readonly string[]>>;
 }
 
 export interface PendingBlock extends PromiseLike<Block> {

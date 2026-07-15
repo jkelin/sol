@@ -2193,6 +2193,33 @@ test("empty hydrated text does not mutate server DOM before a later mismatch", a
   expect([...paragraph.childNodes]).toEqual(before);
 });
 
+test("rejects undeclared server attributes without replacing claimed DOM", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App(props: { title: string }) {
+      return <main><p id="static-owned">Hello</p><button title={props.title}>Action</button></main>;
+    });
+  `);
+  const App = module.App as Component<{ title: string }>;
+
+  await Promise.all(
+    ["#static-owned", "button"].map(async (selector) => {
+      const target = document.createElement("div");
+      target.innerHTML = await renderToStringAsync(App, { title: "owned" });
+      const element = target.querySelector(selector)!;
+      element.setAttribute("data-stale", "yes");
+
+      await expectRejection(hydrate(App, target, { title: "owned" }), "unexpected attribute");
+      expect(target.querySelector(selector)).toBe(element);
+      expect(element.getAttribute("data-stale")).toBe("yes");
+    }),
+  );
+
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App, { title: "owned" });
+  await hydrate(App, target, { title: "owned" });
+  expect(target.querySelector("button")?.getAttribute("title")).toBe("owned");
+});
+
 test("reorders and disposes hydrated keyed rows in place", async () => {
   const module = await loadCompiled(`
     export const App = $component(function App() {

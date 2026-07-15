@@ -634,12 +634,14 @@ export function compileIntrinsicElement(
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
   injectedOperations: ReadonlyArray<(element: number) => string> = [],
+  injectedDynamicAttributes: readonly string[] = [],
 ): void {
   const tag = jsxName(compiler, node.openingElement.name);
   if (!/^[a-z][A-Za-z0-9-]*$/.test(tag))
     codeFrame(compiler, node, "Dynamic JSX tags are not supported in v1");
   const attributes: string[] = [];
   const deferredOperations: ((element: number) => string)[] = [];
+  const dynamicAttributes = new Set(injectedDynamicAttributes);
   let propertyValueElement = false;
   const inputTypeAttribute = findIntrinsicAttribute(compiler, node, "type");
   const inputType = inputTypeAttribute
@@ -774,6 +776,7 @@ export function compileIntrinsicElement(
     if (sourceName === "$bind") {
       useRuntimeHelper(compiler, "__sol_bind");
       const property = bindProperty!;
+      dynamicAttributes.add(property);
       if (property === "value") propertyValueElement = true;
       const binding = compileBinding(
         compiler,
@@ -864,6 +867,7 @@ export function compileIntrinsicElement(
         tag === "select" ||
         (TEXT_VALUE_ELEMENTS.has(tag) && typeof staticValue === "boolean"))
     ) {
+      dynamicAttributes.add("value");
       useRuntimeHelper(compiler, "__sol_attribute");
       const value =
         staticValue !== undefined
@@ -892,6 +896,7 @@ export function compileIntrinsicElement(
       attributes.push(`${name}="${escapeAttribute(String(attribute.value.expression.value))}"`);
     } else if (staticValue === false) continue;
     else {
+      dynamicAttributes.add(name);
       useRuntimeHelper(compiler, "__sol_attribute");
       const value = expressionCode(expressionAttribute(compiler, attribute), scope);
       if (targetName === "value") propertyValueElement = true;
@@ -919,6 +924,7 @@ export function compileIntrinsicElement(
     const index = elementId(context, node.openingElement);
     context.elementTags[index] = tag;
     if (propertyValueElement) context.propertyValueElements.add(index);
+    if (dynamicAttributes.size > 0) context.dynamicAttributes.set(index, dynamicAttributes);
     attributes.push(`data-sol-e="${index}"`);
     context.operations.push(...deferredOperations.map((operation) => operation(index)));
   }
@@ -989,10 +995,18 @@ export function compileLinkElement(
       : expressionCode(expressionAttribute(compiler, replaceAttribute), scope)
     : "false";
   useRuntimeHelper(compiler, "__sol_link");
-  compileIntrinsicElement(compiler, anchor, context, bindings, scope, [
-    (element) =>
-      `__sol_link(__sol_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => (${replace}), __sol_cleanups);`,
-  ]);
+  compileIntrinsicElement(
+    compiler,
+    anchor,
+    context,
+    bindings,
+    scope,
+    [
+      (element) =>
+        `__sol_link(__sol_view.elements[${element}], () => (${route}), () => ({ ${destinationProperties.join(", ")} }), () => (${replace}), __sol_cleanups);`,
+    ],
+    ["href"],
+  );
 }
 
 export function mapDetails(
@@ -1249,6 +1263,7 @@ export function compileBlockBody(
     operations: [],
     elementTags: [],
     propertyValueElements: new Set(),
+    dynamicAttributes: new Map(),
     nextElement: 0,
     nextRegion: 0,
     elementIds: new WeakMap(),
@@ -1261,6 +1276,9 @@ export function compileBlockBody(
     operations: context.operations,
     propertyValueElements: [...context.propertyValueElements].toSorted(
       (left, right) => left - right,
+    ),
+    dynamicAttributes: Object.fromEntries(
+      [...context.dynamicAttributes].map(([index, names]) => [index, [...names].toSorted()]),
     ),
   };
   const templateSignature = JSON.stringify([

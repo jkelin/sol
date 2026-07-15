@@ -3307,6 +3307,52 @@ describe("compiled DOM runtime", () => {
     expect(target.querySelectorAll("li")[1]).toBe(firstNode);
   });
 
+  test("renders only present array indexes in keyed lists", () => {
+    const sparse = Array<string>(4);
+    sparse[1] = "one";
+    sparse[3] = "three";
+    const values = $signal(sparse);
+    const definition = template("<ol><!--sol:s:0--><!--sol:e:0--></ol>");
+    const rowDefinition = template("<li><!--sol:s:0--><!--sol:e:0--></li>");
+    const List = component(() => {
+      const view = instantiate(definition);
+      const cleanups: Array<() => void> = [];
+      list(
+        view.regions[0]!,
+        () => values.value,
+        (_item, index) => index,
+        (item, index) => {
+          const row = instantiate(rowDefinition);
+          const rowCleanups: Array<() => void> = [];
+          text(row.regions[0]!, () => `${index.value}:${item.value}`, rowCleanups);
+          return block(row.fragment, rowCleanups);
+        },
+        cleanups,
+      );
+      return block(view.fragment, cleanups);
+    });
+    const target = document.createElement("main");
+    const dispose = mount(List, target);
+    const rows = () => [...target.querySelectorAll("li")].map((row) => row.textContent);
+
+    expect(rows()).toEqual(["1:one", "3:three"]);
+    values.value[0] = "zero";
+    expect(rows()).toEqual(["0:zero", "1:one", "3:three"]);
+    Reflect.deleteProperty(values.value, 1);
+    expect(rows()).toEqual(["0:zero", "3:three"]);
+
+    const custom = ["indexed"];
+    Object.defineProperty(custom, Symbol.iterator, {
+      value: function* () {
+        yield "iterator";
+        yield "extra";
+      },
+    });
+    values.value = custom;
+    expect(rows()).toEqual(["0:indexed"]);
+    dispose();
+  });
+
   test("updates keyed rows without moving blocks when key order is unchanged", () => {
     const values = $signal([
       { id: 1, label: "One" },

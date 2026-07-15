@@ -163,6 +163,8 @@ function matchChildren(
   elements: Element[],
   regions: { start: Comment; end: Comment }[],
   boundElements: ReadonlySet<number>,
+  dynamicAttributes: Readonly<Record<number, readonly string[]>>,
+  allowSelectedOptions = false,
 ): void {
   let actual = actualStart;
   const expected = Array.from(expectedParent.childNodes);
@@ -208,6 +210,7 @@ function matchChildren(
         }
       }
       const elementIndex = expectedElement.getAttribute("data-sol-e");
+      let parsedElementIndex: number | undefined;
       if (elementIndex !== null) {
         const parsed = Number(elementIndex);
         if (!Number.isInteger(parsed)) mismatch("invalid element marker");
@@ -215,9 +218,38 @@ function matchChildren(
           mismatch(`expected element marker ${elementIndex}`);
         }
         elements[parsed] = actualElement;
+        parsedElementIndex = parsed;
       } else if (actualElement.hasAttribute("data-sol-e")) {
         mismatch("unexpected element marker");
       }
+      const normalizeAttributeName =
+        actualElement.namespaceURI === "http://www.w3.org/1999/xhtml"
+          ? (name: string) => name.toLowerCase()
+          : (name: string) => name;
+      const allowedAttributes = new Set(
+        [...expectedElement.attributes]
+          .map((attribute) => attribute.name)
+          .concat(
+            parsedElementIndex === undefined ? [] : (dynamicAttributes[parsedElementIndex] ?? []),
+          )
+          .map(normalizeAttributeName),
+      );
+      for (const attribute of actualElement.attributes) {
+        if (
+          !allowedAttributes.has(normalizeAttributeName(attribute.name)) &&
+          !(
+            allowSelectedOptions &&
+            actualElement.tagName === "OPTION" &&
+            attribute.name === "selected"
+          )
+        ) {
+          mismatch(`unexpected attribute ${attribute.name}`);
+        }
+      }
+      const controlsSelectedOptions =
+        actualElement.tagName === "SELECT" &&
+        parsedElementIndex !== undefined &&
+        boundElements.has(parsedElementIndex);
       if (
         !(
           elementIndex !== null &&
@@ -232,6 +264,8 @@ function matchChildren(
           elements,
           regions,
           boundElements,
+          dynamicAttributes,
+          allowSelectedOptions || controlsSelectedOptions,
         );
       }
     }
@@ -260,6 +294,7 @@ export function instantiateHydrated(
   const elements: Element[] = [];
   const regions: { start: Comment; end: Comment }[] = [];
   const propertyValueElements = new Set(definition.metadata.propertyValueElements);
+  const dynamicAttributes = definition.metadata.dynamicAttributes ?? {};
   matchChildren(
     definition.element.content,
     start.nextSibling,
@@ -267,6 +302,7 @@ export function instantiateHydrated(
     elements,
     regions,
     propertyValueElements,
+    dynamicAttributes,
   );
   claim.cursor = end.nextSibling;
   return { fragment: { kind: "hydrated-fragment", start, end, session }, elements, regions };

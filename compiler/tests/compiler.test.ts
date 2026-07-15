@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SourceMapConsumer } from "source-map-js";
@@ -3022,6 +3022,36 @@ test("retries route-file inspection after a source failure", async () => {
     );
     const manifest = await (plugin.load as (id: string) => Promise<string>)(resolved);
     expect(manifest).toContain("retry");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("refreshes manifest generations for nested route additions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sol-manifest-generation-"));
+  try {
+    const nested = join(root, "routes");
+    await mkdir(nested);
+    await writeFile(
+      join(nested, "a.sol.ts"),
+      `import { $route } from "sol"; export const a = $route({ path: "/a" }, A);`,
+    );
+    const plugin = sol();
+    (plugin.configResolved as unknown as (config: ResolvedConfig) => void)({
+      command: "build",
+      root,
+    } as ResolvedConfig);
+    const load = plugin.load as (id: string) => Promise<string>;
+    const firstRoutes = await load("\0virtual:sol/routes");
+    await load("\0virtual:sol/server-endpoints");
+    expect(firstRoutes).toContain("a.sol.ts");
+
+    await writeFile(
+      join(nested, "b.sol.ts"),
+      `import { $route } from "sol"; export const b = $route({ path: "/b" }, B);`,
+    );
+    const secondRoutes = await load("\0virtual:sol/routes");
+    expect(secondRoutes).toContain("b.sol.ts");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

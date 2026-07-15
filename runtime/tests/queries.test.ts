@@ -233,6 +233,59 @@ describe("queries", () => {
     throwingMutation.dispose();
   });
 
+  test("snapshots query and mutation configs and rejects reflective fields", async () => {
+    const queryOwner: Array<() => void> = [];
+    const queryConfig = {
+      queryKey: "stable-config",
+      query: async () => "first",
+      enabled: false,
+      suspense: { refetch: false },
+    };
+    const query = queryInFrame(queryConfig, { ...rootFrame(), owner: queryOwner });
+    queryConfig.query = async () => "second";
+    queryConfig.suspense.refetch = true;
+    expect(await query.refetch()).toBe("first");
+    disposeOwner(queryOwner);
+
+    const mutationOwner: Array<() => void> = [];
+    const mutationConfig = { mutation: async () => "first", suspense: false };
+    const mutation = mutationInFrame(mutationConfig, { ...rootFrame(), owner: mutationOwner });
+    mutationConfig.mutation = async () => "second";
+    mutationConfig.suspense = true;
+    expect(await mutation.mutate({})).toBe("first");
+    disposeOwner(mutationOwner);
+
+    let reads = 0;
+    const accessorQuery = Object.defineProperties(
+      {},
+      {
+        queryKey: { enumerable: true, value: "accessor-query" },
+        query: {
+          enumerable: true,
+          get() {
+            reads += 1;
+            return async () => "hidden";
+          },
+        },
+        enabled: { enumerable: true, value: false },
+      },
+    );
+    const owner: Array<() => void> = [];
+    expect(() => queryInFrame(accessorQuery as never, { ...rootFrame(), owner })).toThrow(
+      "data property",
+    );
+    expect(reads).toBe(0);
+    expect(() =>
+      queryInFrame(
+        { queryKey: "unknown", query: async () => 1, enabled: false, extra: true } as never,
+        { ...rootFrame(), owner },
+      ),
+    ).toThrow("unknown property extra");
+    expect(() =>
+      mutationInFrame(Object.create({ mutation: async () => 1 }), { ...rootFrame(), owner }),
+    ).toThrow("config must be an object");
+  });
+
   test("forwards and reuses arguments while tracking data, previous data, and failures", async () => {
     const pending: Array<{ arg: string; request: Deferred<number> }> = [];
     const mounted = inComponent(() =>

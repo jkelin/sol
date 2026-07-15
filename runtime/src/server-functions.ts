@@ -3,6 +3,7 @@ import { deployedPath, logicalPathname } from "./route-base.ts";
 import { arrayIndex } from "./serialization.ts";
 import { compareSpecificityVectors } from "./specificity.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
+import { snapshotOwnDataProperties } from "./options.ts";
 
 const ENDPOINT = Symbol.for("sol.server.endpoint");
 const REQUEST_ERROR_STATUS = Symbol("sol.request.error.status");
@@ -81,30 +82,6 @@ function validateSchema(schema: unknown, label: string): void {
       `${label} schema must be callable, expose parse() or parseAsync(), or implement Standard Schema`,
     );
   }
-}
-
-function endpointConfigValues(
-  config: object,
-  allowed: readonly string[],
-  label: "RPC" | "HTTP route",
-): Readonly<Record<string, unknown>> {
-  const descriptors = Object.getOwnPropertyDescriptors(config);
-  const unexpected = Reflect.ownKeys(descriptors).find(
-    (key) => typeof key !== "string" || !allowed.includes(key),
-  );
-  if (unexpected !== undefined) {
-    throw new TypeError(`${label} config contains unknown property ${String(unexpected)}`);
-  }
-  const values = Object.create(null) as Record<string, unknown>;
-  for (const key of allowed) {
-    const descriptor = Object.hasOwn(descriptors, key) ? descriptors[key] : undefined;
-    if (!descriptor) continue;
-    if (!("value" in descriptor) || !descriptor.enumerable) {
-      throw new TypeError(`${label} config ${key} must be an enumerable data property`);
-    }
-    values[key] = descriptor.value;
-  }
-  return values;
 }
 
 function validateRpcName(name: unknown): asserts name is string {
@@ -234,7 +211,7 @@ function rpcEndpoint<Input extends RpcArgs, Parsed extends RpcArgs, Data>(
       `$rpc${kind === "query" ? "Query" : "Mutation"}() config must be an object`,
     );
   }
-  const values = endpointConfigValues(config, ["schema"], "RPC");
+  const values = snapshotOwnDataProperties(config, "RPC config", ["schema"]);
   const schema = values.schema;
   validateSchema(schema, `$rpc${kind === "query" ? "Query" : "Mutation"}()`);
   if (typeof handler !== "function") throw new TypeError("RPC handler must be a function");
@@ -416,7 +393,12 @@ export function httpRouteServer<Input extends HttpRouteInput, Parsed>(
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     throw new TypeError("$httpRoute() config must be an object");
   }
-  const values = endpointConfigValues(config, ["method", "path", "schema", "body"], "HTTP route");
+  const values = snapshotOwnDataProperties(config, "HTTP route config", [
+    "method",
+    "path",
+    "schema",
+    "body",
+  ]);
   const method = values.method;
   const path = values.path;
   const schema = values.schema;

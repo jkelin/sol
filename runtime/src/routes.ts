@@ -4,6 +4,7 @@ import { hasParser, parseValue, type Parser } from "./validation.ts";
 import { isObject, isPromiseLike } from "./reactivity.ts";
 import { ROUTE } from "./symbols.ts";
 import { validationFailure } from "./forms.ts";
+import { snapshotOwnDataProperties } from "./options.ts";
 import { getFactory, routeRuntime, type RenderFrame } from "./rendering.ts";
 export {
   compareRouteSpecificity,
@@ -375,16 +376,11 @@ export function routeHref<Path extends string, Values extends RouteValues>(
   if (destinationPrototype !== Object.prototype && destinationPrototype !== null) {
     throw new TypeError("Route destination must be a plain object");
   }
-  const destinationKeys = Reflect.ownKeys(destination);
-  if (destinationKeys.some((key) => typeof key === "symbol")) {
-    throw new TypeError("Route destination must not contain symbol properties");
-  }
-  const unexpectedSection = (destinationKeys as string[]).find((name) => name !== "params");
-  if (unexpectedSection) {
-    throw new TypeError(`Route destination contains unknown property ${unexpectedSection}`);
-  }
+  const destinationSnapshot = snapshotOwnDataProperties(destination, "Route destination", [
+    "params",
+  ]);
   const hasParams = definition.compiled.parameterNames.length > 0;
-  const params = (destination as { params?: unknown }).params;
+  const params = destinationSnapshot.params;
   if (hasParams && params === undefined) {
     throw new TypeError(`Missing route parameter ${definition.compiled.parameterNames[0]}`);
   }
@@ -396,20 +392,29 @@ export function routeHref<Path extends string, Values extends RouteValues>(
     if (prototype !== Object.prototype && prototype !== null) {
       throw new TypeError("Route destination params must be a plain object");
     }
-    if (Reflect.ownKeys(params).some((key) => typeof key === "symbol")) {
-      throw new TypeError("Route destination params must not contain symbol properties");
-    }
   }
   if (!hasParams && params !== undefined) {
     if (!isObject(params) || Array.isArray(params) || Object.keys(params).length > 0) {
       throw new TypeError("Route destination contains params for a static route");
     }
   }
-  const candidateParams = (params ?? {}) as Readonly<Record<string, unknown>>;
-  const unexpected = Object.keys(candidateParams).find(
-    (name) => !definition.compiled.parameterNames.includes(name),
-  );
-  if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
+  if (isObject(params) && !Array.isArray(params)) {
+    const keys = Reflect.ownKeys(params);
+    if (keys.some((key) => typeof key === "symbol")) {
+      throw new TypeError("Route destination params must not contain symbol properties");
+    }
+    const unexpected = (keys as string[]).find(
+      (name) => !definition.compiled.parameterNames.includes(name),
+    );
+    if (unexpected) throw new TypeError(`Unknown route parameter ${unexpected}`);
+  }
+  const candidateParams = isObject(params)
+    ? snapshotOwnDataProperties(
+        params,
+        "Route destination params",
+        definition.compiled.parameterNames,
+      )
+    : Object.freeze(Object.create(null) as Record<string, unknown>);
   const [pathnameTemplate] = definition.config.path.split("?", 1);
   let path = pathnameTemplate!;
   path = path
@@ -666,7 +671,7 @@ export function lazyRoute(
         } catch (error) {
           loading = Promise.reject(error);
         }
-        loaded = loading.then((definition) => {
+        const attempt = loading.then((definition) => {
           if (!isRouteDefinition(definition)) {
             throw new TypeError(`Lazy route module did not export a compiled route for ${path}`);
           }
@@ -677,6 +682,10 @@ export function lazyRoute(
             throw new TypeError(`Lazy route module metadata does not match ${path}`);
           }
           return definition;
+        });
+        loaded = attempt;
+        void attempt.catch(() => {
+          if (loaded === attempt) loaded = undefined;
         });
       }
       return loaded;

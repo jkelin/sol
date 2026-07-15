@@ -101,9 +101,10 @@ dependencies; route handles referenced by endpoint code are projected again as m
   handles without expanding their page dependency graph, and excludes their page implementations.
   Dependencies shared by a route config and an endpoint remain in the server projection even when
   the route itself becomes a metadata handle.
-  The two manifests share one cached project discovery pass until the project root changes or a
-  route-file watcher event invalidates it. Failed file inspections are evicted so corrected files
-  can be retried.
+  The two manifests share one cached discovery and inspection generation; repeating either manifest
+  starts a fresh generation so nested additions and valid edits are visible even without a watcher.
+  Route-file watcher events invalidate the active generation during development, and failed file
+  inspections are evicted so corrected files can be retried.
 
 ## How it works
 

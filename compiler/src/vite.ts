@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import type { Scope } from "@babel/traverse";
@@ -804,18 +804,12 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   let config: ResolvedConfig;
   let devtoolsEnabled = false;
   let discoveredFiles: Promise<string[]> | undefined;
-  let discoveryRootMtime = -1;
-  const routeFiles = async (): Promise<string[]> => {
-    const rootMtime = (await stat(config.root)).mtimeMs;
-    if (rootMtime !== discoveryRootMtime) {
-      discoveredFiles = undefined;
-      discoveryRootMtime = rootMtime;
-    }
-    return (discoveredFiles ??= discoverRoutes(config.root).catch((error: unknown) => {
+  const generationConsumers = new Set<string>();
+  const routeFiles = (): Promise<string[]> =>
+    (discoveredFiles ??= discoverRoutes(config.root).catch((error: unknown) => {
       discoveredFiles = undefined;
       throw error;
     }));
-  };
   const fileInspections = new Map<string, Promise<InspectedRouteFile>>();
   const inspectRouteFile = (file: string): Promise<InspectedRouteFile> => {
     let inspection = fileInspections.get(file);
@@ -838,7 +832,7 @@ export function sol(options: SolPluginOptions = {}): Plugin {
   const invalidateManifest = (server: ViteDevServer, file: string): void => {
     if (!isRouteFile(file)) return;
     discoveredFiles = undefined;
-    discoveryRootMtime = -1;
+    generationConsumers.clear();
     fileInspections.delete(file);
     if (relative(config.root, file).startsWith("..")) return;
     for (const id of [resolvedVirtualRoutes, resolvedVirtualEndpoints]) {
@@ -854,7 +848,7 @@ export function sol(options: SolPluginOptions = {}): Plugin {
     configResolved(resolved) {
       config = resolved;
       discoveredFiles = undefined;
-      discoveryRootMtime = -1;
+      generationConsumers.clear();
       fileInspections.clear();
       devtoolsEnabled = options.devtools ?? resolved.command === "serve";
     },
@@ -883,8 +877,14 @@ export function sol(options: SolPluginOptions = {}): Plugin {
     async load(id) {
       if (id === resolvedDevtoolsBuildEntry) return 'import "sol/devtools";';
       if (id !== resolvedVirtualRoutes && id !== resolvedVirtualEndpoints) return null;
+      if (generationConsumers.has(id)) {
+        discoveredFiles = undefined;
+        fileInspections.clear();
+        generationConsumers.clear();
+      }
       const files = await routeFiles();
       const inspections = await Promise.all(files.map(inspectRouteFile));
+      generationConsumers.add(id);
       validateRouteCollisions(inspections);
       return id === resolvedVirtualRoutes
         ? routeManifest(inspections, config.root)

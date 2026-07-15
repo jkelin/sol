@@ -23,17 +23,19 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `symbols.ts` owns the private brands shared by compiled components, contexts, and routes.
 - `validation.ts` defines supported parser interfaces, snapshots Standard Schema result data
   properties, and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
+- `options.ts` snapshots exact own enumerable data-property records for stable public option and
+  configuration boundaries.
 - `reactivity.ts` implements signals, computed values, effects, batching, property reads, presence
   checks, and descriptor-based writes, deduplicated proxy invalidation, render ownership state,
   identity-preserving array mutator batching, shared object-or-callable promise-like detection, and
   complete reactive-flush failure reporting and primary-failure-preserving teardown.
-- `forms.ts` implements form controllers, descriptor-safe value and validation-issue reads,
-  reset-boundary validation,
-  validation normalization, disposal-safe submission state, and frame-explicit ownership for async
-  component setup.
-- `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
-  setup-lifetime enforcement, polling, eviction, Suspense participation, request-isolated server
-  caches, hydration replay, and compiler-authored diagnostic source attachment.
+- `forms.ts` implements form controllers, descriptor-snapshotted configs, descriptor-safe value and
+  validation-issue reads, reset-boundary validation, validation normalization, disposal-safe
+  submission state, and frame-explicit ownership for async component setup.
+- `queries.ts` implements descriptor-snapshotted cached query and mutation controllers, request
+  deduplication, setup-lifetime enforcement, polling, eviction, Suspense participation,
+  request-isolated server caches, hydration replay, and compiler-authored diagnostic source
+  attachment.
 - `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and
   Link handles, including integrity-safe context proxies, opaque branded-value method receivers,
   and frame-explicit direct or extracted context reads used by async compiled setup.
@@ -58,9 +60,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   before asynchronous rendering.
 - `hydrate.ts` validates hydration payloads, claims a compiled tree, and returns its disposer.
 - `routes.ts` implements typed route matching, descriptor-safe parsed-value validation, URL
-  generation, route handles, descriptor-snapshotted route configs and compiled metadata, cached
-  lazy-route descriptors, promise-normalized synchronous loader failures, and frame-explicit reads
-  and cached object views used after async setup resumes.
+  generation from snapshotted destinations, route handles, descriptor-snapshotted route configs and
+  compiled metadata, retryable lazy-route descriptors, promise-normalized synchronous loader
+  failures, and frame-explicit reads and cached object views used after async setup resumes.
 - `route-descriptors.ts` defines the lightweight static route shape and specificity ordering shared
   with build adapters without loading the rendering runtime.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical

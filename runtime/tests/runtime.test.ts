@@ -183,6 +183,35 @@ describe("forms", () => {
         noopSubmit,
       ),
     ).toThrow("validationStrategy");
+
+    let configReads = 0;
+    const accessorConfig = Object.defineProperties(
+      {},
+      {
+        schema: { enumerable: true, value: (value: object) => value },
+        defaultValues: {
+          enumerable: true,
+          get() {
+            configReads += 1;
+            return configReads === 1 ? {} : [];
+          },
+        },
+      },
+    );
+    expect(() => ownedForm(accessorConfig as never, noopSubmit)).toThrow("data property");
+    expect(configReads).toBe(0);
+    expect(() =>
+      ownedForm(Object.create({ schema: (value: object) => value, defaultValues: {} }), noopSubmit),
+    ).toThrow("defaultValues");
+    expect(() =>
+      ownedForm(
+        Object.assign(
+          { schema: (value: object) => value, defaultValues: {} },
+          { [Symbol("extra")]: true },
+        ),
+        noopSubmit,
+      ),
+    ).toThrow("unknown property");
     expect(() =>
       (formInFrame as (...args: unknown[]) => unknown)(rootFrame(), {
         schema: (values: { title: string }) => values,
@@ -1251,6 +1280,19 @@ describe("compiled DOM runtime", () => {
     expect(failure).toBeInstanceOf(TypeError);
     expect((failure as Error).message).toContain("did not export");
 
+    let retryLoads = 0;
+    const retrying = lazyRoute("/lazy", definition.compiled, async () => {
+      retryLoads += 1;
+      if (retryLoads === 1) throw new Error("transient route load");
+      return definition;
+    });
+    const firstAttempts = await Promise.allSettled([retrying.load(), retrying.load()]);
+    expect(firstAttempts.every((attempt) => attempt.status === "rejected")).toBe(true);
+    expect(retryLoads).toBe(1);
+    expect(await retrying.load()).toBe(definition);
+    expect(await retrying.load()).toBe(definition);
+    expect(retryLoads).toBe(2);
+
     const mismatched = route({ path: "/lazy" }, Empty, {
       ...definition.compiled,
       parameterNames: ["id"],
@@ -1470,6 +1512,24 @@ describe("compiled DOM runtime", () => {
     expect(routeHref(repeated, { params: { id: "hello world" } })).toBe(
       "/blog/hello%20world?selected=hello+world",
     );
+    let routeReads = 0;
+    const accessorParams = Object.defineProperty({}, "id", {
+      enumerable: true,
+      get() {
+        routeReads += 1;
+        return routeReads;
+      },
+    });
+    expect(() => routeHref(repeated, { params: accessorParams })).toThrow("data property");
+    const accessorDestination = Object.defineProperty({}, "params", {
+      enumerable: true,
+      get() {
+        routeReads += 1;
+        return { id: "hidden" };
+      },
+    });
+    expect(() => routeHref(repeated, accessorDestination)).toThrow("data property");
+    expect(routeReads).toBe(0);
 
     const prefixedNames = route({ path: "/blog/:id/:id2" }, Empty, {
       pattern: "^/blog/([^/]+)/([^/]+)$",

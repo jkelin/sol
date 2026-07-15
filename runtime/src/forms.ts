@@ -2,6 +2,7 @@ import { $signal, assertOwnerActive, isObject, runtimeState } from "./reactivity
 import { devtoolsFormCreated, devtoolsFormDisposed, devtoolsFormUpdated } from "./devtools-hook.ts";
 import { hasParser, parseValue, type Parser } from "./validation.ts";
 import { assertSetupActive, type Cleanup, type RenderFrame } from "./rendering.ts";
+import { snapshotOwnDataProperties } from "./options.ts";
 
 export type FormValidationStrategy = "onSubmit" | "onBlur" | "onInput";
 export type FormParser<TValues extends Record<string, unknown>, TOutput> = Parser<TValues, TOutput>;
@@ -145,20 +146,27 @@ function createForm<TValues extends Record<string, unknown>, TOutput>(
 ): FormController<TValues> {
   if (!isObject(config) || Array.isArray(config))
     throw new TypeError("$form() expects a config object");
-  assertFormValues(config.defaultValues, "defaultValues");
+  const snapshot = snapshotOwnDataProperties(config, "$form() config", [
+    "schema",
+    "defaultValues",
+    "validationStrategy",
+  ]);
+  const defaultValues = snapshot.defaultValues;
+  assertFormValues(defaultValues, "defaultValues");
   if (typeof onSubmit !== "function") throw new TypeError("$form() expects a submit function");
-  const schema = config.schema;
-  if (!hasParser(schema)) {
+  const schemaValue = snapshot.schema;
+  if (!hasParser(schemaValue)) {
     throw new TypeError(
       "$form() schema must be callable, expose parse() or parseAsync(), or implement Standard Schema",
     );
   }
-  const strategy = config.validationStrategy ?? "onSubmit";
+  const schema = schemaValue as FormParser<TValues, TOutput>;
+  const strategy = snapshot.validationStrategy ?? "onSubmit";
   if (strategy !== "onSubmit" && strategy !== "onBlur" && strategy !== "onInput") {
     throw new TypeError("$form() validationStrategy must be onSubmit, onBlur, or onInput");
   }
 
-  const defaults = cloneFormValue(config.defaultValues);
+  const defaults = cloneFormValue(defaultValues as TValues);
   const values = $signal(cloneFormValue(defaults));
   const errors = $signal<Record<string, string[]>>({});
   const formErrors = $signal<string[]>([]);

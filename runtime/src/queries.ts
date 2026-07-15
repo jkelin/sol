@@ -18,6 +18,7 @@ import {
 } from "./devtools-hook.ts";
 import { asyncValue } from "./ssr-session.ts";
 import { rpcFunctionMetadata } from "./server-functions.ts";
+import { snapshotOwnDataProperties } from "./options.ts";
 
 export type QueryKey =
   | null
@@ -450,23 +451,41 @@ function createQuery<Data, Args extends unknown[]>(
   explicitFrame?: RenderFrame,
 ): QueryController<Data, Args> {
   validateOptionsObject(config, "$query() config");
-  if (typeof config.query !== "function") throw new TypeError("$query() query must be a function");
-  validateOptionalBoolean(config.enabled, "$query() enabled");
-  const staleTime = validateDuration(config.staleTime, "$query() staleTime", 0, true);
+  const snapshot = snapshotOwnDataProperties(config, "$query() config", [
+    "query",
+    "queryKey",
+    "enabled",
+    "staleTime",
+    "cacheTime",
+    "pollingInterval",
+    "suspense",
+  ]);
+  const query = snapshot.query;
+  if (typeof query !== "function") throw new TypeError("$query() query must be a function");
+  validateOptionalBoolean(snapshot.enabled, "$query() enabled");
+  const staleTime = validateDuration(snapshot.staleTime, "$query() staleTime", 0, true);
   const cacheTime = validateDuration(
-    config.cacheTime,
+    snapshot.cacheTime,
     "$query() cacheTime",
     DEFAULT_CACHE_TIME,
     true,
   );
   const pollingInterval =
-    config.pollingInterval === undefined
+    snapshot.pollingInterval === undefined
       ? undefined
-      : validateDuration(config.pollingInterval, "$query() pollingInterval", 0, false);
-  if (config.suspense !== undefined) {
-    validateOptionsObject(config.suspense, "$query() suspense");
-    validateOptionalBoolean(config.suspense.initial, "$query() suspense.initial");
-    validateOptionalBoolean(config.suspense.refetch, "$query() suspense.refetch");
+      : validateDuration(snapshot.pollingInterval, "$query() pollingInterval", 0, false);
+  let suspenseInitial = true;
+  let suspenseRefetch = false;
+  if (snapshot.suspense !== undefined) {
+    validateOptionsObject(snapshot.suspense, "$query() suspense");
+    const suspense = snapshotOwnDataProperties(snapshot.suspense, "$query() suspense", [
+      "initial",
+      "refetch",
+    ]);
+    validateOptionalBoolean(suspense.initial, "$query() suspense.initial");
+    validateOptionalBoolean(suspense.refetch, "$query() suspense.refetch");
+    suspenseInitial = (suspense.initial as boolean | undefined) ?? true;
+    suspenseRefetch = (suspense.refetch as boolean | undefined) ?? false;
   }
   const active =
     explicitOwner && explicitFrame
@@ -474,8 +493,8 @@ function createQuery<Data, Args extends unknown[]>(
       : activeComponent("$query()");
   const { owner, frame } = active;
   assertOwnerActive(owner, "$query()");
-  const enabled = config.enabled ?? true;
-  const key = serializeQueryKey(config.queryKey);
+  const enabled = (snapshot.enabled as boolean | undefined) ?? true;
+  const key = serializeQueryKey(snapshot.queryKey);
   const entry = queryEntry(key, frame);
   subscribe(entry, cacheTime, owner);
   let disposed = false;
@@ -484,7 +503,7 @@ function createQuery<Data, Args extends unknown[]>(
     key,
     currentArgs,
     requestSources.get(config),
-    rpcFunctionMetadata(config.query)?.name,
+    rpcFunctionMetadata(query)?.name,
   );
   devtoolsQueryUpdated(devtoolsId, { ...entry.state.value, args: currentArgs });
   owner.push(() => {
@@ -494,7 +513,15 @@ function createQuery<Data, Args extends unknown[]>(
 
   const execute = (suspend: boolean): Promise<Data> => {
     if (disposed) return Promise.reject(new Error("$query() controller has been disposed"));
-    return requestQuery(entry, config.query, currentArgs, suspend, owner, frame, devtoolsId);
+    return requestQuery(
+      entry,
+      query as (...args: Args) => PromiseLike<Data>,
+      currentArgs,
+      suspend,
+      owner,
+      frame,
+      devtoolsId,
+    );
   };
   const state = entry.state.value;
   const controller: QueryController<Data, Args> = {
@@ -518,9 +545,10 @@ function createQuery<Data, Args extends unknown[]>(
     },
     refetch(options: QueryCallOptions = {}, ...args: Args): Promise<Data> {
       validateOptionsObject(options, "$query().refetch() options");
-      validateOptionalBoolean(options.suspense, "$query().refetch() suspense");
+      const call = snapshotOwnDataProperties(options, "$query().refetch() options", ["suspense"]);
+      validateOptionalBoolean(call.suspense, "$query().refetch() suspense");
       if (args.length > 0) currentArgs = [...args] as Args;
-      return execute(options.suspense ?? config.suspense?.refetch ?? false);
+      return execute((call.suspense as boolean | undefined) ?? suspenseRefetch);
     },
   };
 
@@ -529,9 +557,7 @@ function createQuery<Data, Args extends unknown[]>(
     !(frame.ssrRerender && state.hasData) &&
     (!state.hasData || Date.now() - state.updatedAt >= staleTime)
   ) {
-    const automatic = execute(
-      state.hasData ? (config.suspense?.refetch ?? false) : (config.suspense?.initial ?? true),
-    );
+    const automatic = execute(state.hasData ? suspenseRefetch : suspenseInitial);
     void automatic.catch(() => {});
   }
 
@@ -542,7 +568,7 @@ function createQuery<Data, Args extends unknown[]>(
       timer = setTimeout(() => {
         timer = undefined;
         if (!disposed && document.visibilityState !== "hidden" && !entry.inFlight) {
-          void execute(config.suspense?.refetch ?? false).catch(() => {});
+          void execute(suspenseRefetch).catch(() => {});
         }
         schedule();
       }, pollingInterval);
@@ -585,10 +611,16 @@ function createMutation<Data, Args extends unknown[]>(
   explicitFrame?: RenderFrame,
 ): MutationController<Data, Args> {
   validateOptionsObject(config, "$mutation() config");
-  if (typeof config.mutation !== "function") {
+  const snapshot = snapshotOwnDataProperties(config, "$mutation() config", [
+    "mutation",
+    "suspense",
+  ]);
+  const mutation = snapshot.mutation;
+  if (typeof mutation !== "function") {
     throw new TypeError("$mutation() mutation must be a function");
   }
-  validateOptionalBoolean(config.suspense, "$mutation() suspense");
+  validateOptionalBoolean(snapshot.suspense, "$mutation() suspense");
+  const suspense = (snapshot.suspense as boolean | undefined) ?? false;
   const active =
     explicitOwner && explicitFrame
       ? { owner: explicitOwner, frame: explicitFrame }
@@ -607,7 +639,7 @@ function createMutation<Data, Args extends unknown[]>(
   let disposed = false;
   const devtoolsId = devtoolsMutationCreated(
     requestSources.get(config),
-    rpcFunctionMetadata(config.mutation)?.name,
+    rpcFunctionMetadata(mutation)?.name,
   );
   owner.push(() => {
     disposed = true;
@@ -633,7 +665,8 @@ function createMutation<Data, Args extends unknown[]>(
     },
     mutate(options: MutationCallOptions, ...args: Args): Promise<Data> {
       validateOptionsObject(options, "$mutation().mutate() options");
-      validateOptionalBoolean(options.suspense, "$mutation().mutate() suspense");
+      const call = snapshotOwnDataProperties(options, "$mutation().mutate() options", ["suspense"]);
+      validateOptionalBoolean(call.suspense, "$mutation().mutate() suspense");
       if (disposed) return Promise.reject(new Error("$mutation() controller has been disposed"));
       const currentGeneration = ++generation;
       batch(() => {
@@ -642,8 +675,12 @@ function createMutation<Data, Args extends unknown[]>(
         state.value.error = undefined;
       });
       devtoolsMutationUpdated(devtoolsId, { ...state.value, args });
-      const promise = invokeAsync("$mutation()", config.mutation, args);
-      trackSuspense(promise, options.suspense ?? config.suspense ?? false, owner, frame);
+      const promise = invokeAsync(
+        "$mutation()",
+        mutation as (...args: Args) => PromiseLike<Data>,
+        args,
+      );
+      trackSuspense(promise, (call.suspense as boolean | undefined) ?? suspense, owner, frame);
       void promise.then(
         (data) => {
           if (disposed || currentGeneration !== generation) return;

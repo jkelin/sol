@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish-patch:
@@ -39,8 +40,6 @@ jobs:
       - name: Set patch version
         run: bun scripts/prepare-release.ts patch
       - name: Publish packages
-        env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun run publish:packages
 
   publish-minor:
@@ -67,6 +66,4 @@ jobs:
       - name: Set minor version
         run: bun scripts/prepare-release.ts minor
       - name: Publish packages
-        env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: bun run publish:packages

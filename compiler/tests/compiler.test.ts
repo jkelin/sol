@@ -1064,7 +1064,16 @@ describe("compiler", () => {
         const fifth = context?.use().label;
         const sixth = context.use?.().label;
         const seventh = context?.use().label.toString();
-        return <p>{first?.label}:{second?.label}:{third.label}:{fourth}:{fifth}:{sixth}:{seventh}</p>;
+        const use = context.use;
+        const useOptional = context?.useOptional;
+        const templateUse = context[\`use\`];
+        const maybe = undefined as typeof context | undefined;
+        const bound = maybe?.use.bind(maybe);
+        const methodName = maybe?.use.name;
+        const eighth = use();
+        const ninth = useOptional?.();
+        const tenth = templateUse();
+        return <p>{first?.label}:{second?.label}:{third.label}:{fourth}:{fifth}:{sixth}:{seventh}:{eighth.label}:{ninth?.label}:{tenth.label}:{String(bound)}:{String(methodName)}</p>;
       });
     `,
       "OptionalContext.tsx",
@@ -1081,8 +1090,37 @@ describe("compiler", () => {
     expect(result.code).toContain(
       "__sol_context_use(context, __sol_frame, false, true, false, __sol_context_value => __sol_context_value.label.toString())",
     );
+    expect(result.code).toContain('__sol_context_method(context, "use", __sol_frame)');
+    expect(result.code).toContain(
+      '__sol_context_method(context, "useOptional", __sol_frame, true)',
+    );
+    expect(result.code).toContain('__sol_context_method(context, "use", __sol_frame)');
+    expect(result.code).toContain(
+      '__sol_context_method(maybe.value, "use", __sol_frame, true, __sol_context_method_value => __sol_context_method_value.bind(maybe.value))',
+    );
+    expect(result.code).toContain(
+      '__sol_context_method(maybe.value, "use", __sol_frame, true, __sol_context_method_value => __sol_context_method_value.name)',
+    );
     expect(result.code).not.toContain("context?.use()");
     expect(result.code).not.toContain('context["use"]()');
+  });
+
+  test("keeps immutable primitive setup constants out of reactive effects", () => {
+    const result = compile(
+      `
+      const App = $component(function App() {
+        const answer = 42;
+        return <p>{answer}</p>;
+      });
+    `,
+      "StableConstant.tsx",
+    );
+
+    expect(result.code).toContain("const answer = 42");
+    expect(result.code).toContain("__sol_static_text(__sol_view.regions[0], answer)");
+    expect(result.code).not.toContain("const answer = __sol_signal");
+    expect(result.code).not.toContain("text as __sol_text");
+    expect(result.code).not.toContain("runtimeEffect");
   });
 
   test("preserves ordinary method receivers and optional-chain continuations", () => {
@@ -1101,13 +1139,16 @@ describe("compiler", () => {
         function removeContext(candidate: undefined | { use(): { label?: string } }) {
           return delete candidate?.use().label;
         }
+        function removeMethod(candidate: undefined | { use(): { label?: string } }) {
+          return delete candidate?.use.name;
+        }
         await Promise.resolve();
         const owner = service.query();
         const id = maybe?.params.id;
         const stringId = maybe?.params.id.toString();
         const first = maybeContext?.use().label;
         const second = service.use?.().label;
-        return <p>{owner === service}:{id}:{stringId}:{String(remove)}:{String(removeContext)}:{first}:{second}</p>;
+        return <p>{owner === service}:{id}:{stringId}:{String(remove)}:{String(removeContext)}:{String(removeMethod)}:{first}:{second}</p>;
       });
     `,
       "OrdinaryChains.tsx",
@@ -1123,6 +1164,7 @@ describe("compiler", () => {
     );
     expect(result.code).toContain("delete candidate?.params.id");
     expect(result.code).toContain("delete candidate?.use().label");
+    expect(result.code).toContain("delete candidate?.use.name");
     expect(result.code).toContain(
       "__sol_context_use(maybeContext.value, __sol_frame, false, true, false, __sol_context_value => __sol_context_value.label)",
     );

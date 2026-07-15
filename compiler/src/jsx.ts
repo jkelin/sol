@@ -899,6 +899,16 @@ export function compileExpressionChild(
   }
 
   const index = region(context);
+  if (t.isIdentifier(expression) && scope.get(expression.name) === expression.name) {
+    context.operations.push(
+      mappedCode(
+        compiler,
+        expression,
+        `__sol_static_text(__sol_view.regions[${index}], ${expression.name});`,
+      ),
+    );
+    return;
+  }
   context.operations.push(
     mappedCode(
       compiler,

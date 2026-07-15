@@ -31,7 +31,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,
   setup-lifetime enforcement, polling, eviction, Suspense participation, request-isolated server
   caches, hydration replay, and compiler-authored diagnostic source attachment.
-- `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and Link handles, including safely branded frame-explicit context reads used by async compiled setup.
+- `components.ts` defines compiler-specialized component, Head, context, async-boundary, route, and
+  Link handles, including integrity-safe context proxies and frame-explicit direct or extracted
+  context reads used by async compiled setup.
 - `rendering.ts` implements templates, block and setup lifecycle, compiled component factories,
   mounting, server render preparation, render adapters, head-scoped executable script instantiation,
   and error propagation.
@@ -52,7 +54,8 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
   generation, route handles, and frame-explicit reads used after async setup resumes.
 - `route-base.ts` validates deployment bases and translates browser pathnames to and from logical
   application paths.
-- `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned document-head mounting and reactive raw text.
+- `dom.ts` implements the fine-grained DOM operations emitted by the compiler, including owned
+  document-head mounting and reactive or one-shot text rendering.
 - `refs.ts` defines typed callback/object refs, `createRef()`, ref validation, and mount/cleanup assignment.
 - `portals.ts` defines Portal handles and mounts owned blocks into reactive element or body targets.
 - `async.ts` implements Suspense, Await, and ErrorBoundary rendering behavior.

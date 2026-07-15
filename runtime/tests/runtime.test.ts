@@ -666,6 +666,47 @@ describe("reactivity", () => {
       ),
     ).toEqual({ kind: "optional receiver" });
     expect(getterReads).toBe(2);
+
+    const protectedContext = $context<{ label: string }>();
+    const brand = Reflect.ownKeys(protectedContext).find(
+      (candidate): candidate is symbol => typeof candidate === "symbol",
+    )!;
+    const key = Reflect.get(protectedContext, brand) as symbol;
+    const data = { label: "provided" };
+    const frame = { ...rootFrame(), contexts: new Map([[key, () => data]]) };
+    const value = contextUse(protectedContext, frame, false)!;
+    const originalLabel = Object.getOwnPropertyDescriptor(data, "label");
+
+    expect(() => Object.preventExtensions(value)).toThrow();
+    expect(() => Object.seal(value)).toThrow();
+    expect(() => Object.freeze(value)).toThrow();
+    expect(() => Object.defineProperty(value, "locked", { value: true })).toThrow();
+    expect(Object.isExtensible(data)).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(data, "label")).toEqual(originalLabel);
+    expect(Object.hasOwn(data, "locked")).toBe(false);
+    expect(Object.keys(value)).toEqual(["label"]);
+    Object.defineProperty(value, "label", { value: "changed" });
+    expect(data.label).toBe("changed");
+
+    const receivers: object[] = [];
+    let stored = 1;
+    Object.defineProperty(data, "accessor", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        receivers.push(this);
+        return stored;
+      },
+      set(next: number) {
+        receivers.push(this);
+        stored = next;
+      },
+    });
+    const accessorValue = value as { accessor: number };
+    expect(accessorValue.accessor).toBe(1);
+    accessorValue.accessor = 2;
+    expect(stored).toBe(2);
+    expect(receivers).toEqual([value, value]);
   });
 
   test("validates the public compiler boundary and class values", () => {

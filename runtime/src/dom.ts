@@ -76,11 +76,7 @@ export function normalizeClass(value: ClassValue): string {
 
 export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[]): void {
   if (isServerRegion(region)) {
-    const value = displayValue(getValue())
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;");
-    mountServerBlock(serverRawValue(value), region);
+    staticText(region, getValue());
     return;
   }
   const claimed = claimHydratedText(region);
@@ -100,6 +96,25 @@ export function text(region: Region, getValue: () => unknown, cleanups: Cleanup[
       textNode.data = value;
     }),
   );
+}
+
+export function staticText(region: Region, value: unknown): void {
+  const displayed = displayValue(value);
+  if (isServerRegion(region)) {
+    mountServerBlock(
+      serverRawValue(
+        displayed.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
+      ),
+      region,
+    );
+    return;
+  }
+  const claimed = claimHydratedText(region);
+  if (claimed) {
+    if (claimed.data !== displayed) throw new HydrationMismatchError("dynamic text differs");
+    return;
+  }
+  region.end.parentNode?.insertBefore(document.createTextNode(displayed), region.end);
 }
 
 export function rawText(

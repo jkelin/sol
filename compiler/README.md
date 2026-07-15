@@ -41,13 +41,14 @@ Tooling can call `compile(source, filename)` from `@sol/compiler` directly. It r
 - `codegen.ts` owns identifier rewriting, transparent TypeScript-expression unwrapping, and
   reusable Babel-to-code helpers.
 - `jsx.ts` lowers JSX elements, Head blocks, raw-text elements, refs, portals, directives, lists,
-  conditionals, and child expressions into interned templates and runtime operations.
+  conditionals, and child expressions into interned templates and reactive or one-shot runtime operations.
 - `setup.ts` analyzes component setup, rejects unsupported reactive destructuring and readonly
   mutations in dot or bracket syntax, and rewrites local state, derived values, props,
   frame-explicit context and route reads, frame-owned form/query/mutation helpers, and component
-  factories while preserving `createRef()` objects as non-reactive handles, recognizing explicit
-  reactive helpers and capturing awaits through transparent TypeScript expressions, and attaching
-  authored locations to query/mutation diagnostics.
+  factories while preserving `createRef()` objects and immutable primitive constants as
+  non-reactive values, recognizing explicit reactive helpers and extracted context methods,
+  capturing awaits through transparent TypeScript expressions, and attaching authored locations to
+  query/mutation diagnostics.
 - `html.ts` owns intrinsic-element metadata and escaping for static templates.
 - `runtime-import.ts` resolves referenced compiler-runtime identifiers from generated syntax and emits one minimal import; output adds
   a target-specific endpoint import only for modules containing server declarations.

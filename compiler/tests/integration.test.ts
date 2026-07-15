@@ -1076,8 +1076,18 @@ test("preserves context reads after async setup resumes", async () => {
       const fourth = alias.use().label;
       const fifth = alias?.use().label;
       const sixth = alias.use?.().label;
+      const use = alias.use;
+      const useOptional = alias.useOptional;
+      const templateUse = alias[\`use\`];
+      const bound = alias?.use.bind(alias);
+      const maybe = undefined as typeof shared | undefined;
+      const missing = maybe?.use.name;
+      const seventh = use();
+      const eighth = useOptional();
+      const ninth = templateUse();
+      const tenth = bound?.();
       const service = { use() { return "ordinary method"; } };
-      return <p id="async-context">{first?.label}:{second?.label}:{third.label}:{fourth}:{fifth}:{sixth}:{service.use()}</p>;
+      return <p id="async-context">{first?.label}:{second?.label}:{third.label}:{fourth}:{fifth}:{sixth}:{seventh.label}:{eighth?.label}:{ninth.label}:{tenth?.label}:{String(missing)}:{service.use()}</p>;
     });
     export const App = $component(function App() {
       const value = { label: "provided" };
@@ -1091,13 +1101,32 @@ test("preserves context reads after async setup resumes", async () => {
   target.innerHTML = await renderToStringAsync(App);
   const paragraph = target.querySelector("#async-context");
   expect(paragraph?.textContent).toBe(
-    "provided:provided:provided:provided:provided:provided:ordinary method",
+    "provided:provided:provided:provided:provided:provided:provided:provided:provided:provided:undefined:ordinary method",
   );
   const dispose = await hydrate(App, target);
   expect(target.querySelector("#async-context")).toBe(paragraph);
   expect(paragraph?.textContent).toBe(
-    "provided:provided:provided:provided:provided:provided:ordinary method",
+    "provided:provided:provided:provided:provided:provided:provided:provided:provided:provided:undefined:ordinary method",
   );
+  dispose();
+});
+
+test("renders immutable primitive setup constants without reactive effects", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      const answer = 42;
+      return <p id="stable-answer">{answer}</p>;
+    });
+  `);
+  const App = module.App as Component;
+  const target = document.createElement("div");
+  target.innerHTML = await renderToStringAsync(App);
+  const paragraph = target.querySelector("#stable-answer");
+  expect(paragraph?.textContent).toBe("42");
+
+  const dispose = await hydrate(App, target);
+  expect(target.querySelector("#stable-answer")).toBe(paragraph);
+  expect(paragraph?.textContent).toBe("42");
   dispose();
 });
 

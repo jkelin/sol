@@ -1,5 +1,5 @@
 export { contextProvider } from "./dom.ts";
-export { contextUse } from "./components.ts";
+export { contextMethod, contextUse } from "./components.ts";
 export { formInFrame } from "./forms.ts";
 export {
   attribute,
@@ -10,6 +10,7 @@ export {
   link,
   list,
   rawText,
+  staticText,
   text,
   when,
 } from "./dom.ts";

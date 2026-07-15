@@ -51,6 +51,10 @@ export interface HeadProps {
 }
 
 const contexts = new WeakSet<object>();
+const frameContextMethods = new WeakMap<
+  RenderFrame,
+  WeakMap<object, Record<"use" | "useOptional", () => object | undefined>>
+>();
 
 export function $component<Props extends object>(
   _setup: (props: Readonly<Props>) => JSX.Element | Promise<JSX.Element>,
@@ -116,6 +120,42 @@ export function contextUse<TShape extends object>(
   return continuation ? continuation(value) : value;
 }
 
+export function contextMethod(
+  candidate: object | null | undefined,
+  method: "use" | "useOptional",
+  frame: RenderFrame,
+  optionalCandidate = false,
+  continuation?: (value: unknown) => unknown,
+): unknown {
+  if (candidate == null) {
+    if (optionalCandidate) return undefined;
+    return (candidate as unknown as Record<string, unknown>)[method];
+  }
+  if (!contexts.has(candidate)) {
+    const value = (candidate as Record<string, unknown>)[method];
+    return continuation ? continuation(value) : value;
+  }
+  let methodsByContext = frameContextMethods.get(frame);
+  if (!methodsByContext) {
+    methodsByContext = new WeakMap();
+    frameContextMethods.set(frame, methodsByContext);
+  }
+  let methods = methodsByContext.get(candidate);
+  if (!methods) {
+    const internal = candidate as Context<object> & {
+      use(frame: RenderFrame): object;
+      useOptional(frame: RenderFrame): object | undefined;
+    };
+    methods = {
+      use: () => internal.use(frame),
+      useOptional: () => internal.useOptional(frame),
+    };
+    methodsByContext.set(candidate, methods);
+  }
+  const value = methods[method];
+  return continuation ? continuation(value) : value;
+}
+
 function contextProxy(source: () => object): object {
   const target = {};
   const current = (): object => {
@@ -129,8 +169,12 @@ function contextProxy(source: () => object): object {
     get: (_target, key, receiver) => Reflect.get(current(), key, receiver),
     set: (_target, key, value, receiver) => Reflect.set(current(), key, value, receiver),
     deleteProperty: (_target, key) => Reflect.deleteProperty(current(), key),
-    defineProperty: (_target, key, descriptor) =>
-      Reflect.defineProperty(current(), key, descriptor),
+    defineProperty: (_target, key, descriptor) => {
+      const data = current();
+      const existing = Reflect.getOwnPropertyDescriptor(data, key);
+      if (!(descriptor.configurable ?? existing?.configurable ?? false)) return false;
+      return Reflect.defineProperty(data, key, descriptor);
+    },
     getOwnPropertyDescriptor: (_target, key) => {
       const descriptor = Reflect.getOwnPropertyDescriptor(current(), key);
       return descriptor ? { ...descriptor, configurable: true } : undefined;
@@ -138,6 +182,7 @@ function contextProxy(source: () => object): object {
     getPrototypeOf: () => Reflect.getPrototypeOf(current()),
     has: (_target, key) => Reflect.has(current(), key),
     ownKeys: () => Reflect.ownKeys(current()),
+    preventExtensions: () => false,
     setPrototypeOf: (_target, prototype) => Reflect.setPrototypeOf(current(), prototype),
   });
 }

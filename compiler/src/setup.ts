@@ -269,6 +269,7 @@ export function compileSetup(
     t.VariableDeclarator,
     ReactiveKind | "function" | "stable"
   >();
+  const stablePrimitiveNames = new Set<string>();
   const remainingDataNames = new Set<string>();
   for (const statement of setup) {
     if (!t.isVariableDeclaration(statement)) continue;
@@ -295,6 +296,19 @@ export function compileSetup(
       }
       if (t.isCallExpression(initializer) && compiler.refCreatorCalls.has(initializer)) {
         declarationKinds.set(declaration, "stable");
+        continue;
+      }
+      if (
+        statement.kind === "const" &&
+        initializer &&
+        (t.isStringLiteral(initializer) ||
+          t.isNumericLiteral(initializer) ||
+          t.isBooleanLiteral(initializer) ||
+          t.isNullLiteral(initializer) ||
+          t.isBigIntLiteral(initializer))
+      ) {
+        declarationKinds.set(declaration, "stable");
+        stablePrimitiveNames.add(declaration.id.name);
         continue;
       }
       if (
@@ -346,6 +360,7 @@ export function compileSetup(
   validateComputedWrites(compiler, setup, bindings);
   const scope = new Map<string, string>();
   for (const name of bindings.keys()) scope.set(name, `${name}.value`);
+  for (const name of stablePrimitiveNames) scope.set(name, name);
   const generated: string[] = [];
 
   for (const statement of setup) {
@@ -605,6 +620,49 @@ function instrumentContextCall(
   }
 }
 
+function instrumentContextMethod(
+  path: NodePath<t.MemberExpression | t.OptionalMemberExpression>,
+): void {
+  if (!path.isReferenced() || !t.isExpression(path.node.object)) return;
+  const method = staticMemberName(path.node);
+  if (method !== "use" && method !== "useOptional") return;
+  const optionalCandidate = t.isOptionalMemberExpression(path.node) && path.node.optional;
+  const extent = optionalCandidate
+    ? optionalChainExtent(path as NodePath<t.Expression>)
+    : undefined;
+  const outer = extent && extent.outer !== path ? extent.outer : undefined;
+  const parent = outer?.parentPath?.node ?? path.parentPath?.node;
+  if (
+    (!outer &&
+      (t.isCallExpression(parent) || t.isOptionalCallExpression(parent)) &&
+      parent.callee === path.node) ||
+    (t.isTaggedTemplateExpression(parent) && parent.tag === (outer?.node ?? path.node)) ||
+    (t.isUnaryExpression(parent, { operator: "delete" }) &&
+      parent.argument === (outer?.node ?? path.node))
+  ) {
+    return;
+  }
+  const callArguments: t.Expression[] = [
+    path.node.object,
+    t.stringLiteral(method),
+    t.identifier("__sol_frame"),
+  ];
+  if (optionalCandidate) {
+    callArguments.push(t.booleanLiteral(true));
+  }
+  if (outer) {
+    const value = t.identifier("__sol_context_method_value");
+    callArguments.push(
+      t.arrowFunctionExpression([value], replaceOptionalChainBase(outer.node, path.node, value)),
+    );
+    outer.replaceWith(t.callExpression(t.identifier("__sol_context_method"), callArguments));
+    outer.skip();
+  } else {
+    path.replaceWith(t.callExpression(t.identifier("__sol_context_method"), callArguments));
+    path.skip();
+  }
+}
+
 function optionalChainExtent(path: NodePath<t.Expression>): {
   outer: NodePath<t.Expression>;
   hasMemberContinuation: boolean;
@@ -639,13 +697,7 @@ function optionalChainExtent(path: NodePath<t.Expression>): {
 function staticMemberName(
   member: t.MemberExpression | t.OptionalMemberExpression,
 ): string | undefined {
-  return !member.computed
-    ? t.isIdentifier(member.property)
-      ? member.property.name
-      : undefined
-    : t.isStringLiteral(member.property)
-      ? member.property.value
-      : undefined;
+  return memberMethodName(member);
 }
 
 function replaceOptionalChainBase(
@@ -897,6 +949,12 @@ function instrumentAwaitExpressions(
     },
     OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
       instrumentContextCall(path, path.node.optional);
+    },
+    MemberExpression(path: NodePath<t.MemberExpression>) {
+      instrumentContextMethod(path);
+    },
+    OptionalMemberExpression(path: NodePath<t.OptionalMemberExpression>) {
+      instrumentContextMethod(path);
     },
   });
 

@@ -75,6 +75,20 @@ function isMemberLike(node: t.Node | null | undefined): node is MemberLike {
   return t.isMemberExpression(node) || t.isOptionalMemberExpression(node);
 }
 
+function isStablePrimitive(expression: t.Expression): boolean {
+  return (
+    t.isStringLiteral(expression) ||
+    t.isNumericLiteral(expression) ||
+    t.isBooleanLiteral(expression) ||
+    t.isNullLiteral(expression) ||
+    t.isBigIntLiteral(expression) ||
+    (t.isTemplateLiteral(expression) && expression.expressions.length === 0) ||
+    (t.isUnaryExpression(expression) &&
+      (expression.operator === "+" || expression.operator === "-") &&
+      (t.isNumericLiteral(expression.argument) || t.isBigIntLiteral(expression.argument)))
+  );
+}
+
 interface MutatingCall {
   target: t.Expression;
   kind: "collection" | "global";
@@ -226,20 +240,28 @@ export function validateComputedWrites(
   });
 }
 
-function validateConstSignalWrites(
+function validateReadonlyBindingWrites(
   compiler: CompilerContext,
   setup: t.Statement[],
-  names: ReadonlySet<string>,
+  constNames: ReadonlySet<string>,
+  declarationNames: ReadonlySet<string>,
 ): void {
-  if (names.size === 0) return;
+  if (constNames.size === 0 && declarationNames.size === 0) return;
   const file = t.file(t.program(setup.map((statement) => t.cloneNode(statement, true))));
   const check = (path: NodePath, target: t.Node): void => {
     const name = Object.keys(t.getBindingIdentifiers(target)).find(
       (candidate) =>
-        names.has(candidate) && path.scope.getBinding(candidate)?.scope.path.isProgram(),
+        (constNames.has(candidate) || declarationNames.has(candidate)) &&
+        path.scope.getBinding(candidate)?.scope.path.isProgram(),
     );
     if (name) {
-      codeFrame(compiler, target, `Component setup const binding ${name} cannot be reassigned`);
+      codeFrame(
+        compiler,
+        target,
+        declarationNames.has(name)
+          ? `Component setup declaration ${name} cannot be reassigned`
+          : `Component setup const binding ${name} cannot be reassigned`,
+      );
     }
   };
   traverse(file, {
@@ -267,11 +289,11 @@ export function validatePropWrites(
   const clonedComponent = t.functionExpression(null, [], t.cloneNode(body, true));
   const file = t.file(t.program([t.expressionStatement(clonedComponent)]));
   const isDirectPropMember = (path: NodePath, expression: t.Expression): boolean => {
-    if (!t.isMemberExpression(expression) && !t.isOptionalMemberExpression(expression))
-      return false;
-    const object = t.isExpression(expression.object)
-      ? unwrapTransparentExpression(expression.object)
-      : expression.object;
+    const target = unwrapTransparentExpression(expression);
+    if (!t.isMemberExpression(target) && !t.isOptionalMemberExpression(target)) return false;
+    const object = t.isExpression(target.object)
+      ? unwrapTransparentExpression(target.object)
+      : target.object;
     return t.isIdentifier(object, { name: propsName }) && !path.scope.getBinding(propsName);
   };
   const reject = (node: t.Node): never =>
@@ -394,6 +416,7 @@ export function compileSetup(
   >();
   const stablePrimitiveNames = new Set<string>();
   const constSignalNames = new Set<string>();
+  const declarationBindingNames = new Set<string>();
   const remainingDataNames = new Set<string>();
   const componentBindingNames = new Set<string>();
   for (const statement of setup) {
@@ -416,6 +439,7 @@ export function compileSetup(
       statement.id
     ) {
       componentBindingNames.add(statement.id.name);
+      declarationBindingNames.add(statement.id.name);
     }
   }
 
@@ -431,18 +455,26 @@ export function compileSetup(
       }
       const initializer = declaration.init;
       remainingDataNames.delete(declaration.id.name);
-      if (t.isFunctionExpression(initializer) || t.isArrowFunctionExpression(initializer)) {
-        declarationKinds.set(declaration, "function");
-        continue;
-      }
-      if (t.isCallExpression(initializer) && compiler.refCreatorCalls.has(initializer)) {
-        declarationKinds.set(declaration, "stable");
-        continue;
-      }
       const unwrappedInitializer =
         initializer && t.isExpression(initializer)
           ? unwrapTransparentExpression(initializer)
           : undefined;
+      const functionInitializer =
+        unwrappedInitializer &&
+        (t.isFunctionExpression(unwrappedInitializer) ||
+          t.isArrowFunctionExpression(unwrappedInitializer));
+      if (statement.kind === "const" && functionInitializer) {
+        declarationKinds.set(declaration, "function");
+        continue;
+      }
+      if (
+        statement.kind === "const" &&
+        t.isCallExpression(unwrappedInitializer) &&
+        compiler.refCreatorCalls.has(unwrappedInitializer)
+      ) {
+        declarationKinds.set(declaration, "stable");
+        continue;
+      }
       if (
         statement.kind === "const" &&
         unwrappedInitializer &&
@@ -457,18 +489,18 @@ export function compileSetup(
       if (
         statement.kind === "const" &&
         unwrappedInitializer &&
-        (t.isStringLiteral(unwrappedInitializer) ||
-          t.isNumericLiteral(unwrappedInitializer) ||
-          t.isBooleanLiteral(unwrappedInitializer) ||
-          t.isNullLiteral(unwrappedInitializer) ||
-          t.isBigIntLiteral(unwrappedInitializer))
+        isStablePrimitive(unwrappedInitializer)
       ) {
         declarationKinds.set(declaration, "stable");
         stablePrimitiveNames.add(declaration.id.name);
         continue;
       }
       const expression = initializer && t.isExpression(initializer) ? initializer : undefined;
-      const references = expression ? referencedNames(expression) : undefined;
+      const references = expression
+        ? functionInitializer
+          ? new Set<string>()
+          : referencedNames(expression)
+        : undefined;
       if (references?.has(declaration.id.name)) {
         codeFrame(
           compiler,
@@ -513,7 +545,12 @@ export function compileSetup(
   }
 
   const validatedStatements = returned ? [...setup, t.expressionStatement(returned)] : setup;
-  validateConstSignalWrites(compiler, validatedStatements, constSignalNames);
+  validateReadonlyBindingWrites(
+    compiler,
+    validatedStatements,
+    constSignalNames,
+    declarationBindingNames,
+  );
   validateComputedWrites(compiler, setup, bindings, returned);
   const scope = new Map<string, string>();
   for (const [name, kind] of bindings) {

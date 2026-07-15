@@ -12,6 +12,7 @@ import {
   normalizeJsxText,
   region,
   staticAttributeValue,
+  unwrapTransparentExpression,
   validateErasedFunctionScope,
   type ReactiveKind,
 } from "./codegen.ts";
@@ -157,8 +158,9 @@ export function compileBinding(
   bindings: ReadonlyMap<string, ReactiveKind>,
   scope: Scope,
 ): { read: string; write: string } {
-  if (t.isIdentifier(expression)) {
-    const kind = bindings.get(expression.name);
+  const assignable = unwrapTransparentExpression(expression);
+  if (t.isIdentifier(assignable)) {
+    const kind = bindings.get(assignable.name);
     if (!kind)
       codeFrame(compiler, expression, "$bind identifiers must be compiler-managed component state");
     if (kind === "computed")
@@ -166,20 +168,21 @@ export function compileBinding(
     if (kind === "controller")
       codeFrame(compiler, expression, "$bind cannot replace a request controller");
     const reference = expressionCode(expression, scope);
+    const assignment = expressionCode(assignable, scope);
     return {
       read: reference,
-      write: `${reference} = ${property === "checked" ? "Boolean(__sol_value)" : 'String(__sol_value ?? "")'}`,
+      write: `${assignment} = ${property === "checked" ? "Boolean(__sol_value)" : 'String(__sol_value ?? "")'}`,
     };
   }
-  if (t.isMemberExpression(expression) && !expression.optional) {
-    const root = bindingRoot(expression);
+  if (t.isMemberExpression(assignable) && !assignable.optional) {
+    const root = bindingRoot(assignable);
     const scopedRoot = root ? scope.get(root) : undefined;
     const isKeyedRowValue =
       scopedRoot !== undefined && /^__sol_(?:item|index)_\d+\.value$/.test(scopedRoot);
     if (
       !isKeyedRowValue &&
       root === compiler.propsName &&
-      t.isIdentifier(expression.object, { name: root })
+      t.isIdentifier(assignable.object, { name: root })
     ) {
       codeFrame(compiler, expression, "$bind cannot assign directly to a readonly component prop");
     }
@@ -187,7 +190,7 @@ export function compileBinding(
       codeFrame(compiler, expression, "$bind cannot target a computed value or one of its members");
     }
     const isNestedProp =
-      !isKeyedRowValue && root === compiler.propsName && t.isMemberExpression(expression.object);
+      !isKeyedRowValue && root === compiler.propsName && t.isMemberExpression(assignable.object);
     if (!root || (!bindings.has(root) && !isNestedProp && !isKeyedRowValue)) {
       codeFrame(
         compiler,
@@ -196,9 +199,10 @@ export function compileBinding(
       );
     }
     const target = expressionCode(expression, scope);
+    const assignment = expressionCode(assignable, scope);
     return {
       read: target,
-      write: `${target} = ${property === "checked" ? "Boolean(__sol_value)" : 'String(__sol_value ?? "")'}`,
+      write: `${assignment} = ${property === "checked" ? "Boolean(__sol_value)" : 'String(__sol_value ?? "")'}`,
     };
   }
   return codeFrame(
@@ -622,7 +626,9 @@ export function compileComponentElement(
       value !== undefined
         ? `() => ${JSON.stringify(value)}`
         : `() => (${expressionCode(expressionAttribute(compiler, attribute), scope)})`;
-    props.push(`${JSON.stringify(name)}: ${getter}`);
+    props.push(
+      `${name === "__proto__" ? `[${JSON.stringify(name)}]` : JSON.stringify(name)}: ${getter}`,
+    );
   }
   const index = region(context);
   useRuntimeHelper(compiler, "__sol_child");

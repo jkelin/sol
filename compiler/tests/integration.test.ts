@@ -1219,6 +1219,79 @@ test("renders immutable primitive setup constants without reactive effects", asy
   dispose();
 });
 
+test("reacts to mutable function and ref replacement", async () => {
+  const module = await loadCompiled(`
+    import { createRef } from "@soljs/sol";
+    export const App = $component(function App() {
+      let format = () => "first";
+      const first = createRef<HTMLDivElement>();
+      const second = createRef<HTMLDivElement>();
+      let current = first;
+      (globalThis as any).integrationMutableRefs = { first, second };
+      return <main>
+        <button onClick={() => { format = () => "second"; current = second; }}>Replace</button>
+        <p id="mutable-function">{format()}</p>
+        <div id="mutable-ref" ref={current} />
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  const refs = (globalThis as any).integrationMutableRefs;
+  const refElement = target.querySelector("#mutable-ref");
+
+  expect(target.querySelector("#mutable-function")?.textContent).toBe("first");
+  expect(refs.first.current).toBe(refElement);
+  expect(refs.second.current).toBeNull();
+  target.querySelector<HTMLButtonElement>("button")!.click();
+  expect(target.querySelector("#mutable-function")?.textContent).toBe("second");
+  expect(refs.first.current).toBeNull();
+  expect(refs.second.current).toBe(refElement);
+  dispose();
+});
+
+test("preserves prototype-named component props as reactive own properties", async () => {
+  const module = await loadCompiled(`
+    const Child = $component(function Child(props: { __proto__: string }) {
+      return <p id="prototype-prop">{props.__proto__}:{String(Object.hasOwn(props, "__proto__"))}</p>;
+    });
+    export const App = $component(function App() {
+      let value = "first";
+      return <main>
+        <button onClick={() => value = "second"}>Update</button>
+        <Child __proto__={value} />
+      </main>;
+    });
+  `);
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+
+  expect(target.querySelector("#prototype-prop")?.textContent).toBe("first:true");
+  target.querySelector<HTMLButtonElement>("button")!.click();
+  expect(target.querySelector("#prototype-prop")?.textContent).toBe("second:true");
+  dispose();
+});
+
+test("binds writable targets wrapped in TypeScript expressions", async () => {
+  const module = await loadCompiled(`
+    export const App = $component(function App() {
+      let value = "first";
+      return <main>
+        <input $bind={(value as string)} />
+        <p>{value}</p>
+      </main>;
+    });
+  `);
+
+  const target = document.createElement("div");
+  const dispose = mount(module.App as Component, target);
+  const input = target.querySelector("input")!;
+  input.value = "second";
+  input.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+  expect(target.querySelector("p")?.textContent).toBe("second");
+  dispose();
+});
+
 test("missing contexts throw and ErrorBoundary catches sync and async render failures", async () => {
   const missingModule = await loadCompiled(`
     import { $component, $context } from "@soljs/sol";

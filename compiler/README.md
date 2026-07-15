@@ -96,7 +96,8 @@ dependencies; route handles referenced by endpoint code are projected again as m
   text-control values with controlled file inputs rejected, canonical boolean-valued enumerated
   attribute tokens, diagnostics for content-replacing and non-hydratable DOM properties,
   lower-initial camel-case SVG intrinsic names, and runtime-validated Link
-  navigation options. Expression-free template attributes fold like quoted strings. Deterministic string, template, numeric, boolean, null, and bigint children
+  navigation options. Writable `$bind` targets may be wrapped in transparent TypeScript expressions,
+  and prototype-named component props use own computed keys. Expression-free template attributes fold like quoted strings. Deterministic string, template, numeric, boolean, null, and bigint children
   fold directly into ordinary or parser-correct raw-text templates when safe and contain no matching closing-tag
   token; bigint radices and separators canonicalize to their decimal runtime display. Reactive and
   hazardous content retains the safe runtime path.
@@ -111,12 +112,14 @@ dependencies; route handles referenced by endpoint code are projected again as m
   derived values, props,
   frame-explicit context and route reads (including destructuring and object spreads), frame-owned
   form/query/mutation helpers, and component
-  factories while preserving `createRef()` objects and immutable primitive constants as
-  non-reactive values, including primitive literals behind transparent TypeScript assertions,
+  factories while preserving constant function and `createRef()` objects and immutable primitive
+  constants as non-reactive values; mutable `let` equivalents remain signals. Stable primitives
+  include signed numeric values and expression-free templates, including literals behind transparent TypeScript assertions,
   `satisfies`, and non-null wrappers. Constant form/query/mutation controllers remain direct stable objects instead
   of receiving redundant signal wrappers, while their members remain valid binding roots. Authored
   `const` compiler-managed bindings reject direct assignment, compound assignment, updates, and loop
   target writes in setup and returned JSX callbacks while retaining writable object members;
+  preserved function and class declaration bindings reject reassignment;
   computed bindings receive the same callback-aware readonly validation through nested destructuring
   and loop targets. Direct prop members are likewise rejected throughout assignment patterns and loop
   targets while nested prop-owned objects retain shallow mutability. Initializer free references are analyzed

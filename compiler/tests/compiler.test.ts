@@ -1866,6 +1866,48 @@ describe("compiler", () => {
     }
   });
 
+  test("keeps negative numbers and static templates stable while lowering mutable functions and refs", () => {
+    const result = compile(
+      `import { createRef } from "@soljs/sol";
+      const App = $component(function App() {
+        const negative = -1;
+        const label = \`hello\`;
+        let mutableNegative = -2;
+        let format = () => "first";
+        let ref = createRef<HTMLDivElement>();
+        const stableFormat = () => "stable";
+        const stableRef = createRef<HTMLDivElement>();
+        return <div ref={ref}>{negative}:{label}:{mutableNegative}:{format()}:{stableFormat()}</div>;
+      });`,
+      "StableAndMutableSetup.tsx",
+    );
+
+    expect(result.code).not.toContain("negative.value");
+    expect(result.code).not.toContain("label.value");
+    expect(result.code).toContain("mutableNegative.value");
+    expect(result.code).toContain("format.value");
+    expect(result.code).toContain("ref.value");
+    expect(result.code).not.toContain("stableFormat.value");
+    expect(result.code).not.toContain("stableRef.value");
+  });
+
+  test("rejects reassignment of preserved function and class declarations", () => {
+    for (const declaration of [
+      "function helper() { return 'first'; }",
+      "class helper { static value = 'first'; }",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() {
+            ${declaration}
+            return <button onClick={() => { helper = (() => "second") as any; }}>{String(helper)}</button>;
+          });`,
+          "ReadonlyDeclaration.tsx",
+        ),
+      ).toThrow("Component setup declaration helper cannot be reassigned");
+    }
+  });
+
   test("rewrites component bindings whose names are known globals", () => {
     for (const name of ["Math", "Promise", "Array", "Object", "JSON", "NaN", "undefined"]) {
       const result = compile(
@@ -2043,6 +2085,79 @@ describe("compiler", () => {
         "WritableNestedPropTarget.tsx",
       ),
     ).not.toThrow();
+  });
+
+  test("validates readonly prop members wrapped in TypeScript expressions", () => {
+    for (const write of [
+      "(props.value as any) = 2",
+      "(props.value satisfies number) = 2",
+      "props.value! = 2",
+      "(props.value as any) += 1",
+      "(props.value as any)++",
+      "delete (props.value as any)",
+      "for ((props.value as any) of [2]) {}",
+      "for ((props.value satisfies number) in { value: 2 }) {}",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App(props: { value: number; child: { value: number } }) {
+            return <button onClick={() => { ${write}; }}>{props.value}</button>;
+          });`,
+          "WrappedReadonlyProp.tsx",
+        ),
+      ).toThrow("Component props are readonly");
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App(props: { child: { value: number } }) {
+          return <button onClick={() => { (props.child.value as number) = 2; }}>{props.child.value}</button>;
+        });`,
+        "WrappedNestedProp.tsx",
+      ),
+    ).not.toThrow();
+  });
+
+  test("accepts writable bind targets wrapped in TypeScript expressions", () => {
+    for (const target of [
+      "count as string",
+      "count satisfies string",
+      "count!",
+      "state.value as string",
+      "state.value satisfies string",
+      "state.value!",
+    ]) {
+      expect(() =>
+        compile(
+          `const App = $component(function App() {
+            let count = "";
+            let state = { value: "" };
+            return <input $bind={(${target})} />;
+          });`,
+          "WrappedBinding.tsx",
+        ),
+      ).not.toThrow();
+    }
+
+    expect(() =>
+      compile(
+        `const App = $component(function App(props: { value: string }) {
+          return <input $bind={(props.value as string)} />;
+        });`,
+        "WrappedPropBinding.tsx",
+      ),
+    ).toThrow("readonly component prop");
+  });
+
+  test("emits prototype-named component props as own properties", () => {
+    const result = compile(
+      `const Child = $component(function Child(props: { __proto__: string }) { return <p>{props.__proto__}</p>; });
+       const App = $component(function App() { return <Child __proto__="safe" />; });`,
+      "PrototypeProp.tsx",
+    );
+
+    expect(result.code).toContain('["__proto__"]: () => "safe"');
+    expect(result.code).not.toContain('{ "__proto__":');
   });
 
   test("captures shadowed Promise.all while retaining the native aggregate optimization", () => {

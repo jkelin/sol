@@ -104,7 +104,8 @@ Application code normally imports only `@soljs/sol`. The JSX transform resolves 
   attribute tokens, SSR-consistent attribute writes for generic non-reflected DOM names,
   unchanged-order keyed-list updates without DOM moves, consistent text-control
   stringification, fixed-length array-indexed keyed-list snapshots that preserve sparse `map()`
-  semantics and ignore overridden array iterators, browser-normalized constrained-control hydration, reflected-attribute
+  semantics and ignore overridden array iterators, own-property-safe reactive component props including
+  `__proto__`, browser-normalized constrained-control hydration, reflected-attribute
   null/boolean parity, and shared U+0000 normalization for text and dynamic attributes across
   server rendering, hydration, binding, and fresh DOM writes, validated acyclic class normalization,
   server-safe raw-text hydration comparison, server child-block ownership, textarea-specific API

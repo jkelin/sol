@@ -982,7 +982,16 @@ export function child<Props extends object>(
   cleanups: Cleanup[],
   frame: RenderFrame = rootFrame(),
 ): void {
-  const state = reactive<Record<string, unknown>>({});
+  const initialState: Record<string, unknown> = {};
+  if (Object.hasOwn(propGetters, "__proto__")) {
+    Object.defineProperty(initialState, "__proto__", {
+      configurable: true,
+      enumerable: true,
+      value: undefined,
+      writable: true,
+    });
+  }
+  const state = reactive(initialState);
   const props = readonlyProps(state) as Readonly<Props>;
   const renderFrame = frameForRegion(frame, region);
   const propCleanups: Cleanup[] = [];

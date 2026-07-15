@@ -20,6 +20,76 @@ import {
 import { codeFrame, mappedCode } from "./diagnostics.ts";
 import { compileBlockBody } from "./jsx.ts";
 
+const mutatingCollectionMethods = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
+
+type MemberLike = t.MemberExpression | t.OptionalMemberExpression;
+
+function memberMethodName(member: MemberLike): string | undefined {
+  if (!member.computed && t.isIdentifier(member.property)) return member.property.name;
+  if (member.computed && t.isStringLiteral(member.property)) return member.property.value;
+  if (
+    member.computed &&
+    t.isTemplateLiteral(member.property) &&
+    member.property.expressions.length === 0
+  ) {
+    return member.property.quasis[0]?.value.cooked ?? member.property.quasis[0]?.value.raw;
+  }
+  return undefined;
+}
+
+function isMemberLike(node: t.Node | null | undefined): node is MemberLike {
+  return t.isMemberExpression(node) || t.isOptionalMemberExpression(node);
+}
+
+function mutatingCollectionObject(
+  call: t.CallExpression | t.OptionalCallExpression,
+): t.Expression | undefined {
+  if (!isMemberLike(call.callee) || !t.isExpression(call.callee.object)) return undefined;
+  return mutatingCollectionMethods.has(memberMethodName(call.callee) ?? "")
+    ? call.callee.object
+    : undefined;
+}
+
+function assignmentMemberTargets(node: t.Node, targets: t.Expression[] = []): t.Expression[] {
+  if (t.isMemberExpression(node)) {
+    targets.push(node);
+  } else if (
+    t.isTSAsExpression(node) ||
+    t.isTSTypeAssertion(node) ||
+    t.isTSNonNullExpression(node) ||
+    t.isTSSatisfiesExpression(node) ||
+    t.isTypeCastExpression(node)
+  ) {
+    assignmentMemberTargets(node.expression, targets);
+  } else if (t.isObjectPattern(node)) {
+    for (const property of node.properties) {
+      assignmentMemberTargets(
+        t.isRestElement(property) ? property.argument : property.value,
+        targets,
+      );
+    }
+  } else if (t.isArrayPattern(node)) {
+    for (const element of node.elements) {
+      if (element) assignmentMemberTargets(element, targets);
+    }
+  } else if (t.isAssignmentPattern(node)) {
+    assignmentMemberTargets(node.left, targets);
+  } else if (t.isRestElement(node)) {
+    assignmentMemberTargets(node.argument, targets);
+  }
+  return targets;
+}
+
 export function reactiveCallCode(
   call: t.CallExpression,
   runtimeName: "__sol_signal" | "__sol_computed",
@@ -54,29 +124,33 @@ export function validateComputedWrites(
   };
   traverse(file, {
     AssignmentExpression(path: NodePath<t.AssignmentExpression>) {
-      if (t.isExpression(path.node.left)) check(path, path.node.left);
+      if (t.isExpression(path.node.left)) {
+        check(path, path.node.left);
+        return;
+      }
+      for (const target of assignmentMemberTargets(path.node.left)) check(path, target);
+      const reactiveBinding = Object.keys(t.getBindingIdentifiers(path.node.left)).find((name) => {
+        if (!bindings.has(name)) return false;
+        return path.scope.getBinding(name)?.scope.path.isProgram();
+      });
+      if (reactiveBinding) {
+        codeFrame(
+          compiler,
+          path.node.left,
+          "Component setup assignments must not destructure reactive bindings; destructuring is not reactive in v1",
+        );
+      }
     },
     UpdateExpression(path: NodePath<t.UpdateExpression>) {
       if (t.isExpression(path.node.argument)) check(path, path.node.argument);
     },
     CallExpression(path: NodePath<t.CallExpression>) {
-      if (
-        t.isMemberExpression(path.node.callee) &&
-        t.isExpression(path.node.callee.object) &&
-        t.isIdentifier(path.node.callee.property) &&
-        [
-          "copyWithin",
-          "fill",
-          "pop",
-          "push",
-          "reverse",
-          "shift",
-          "sort",
-          "splice",
-          "unshift",
-        ].includes(path.node.callee.property.name)
-      )
-        check(path, path.node.callee.object);
+      const object = mutatingCollectionObject(path.node);
+      if (object) check(path, object);
+    },
+    OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
+      const object = mutatingCollectionObject(path.node);
+      if (object) check(path, object);
     },
   });
 }
@@ -161,26 +235,21 @@ export function validateDerivedInitializer(
       }
     },
     CallExpression(path: NodePath<t.CallExpression>) {
-      if (
-        t.isMemberExpression(path.node.callee) &&
-        t.isIdentifier(path.node.callee.property) &&
-        [
-          "copyWithin",
-          "fill",
-          "pop",
-          "push",
-          "reverse",
-          "shift",
-          "sort",
-          "splice",
-          "unshift",
-        ].includes(path.node.callee.property.name)
-      )
+      if (mutatingCollectionObject(path.node))
         codeFrame(
           compiler,
           path.node,
           "Derived component initializers must not call mutating collection methods",
         );
+    },
+    OptionalCallExpression(path: NodePath<t.OptionalCallExpression>) {
+      if (mutatingCollectionObject(path.node)) {
+        codeFrame(
+          compiler,
+          path.node,
+          "Derived component initializers must not call mutating collection methods",
+        );
+      }
     },
   });
 }

@@ -1357,6 +1357,22 @@ describe("compiler", () => {
       ),
     ).toThrow("Computed component value doubled is readonly");
 
+    for (const assignment of ["({ source } = { source: 2 });", "[source] = [2];"]) {
+      expect(() =>
+        compile(
+          `
+      import { $component } from "sol";
+      const App = $component(function App() {
+        let source = 1;
+        function invalid() { ${assignment} }
+        return <p>{source}</p>;
+      });
+    `,
+          "Invalid.tsx",
+        ),
+      ).toThrow("destructuring is not reactive in v1");
+    }
+
     expect(() =>
       compile(
         `
@@ -1391,6 +1407,19 @@ describe("compiler", () => {
       const App = $component(function App() {
         let values = [1];
         const length = values.push(2);
+        return <p>{length}</p>;
+      });
+    `,
+        "Invalid.tsx",
+      ),
+    ).toThrow("must not call mutating collection methods");
+    expect(() =>
+      compile(
+        `
+      import { $component } from "sol";
+      const App = $component(function App() {
+        let values = [1];
+        const length = values["push"](2);
         return <p>{length}</p>;
       });
     `,
@@ -1510,6 +1539,63 @@ describe("compiler", () => {
       },
       {
         source: `const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { copy.push(2); } return <p>{copy.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { copy["push"](2); } return <p>{copy.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source:
+          "const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { copy[`push`](2); } return <p>{copy.length}</p>; });",
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { copy?.push(2); } return <p>{copy.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { copy.push?.(2); } return <p>{copy.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [[1]]; const copy = { nested: values[0] }; function mutate() { copy?.nested.push(2); } return <p>{copy.nested.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [[1]]; const copy = { nested: values[0] }; function mutate() { copy?.nested?.push(2); } return <p>{copy.nested.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [{ x: 1 }]; const copy = { ...values[0] }; function mutate() { ({ x: copy.x } = { x: 2 }); } return <p>{copy.x}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [{ x: 1 }]; const copy = { ...values[0] }; function mutate() { [copy.x] = [2]; } return <p>{copy.x}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [{ x: 1 }]; const copy = { ...values[0] }; function mutate() { (copy as any).x = 2; } return <p>{copy.x}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { (copy as any).push(2); } return <p>{copy.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [{ x: 1 }]; const copy = { ...values[0] }; function mutate() { copy!.x = 2; } return <p>{copy.x}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [1]; const copy = values.slice(); function mutate() { copy!.push(2); } return <p>{copy.length}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [{ x: 1 }]; const copy = { ...values[0] }; function mutate() { ({ x: (copy.x as any) } = { x: 2 }); } return <p>{copy.x}</p>; });`,
+        message: "Computed component value copy is readonly",
+      },
+      {
+        source: `const App = $component(function App() { let values = [{ x: 1 }]; const copy = { ...values[0] }; function mutate() { [(copy.x as any)] = [2]; } return <p>{copy.x}</p>; });`,
         message: "Computed component value copy is readonly",
       },
       {

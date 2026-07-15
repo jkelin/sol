@@ -301,6 +301,10 @@ export function reactive<T extends object>(target: T): T {
       const value = Reflect.get(object, key, receiver) as unknown;
       return wrap(value);
     },
+    has(object, key) {
+      track(object, key);
+      return Reflect.has(object, key);
+    },
     set(object, key, value, receiver) {
       const wasPresent = Object.prototype.hasOwnProperty.call(object, key);
       const oldValue = unwrap(Reflect.get(object, key, receiver) as unknown);

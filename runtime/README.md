@@ -22,8 +22,9 @@ Application code normally imports only `sol`. The JSX transform resolves `sol/js
 - `devtools.ts` installs the development global, WebMCP tools, element picker, and isolated in-app diagnostics panel.
 - `symbols.ts` owns the private brands shared by compiled components, contexts, and routes.
 - `validation.ts` defines supported parser interfaces and dispatches callable, Standard Schema, synchronous, and asynchronous parsers.
-- `reactivity.ts` implements signals, computed values, effects, batching, deduplicated proxy
-  invalidation, render ownership state, and primary-failure-preserving teardown.
+- `reactivity.ts` implements signals, computed values, effects, batching, property reads and
+  presence checks, deduplicated proxy invalidation, render ownership state, and
+  primary-failure-preserving teardown.
 - `forms.ts` implements form controllers, descriptor-safe value cloning, validation normalization,
   and submission state.
 - `queries.ts` implements cached query controllers, mutation controllers, request deduplication,

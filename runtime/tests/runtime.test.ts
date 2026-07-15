@@ -801,6 +801,17 @@ describe("reactivity", () => {
     expect(keys).toEqual(["first,second", "second"]);
   });
 
+  test("tracks property presence checks", () => {
+    const state = $signal<Record<string, number>>({});
+    const observations: boolean[] = [];
+    runtimeEffect(() => observations.push("answer" in state.value));
+
+    state.value.answer = 42;
+    delete state.value.answer;
+
+    expect(observations).toEqual([false, true, false]);
+  });
+
   test("flushes combined property, iteration, and length dependencies once", () => {
     const object = $signal<Record<string, number>>({});
     let objectRuns = 0;

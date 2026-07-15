@@ -193,6 +193,23 @@ export function referencedNames(expression: t.Expression): Set<string> {
 
 export function bindingRoot(expression: t.Expression): string | undefined {
   let current: t.Expression = expression;
-  while (t.isMemberExpression(current) && t.isExpression(current.object)) current = current.object;
+  for (;;) {
+    if (
+      (t.isMemberExpression(current) || t.isOptionalMemberExpression(current)) &&
+      t.isExpression(current.object)
+    ) {
+      current = current.object;
+    } else if (
+      t.isTSAsExpression(current) ||
+      t.isTSTypeAssertion(current) ||
+      t.isTSNonNullExpression(current) ||
+      t.isTSSatisfiesExpression(current) ||
+      t.isTypeCastExpression(current)
+    ) {
+      current = current.expression;
+    } else {
+      break;
+    }
+  }
   return t.isIdentifier(current) ? current.name : undefined;
 }

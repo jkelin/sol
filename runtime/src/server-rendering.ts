@@ -225,12 +225,19 @@ function renderSpecialElementContent(
 ): string {
   if (element.tag === "textarea") {
     const value = element.attributes.get("value");
-    if (typeof value === "string") return escapeText(value);
+    if (typeof value === "string") {
+      const escaped = escapeText(value);
+      return escaped.startsWith("\n") ? `\n${escaped}` : escaped;
+    }
   }
   if (element.textContent !== undefined) {
-    return element.tag === "script" || element.tag === "style"
-      ? serverSafeRawText(element.tag, element.textContent)
-      : escapeText(element.textContent);
+    const serialized =
+      element.tag === "script" || element.tag === "style"
+        ? serverSafeRawText(element.tag, element.textContent)
+        : escapeText(element.textContent);
+    return element.tag === "textarea" && serialized.startsWith("\n")
+      ? `\n${serialized}`
+      : serialized;
   }
   const value = element.attributes.get("value");
   if (element.tag !== "select" || typeof value !== "string") return content;

@@ -426,7 +426,7 @@ export function displayValue(value: unknown): string {
 }
 
 export function displayValues(values: readonly unknown[]): string {
-  return normalizeHtmlString(values.map(displayValuePart).join(""));
+  return normalizeHtmlString(values.map(displayValuePart).join("")).replaceAll(/\r\n?/g, "\n");
 }
 
 function escapeText(value: string): string {
@@ -752,7 +752,8 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
           if (disposed) settled.dispose();
           else resolved = settled;
         } catch (error) {
-          reportError(frame, error);
+          if (disposed) surfaceAsyncError(error);
+          else reportError(frame, error);
         } finally {
           finish?.();
         }
@@ -802,7 +803,8 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
             if (currentParent) settled.mount(currentParent, before);
           }
         } catch (error) {
-          reportError(frame, error);
+          if (disposed) surfaceAsyncError(error);
+          else reportError(frame, error);
         } finally {
           finish?.();
         }
@@ -855,7 +857,8 @@ export function resolvedBlock(candidate: MaybeBlock, frame: RenderFrame): Block 
           settledBlock.mount(marker.parentNode!, marker);
         }
       } catch (error) {
-        reportError(frame, error);
+        if (disposed) surfaceAsyncError(error);
+        else reportError(frame, error);
       } finally {
         finish?.();
       }

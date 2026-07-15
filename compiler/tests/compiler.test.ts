@@ -1975,6 +1975,9 @@ describe("compiler", () => {
           <textarea>{"Static textarea"}</textarea>
           <style>{".ready { color: green; }"}</style>
           <script>{"globalThis.ready = true;"}</script>
+          <title>{42}{true}{null}{-0}</title>
+          <textarea>{"\\nLeading line"}</textarea>
+          <style>{"a\\r\\nb\\rc"}</style>
         </main>;
       });`,
       "StaticRawText.tsx",
@@ -1983,6 +1986,9 @@ describe("compiler", () => {
     expect(result.code).not.toContain("data-sol-e");
     expect(result.code).toContain("<title>Static &amp; title</title>");
     expect(result.code).toContain("<textarea>Static textarea</textarea>");
+    expect(result.code).toContain("<title>420</title>");
+    expect(result.code).toContain("<textarea>\n\nLeading line</textarea>");
+    expect(result.code).toContain("<style>a\nb\nc</style>");
 
     const hazardous = compile(
       `const App = $component(function App() { return <script>{"</script><p>unsafe</p>"}</script>; });`,

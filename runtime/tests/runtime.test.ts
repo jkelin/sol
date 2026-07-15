@@ -2250,37 +2250,54 @@ describe("compiled DOM runtime", () => {
   });
 
   test("reports late async block teardown failures after disposal", async () => {
-    await Promise.all(
-      ([undefined, "hydrate", "server"] as const).map(async (mode) => {
-        let resolve!: (block: Block) => void;
-        const candidate = new Promise<Block>((resolveCandidate) => {
-          resolve = resolveCandidate;
-        });
-        const errors: unknown[] = [];
-        const frame = {
-          ...rootFrame(),
-          mode,
-          handleError: (error: unknown) => errors.push(error),
-        } as RenderFrame;
-        const pending = resolvedBlock(candidate, frame);
-        pending.dispose();
-        const cleanup = new Error(`late ${mode ?? "browser"} teardown failed`);
-        resolve({
-          nodes: [],
-          mount() {},
-          move() {},
-          enter() {},
-          leave: () => undefined,
-          retire: () => undefined,
-          dispose() {
-            throw cleanup;
-          },
-        });
-        await candidate;
-        await Promise.resolve();
-        expect(errors).toEqual([cleanup]);
-      }),
-    );
+    const surfaced: unknown[] = [];
+    const expected: unknown[] = [];
+    const originalQueueMicrotask = globalThis.queueMicrotask;
+    globalThis.queueMicrotask = (callback) => {
+      try {
+        callback();
+      } catch (error) {
+        surfaced.push(error);
+      }
+    };
+    try {
+      await Promise.all(
+        ([undefined, "hydrate", "server"] as const).map(async (mode) => {
+          let resolve!: (block: Block) => void;
+          const candidate = new Promise<Block>((resolveCandidate) => {
+            resolve = resolveCandidate;
+          });
+          const errors: unknown[] = [];
+          const frame = {
+            ...rootFrame(),
+            mode,
+            handleError: (error: unknown) => errors.push(error),
+          } as RenderFrame;
+          const pending = resolvedBlock(candidate, frame);
+          pending.dispose();
+          const cleanup = new Error(`late ${mode ?? "browser"} teardown failed`);
+          expected.push(cleanup);
+          resolve({
+            nodes: [],
+            mount() {},
+            move() {},
+            enter() {},
+            leave: () => undefined,
+            retire: () => undefined,
+            dispose() {
+              throw cleanup;
+            },
+          });
+          await candidate;
+          await Promise.resolve();
+          expect(errors).toEqual([]);
+        }),
+      );
+    } finally {
+      globalThis.queueMicrotask = originalQueueMicrotask;
+    }
+    expect(surfaced).toHaveLength(expected.length);
+    expect(new Set(surfaced)).toEqual(new Set(expected));
   });
 
   test("preserves a mount failure when teardown also fails", () => {

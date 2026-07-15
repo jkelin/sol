@@ -505,6 +505,19 @@ function rawTextValues(
       if (t.isStringLiteral(child.expression)) staticValue += child.expression.value;
       else if (t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0) {
         staticValue += child.expression.quasis[0]!.value.cooked ?? "";
+      } else if (t.isNumericLiteral(child.expression)) {
+        staticValue += String(child.expression.value);
+      } else if (t.isBooleanLiteral(child.expression) || t.isNullLiteral(child.expression)) {
+        // Boolean and null children display as empty strings.
+      } else if (t.isBigIntLiteral(child.expression)) {
+        staticValue += child.expression.value;
+      } else if (
+        t.isUnaryExpression(child.expression) &&
+        (child.expression.operator === "+" || child.expression.operator === "-") &&
+        t.isNumericLiteral(child.expression.argument)
+      ) {
+        const number = child.expression.argument.value;
+        staticValue += String(child.expression.operator === "-" ? -number : number);
       } else isStatic = false;
       continue;
     }
@@ -877,11 +890,13 @@ export function compileIntrinsicElement(
   context.html.push(`<${tag}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}>`);
   if (!VOID_ELEMENTS.has(tag)) {
     if (safeStaticRawText !== undefined) {
-      context.html.push(
+      let serialized =
         tag === "script" || tag === "style"
           ? normalizeHtmlString(safeStaticRawText)
-          : escapeText(safeStaticRawText),
-      );
+          : escapeText(safeStaticRawText);
+      serialized = serialized.replaceAll(/\r\n?/g, "\n");
+      if (tag === "textarea" && serialized.startsWith("\n")) serialized = `\n${serialized}`;
+      context.html.push(serialized);
     } else if (!RAW_TEXT_ELEMENTS.has(tag)) {
       for (const child of node.children) compileNode(compiler, child, context, bindings, scope);
     }
